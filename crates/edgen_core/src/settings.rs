@@ -203,10 +203,10 @@ impl Default for SettingsParams {
         Self {
             threads: threads as u32,
             default_uri: "http://127.0.0.1:33322".to_string(),
-            chat_completions_model_name: "zephyr-7b-beta.Q4_K_M.gguf".to_string(),
-            chat_completions_model_repo: "TheBloke/zephyr-7B-beta-GGUF".to_string(),
-            audio_transcriptions_model_name: "ggml-medium-32-2.en.bin".to_string(),
-            audio_transcriptions_model_repo: "distil-whisper/distil-medium.en".to_string(),
+            chat_completions_model_name: "neural-chat-7b-v3-3.Q4_K_M.gguf".to_string(),
+            chat_completions_model_repo: "TheBloke/neural-chat-7B-v3-3-GGUF".to_string(),
+            audio_transcriptions_model_name: "ggml-distil-small.en.bin".to_string(),
+            audio_transcriptions_model_repo: "distil-whisper/distil-small.en".to_string(),
             chat_completions_models_dir: chat_completions_str,
             audio_transcriptions_models_dir: audio_transcriptions_str,
         }
