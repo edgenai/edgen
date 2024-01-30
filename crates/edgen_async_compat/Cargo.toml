@@ -1,0 +1,19 @@
+[package]
+name = "edgen_async_compat"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+runtime-smol = ["smol", "async-task", "futures-lite"]
+runtime-tokio = ["tokio", "futures"]
+runtime-glommio = ["glommio"]
+
+[dependencies]
+async-task = { workspace = true, optional = true }
+cfg-if = { workspace = true }
+futures = { workspace = true, optional = true }
+futures-lite = { workspace = true, optional = true }
+glommio = { workspace = true, optional = true }
+smol = { workspace = true, optional = true }
+static_assertions = { workspace = true }
+tokio = { workspace = true, optional = true, features = ["rt"] }

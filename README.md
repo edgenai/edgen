@@ -1,0 +1,108 @@
+<p align="center">
+    <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/edgen_light.svg>
+        <source media="(prefers-color-scheme: light)" srcset="./docs/assets/edgen_dark.svg>
+        <img alt="Edgen Local API Server" src="./docs/assets/edgen_dark.svg" width="352" height="59" style="max-width: 100%;">
+    </picture>
+    <br/>
+    <br/>
+</p>
+
+<p align="center">
+    <img alt="GitHub" src="https://img.shields.io/github/license/binedge/edgen">
+    <!-- TODO: uncomment to show discord -->
+    <!-- <img alt="Discord" src="https://img.shields.io/discord/1163068604074426408?logo=discord&label=Discord&link=https%3A%2F%2Fdiscord.gg%2FMMUcgBtV"> -->
+</p>
+
+<h3 align="center">
+    A Local GenAI API Server: A drop-in replacement for OpenAI's API
+</h3>
+
+<p align="center">
+    |
+    <!-- TODO: add proper links -->
+    <a href="https://binedge.ai"><b>Documentation</b></a> |
+    <a href="https://binedge.ai"><b>Blog</b></a> |
+    <a href="https://discord.gg/MMUcgBtV"><b>Discord</b></a> |
+    <a href="https://github.com/orgs/binedge/projects/1/views/1"><b>Roadmap</b></a> |
+</p>
+
+<div align="center">
+    <img src="docs/docs/assets/edgen_architecture_overview.svg" alt="⚡Edgen architecture overview" height="500">
+    <p align="center">⚡Edgen architecture overview</p>
+</div>
+
+- [x] **Optimized Inference**: You don't need to take a PhD in AI optimization. ⚡Edgen abstracts the complexity of optimizing inference for different hardware, platforms and models.
+- [x] **Modular**: ⚡Edgen is **model** and **runtime** agnostic. New models can be added easily and ⚡Edgen can select the best runtime for the user's hardware: you don't need to keep up about the latest models and ML runtimes - **⚡Edgen will do that for you**.
+- [x] **Model Caching**: ⚡Edgen caches foundational models locally, so 1 model can power hundreds of different apps - users don't need to download the same model multiple times.
+- [x] **OpenAI Compliant API**: ⚡Edgen is a drop-in replacement for OpenAI.
+
+⚡Edgen lets you use GenAI in your app, completely **locally** on your user's devices, for **free** and with **data-privacy**. It's easy to replace OpenAI's API, supports various functions like text and image generation, speech-to-text, and text-to-speech, and works on Windows, Linux, and MacOS.
+
+## 🔥 Hot Topics
+
+## Endpoints
+
+- [x] \[Chat\] Completions
+- [x] \[Audio\] Transcriptions
+- [ ] \[Image\] Generation
+- [ ] \[Chat\] Multimodal chat completions
+- [ ] \[Audio\] Speech
+
+## Supported platforms
+
+- [x] Windows
+- [x] Linux
+- [x] MacOS
+
+## Use-Cases
+
+<!-- TODO: add Edgen-Desk demo -->
+<figure>
+    <img src="image_path_or_URL" alt="Alt Text">
+    <figcaption>Edgen-Desk, an app made with Edgen</figcaption>
+</figure>
+
+## Why local GenAI?
+
+- **Data Private**: On-device inference means **users' data** never leave their devices.
+
+- **Scalable**: More and more users? No need to increment cloud computing infrastructure. Just let your users use their own hardware.
+
+- **Reliable**: No internet, no downtime, no rate limits, no API keys.
+
+- **Free**: It runs locally on hardware the user already owns.
+
+## Quickstart
+
+# Developers
+
+The following sections are for people looking to contribute to ⚡Edgen.
+
+## Architecture Overview
+
+## Quickstart
+
+Edgen uses [Nix](https://nixos.org/) for dependency management and development environments.
+To get up-and-running quickly, [install Nix](https://nixos.org/download.html),
+[enable Nix flakes](https://nixos.wiki/wiki/Flakes), and run:
+
+```bash
+nix develop
+# TODO: Insert run command here
+```
+
+Then open your favorite IDE from the shell, and you're ready to go!
+
+## Communication Channels
+
+- [Edgen Discord server](https://discord.gg/MMUcgBtV): Real time discussions with the ⚡Edgen team and other users.
+- [GitHub issues](https://github.com/binedge/edgen/issues): Feature requests, bugs.
+- [GitHub discussions](https://github.com/binedge/edgen/discussions/): Q&A.
+- [Blog](https://binedge.ai): Big announcements.
+
+## Special Thanks
+
+- [`llama.cpp`](https://github.com/ggerganov/llama.cpp/tree/master),
+  [`whisper.cpp`](https://github.com/ggerganov/whisper.cpp), and [`ggml`](https://github.com/ggerganov/ggml) for being
+  an excellent getting-on point for this space.

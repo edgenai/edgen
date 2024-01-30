@@ -1,0 +1,28 @@
+[package]
+name = "edgen_core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ahash = { workspace = true }
+dashmap = { workspace = true }
+directories = { workspace = true }
+derive_more = { workspace = true }
+edgen_async_compat = { path = "../edgen_async_compat", features = ["runtime-tokio"] }
+notify = { workspace = true }
+num_cpus = { workspace = true }
+once_cell = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_yaml = { workspace = true }
+smol = { workspace = true }
+time = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+utoipa = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["full"] }

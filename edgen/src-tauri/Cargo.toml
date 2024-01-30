@@ -1,0 +1,30 @@
+[package]
+name = "edgen"
+version = "0.1.0"
+description = "Edgen: Local, private GenAI server alternative to OpenAI"
+authors = ["EdgenAI"]
+license = ""
+repository = ""
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "1.5.1", features = [] }
+
+[dependencies]
+once_cell = { workspace = true }
+tauri = { workspace = true, features = ["shell-open", "system-tray", "updater"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { workspace = true, features = ["full", "tracing"] }
+tracing = { workspace = true }
+opener = "0.6.1"
+edgen_server = { path = "../../crates/edgen_server"}
+edgen_core   = { path = "../../crates/edgen_core"}
+
+[features]
+no_gui = []
+# this feature is used for production builds or when `devPath` points to the filesystem
+# DO NOT REMOVE!!
+custom-protocol = ["tauri/custom-protocol"]

@@ -1,0 +1,101 @@
+export const metadata = {
+  title: 'Audio',
+  description: 'Audio-related (e.g. transcription, speech) API requests.',
+}
+
+# Audio
+
+Discover how to convert audio to text or text to audio. OpenAI compliant. {{ className: 'lead' }}
+
+---
+
+## Create transcription {{ tag: 'POST', label: 'http://localhost:33322/v1/audio/transcriptions' }}
+
+<Row>
+  <Col>
+
+    Transcribes audio into text.
+
+    ### Required attributes
+
+    <Properties>
+      <Property name="username" type="string">
+        The username for the contact.
+      </Property>
+      <Property name="phone_number" type="string">
+        The phone number for the contact.
+      </Property>
+    </Properties>
+
+    ### Optional attributes
+
+    <Properties>
+      <Property name="avatar_url" type="string">
+        The avatar image URL for the contact.
+      </Property>
+      <Property name="display_name" type="string">
+        The contact display name in the contact list. By default, this is just the username.
+      </Property>
+    </Properties>
+
+  </Col>
+  <Col sticky>
+
+    <CodeGroup title="Request" tag="GET" label="/v1/contacts">
+
+    ```bash {{ title: 'cURL' }}
+    curl -G http://localhost:33322/v1/audio/transcriptions \
+      -H "Authorization: Bearer no-key" \
+      -H "Content-Type: multipart/form-data" \
+      -F file="/path/to/file/audio.mp3" \
+      -F model="distil-small.en"
+    ```
+
+    ```js
+    import ApiClient from '@example/protocol-api'
+
+    const client = new ApiClient(token)
+
+    await client.contacts.list()
+    ```
+
+    ```python
+    from protocol_api import ApiClient
+
+    client = ApiClient(token)
+
+    client.contacts.list()
+    ```
+
+    ```php
+    $client = new \Protocol\ApiClient($token);
+
+    $client->contacts->list();
+    ```
+
+    </CodeGroup>
+
+    ```json {{ title: 'Response' }}
+    {
+      "has_more": false,
+      "data": [
+        {
+          "id": "WAz8eIbvDR60rouK",
+          "username": "FrankMcCallister",
+          "phone_number": "1-800-759-3000",
+          "avatar_url": "https://assets.protocol.chat/avatars/frank.jpg",
+          "display_name": null,
+          "conversation_id": "xgQQXg3hrtjh7AvZ",
+          "last_active_at": 705103200,
+          "created_at": 692233200
+        },
+        {
+          "id": "hSIhXBhNe8X1d8Et"
+          // ...
+        }
+      ]
+    }
+    ```
+
+  </Col>
+</Row>

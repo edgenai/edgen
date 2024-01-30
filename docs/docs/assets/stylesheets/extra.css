@@ -1,0 +1,22 @@
+.md-header {
+  display: flex !important;
+  flex-direction: row-reverse !important;
+}
+.md-tabs {
+  order: 2;
+  margin-left: 120px !important;
+}
+.md-logo {
+  order: 1;
+}
+.md-header__inner {
+  flex-direction: row-reverse !important;
+}
+.md-logo {
+  position: absolute !important;
+  left: 15px !important;
+}
+
+.img_container{
+  align: "center";
+}

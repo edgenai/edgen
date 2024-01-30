@@ -1,0 +1,12 @@
+[edgend]
+# The number of logical CPU cores to use for parallel processing.
+#
+# Settings this lower than the number of cores on your machine will reduce performance, but decrease strain on your
+# machine.
+max_cores = 4
+
+[[edgend.models]]
+name = "zephyr-7b-alpha.Q4_K_M.gguf"
+type = "llama"
+remote_url = "https://artifacts.binedge.workers.dev/zephyr-7b-alpha.Q4_K_M.gguf"
+b3sum = ""

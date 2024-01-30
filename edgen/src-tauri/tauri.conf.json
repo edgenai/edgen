@@ -1,0 +1,58 @@
+{
+  "build": {
+    "beforeDevCommand": "pnpm install && pnpm dev",
+    "beforeBuildCommand": "pnpm install && pnpm build",
+    "devPath": "http://localhost:1420",
+    "distDir": "../dist"
+  },
+  "package": {
+    "productName": "Edgen",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "open": true
+      }
+    },
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "edgen.edgen.co",
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ]
+    },
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "resizable": true,
+        "title": "Edgen",
+        "width": 800,
+        "height": 600,
+        "visible": false
+      }
+    ],
+    "systemTray": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true
+    },
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/francis2tm/hello-world/releases/latest/download/latest.json"
+      ],
+      "dialog": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFCOENGMjc4RjY5MjExNjUKUldSbEVaTDJlUEtNR3lLZVkydmVKTWRTRlhVcDdtK2pGVFgwb1E4SFRCaTVpTU1XWG9vNlRvajYK"
+    }
+  }
+}

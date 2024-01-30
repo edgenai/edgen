@@ -1,0 +1,951 @@
+openapi: 3.0.3
+info:
+  title: Edgen API
+  description: Edgen API with OpenAI-compliant and proprietary endpoints.
+  license:
+    name: ''
+  version: 0.1.0
+paths:
+  /audio/transcriptions:
+    post:
+      tags:
+      - audio
+      summary: 'POST `/v1/audio/transcriptions`: transcribes audio into text.'
+      description: |-
+        POST `/v1/audio/transcriptions`: transcribes audio into text.
+
+        See [the original OpenAI API specification][openai], which this endpoint is compatible with.
+
+        [openai]: https://platform.openai.com/docs/api-reference/auddio/createTranscription
+
+        On failure, may raise a `500 Internal Server Error` with a JSON-encoded [`WhisperEndpointError`]
+        to the peer.
+      operationId: create_transcription
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTranscriptionRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: unexpected internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhisperEndpointError'
+  /chat/completions:
+    post:
+      tags:
+      - chat
+      summary: 'POST `/v1/chat/completions`: generate chat completions for the provided context, optionally'
+      description: |-
+        POST `/v1/chat/completions`: generate chat completions for the provided context, optionally
+        streaming those completions in real-time.
+
+        See [the original OpenAI API specification][openai], which this endpoint is compatible with.
+
+        [openai]: https://platform.openai.com/docs/api-reference/chat/create
+
+        Generates completions for the given [`CreateChatCompletionRequest`] body.
+        If `stream` is enabled, streams a number of newline-separated, JSON-encoded
+        [`ChatCompletionChunk`]s to the client using [server-sent events][sse]. Otherwise, returns a
+        single JSON-encoded [`ChatCompletion`].
+
+        [sse]: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
+
+        On failure, may raise a `500 Internal Server Error` with a JSON-encoded [`ChatCompletionError`]
+        to the peer.
+      operationId: chat_completions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChatCompletionRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletion'
+        '500':
+          description: unexpected internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionError'
+  /version:
+    get:
+      tags:
+      - misc
+      summary: 'GET `/v1/version`: returns the current version of edgend.'
+      description: |-
+        GET `/v1/version`: returns the current version of edgend.
+
+        [openai]: https://platform.edgen.io/docs/api-reference/version
+
+        The version is returned as json value with major, minor and patch as integer
+        and build as string (which may be empty).
+        For any error, the version endpoint returns "internal server error".
+      operationId: edgen_version
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Version'
+        '500':
+          description: unexpected internal server error
+components:
+  schemas:
+    AssistantFunctionStub:
+      type: object
+      description: |-
+        A description of a function provided to a large language model, to assist it in interacting
+        with the outside world.
+
+        This is included in [`AssistantToolCall`]s within [`ChatMessage`]s.
+
+        See [the documentation for creating chat completions][openai] for more details.
+
+        [openai]: https://platform.openai.com/docs/api-reference/chat/create
+      required:
+      - name
+      - arguments
+      properties:
+        arguments:
+          type: string
+          description: The arguments passed into the function.
+        name:
+          type: string
+          description: The name of the function from the assistant's point of view.
+    AssistantToolCall:
+      type: object
+      description: |-
+        A description of a function that an assistant called.
+
+        This is included in [`ChatMessage`]s when the `tool_calls` field is present.
+      required:
+      - id
+      - type
+      - function
+      properties:
+        function:
+          $ref: '#/components/schemas/AssistantFunctionStub'
+        id:
+          type: string
+          description: A unique identifier for the invocation of this function.
+        type:
+          type: string
+          description: |-
+            The type of the invoked tool.
+
+            OpenAI currently specifies this to always be `function`, but more variants may be added
+            in the future.
+    AudioError:
+      oneOf:
+      - type: object
+        required:
+        - Parse
+        properties:
+          Parse:
+            type: string
+      - type: object
+        required:
+        - ResamplerInit
+        properties:
+          ResamplerInit:
+            type: string
+      - type: object
+        required:
+        - Resample
+        properties:
+          Resample:
+            type: string
+    ChatCompletion:
+      type: object
+      description: A fully generated chat completion.
+      required:
+      - id
+      - choices
+      - created
+      - model
+      - system_fingerprint
+      - object
+      - usage
+      properties:
+        choices:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatCompletionChoice'
+          description: The tokens generated by the model.
+        created:
+          type: integer
+          format: int64
+          description: The UNIX timestamp at which the completion was generated.
+        id:
+          type: string
+          description: A unique identifier for this completion.
+        model:
+          type: string
+          description: The model that generated the completion.
+        object:
+          type: string
+          description: The object type. This is always `text_completion`.
+        system_fingerprint:
+          type: string
+          description: A unique identifier for the backend configuration that generated the completion.
+        usage:
+          $ref: '#/components/schemas/ChatCompletionUsage'
+    ChatCompletionChoice:
+      type: object
+      description: |-
+        A message in a chat completion.
+
+        This is included in [`ChatCompletion`]s.
+
+        See [the documentation for creating chat completions][openai] for more details.
+
+        [openai]: https://platform.openai.com/docs/api-reference/chat/create
+      required:
+      - message
+      - index
+      properties:
+        finish_reason:
+          type: string
+          description: |-
+            If present, the reason that generation terminated at this choice.
+
+            This can be:
+
+            - `length`, indicating that the length cutoff was reached, or
+            - `stop`, indicating that a stop word was reached.
+          nullable: true
+        index:
+          type: integer
+          format: int32
+          description: The index of this choice.
+        message:
+          $ref: '#/components/schemas/ChatMessage'
+    ChatCompletionChunk:
+      type: object
+      description: A chunk generated in streaming mode from a [`CreateChatCompletionRequest`].
+      required:
+      - id
+      - choices
+      - created
+      - model
+      - system_fingerprint
+      - object
+      properties:
+        choices:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatCompletionChunkChoice'
+          description: The tokens generated by the model.
+        created:
+          type: integer
+          format: int64
+          description: The UNIX timestamp at which the chunk was generated.
+        id:
+          type: string
+          description: A unique identifier for this chunk.
+        model:
+          type: string
+          description: The model that generated the chunk.
+        object:
+          type: string
+          description: The object type. This is always `text_completion`.
+        system_fingerprint:
+          type: string
+          description: A unique identifier for the backend configuration that generated the chunk.
+    ChatCompletionChunkChoice:
+      type: object
+      description: A chunk of a stream-mode chat completion.
+      required:
+      - delta
+      - index
+      properties:
+        delta:
+          $ref: '#/components/schemas/ChatCompletionChunkDelta'
+        finish_reason:
+          type: string
+          description: |-
+            If present, this choice terminated the completion stream. The following variants
+            are available:
+
+            - `length`, indicating that the length cutoff was reached, or
+            - `stop`, indicating that a stop word was reached.
+          nullable: true
+        index:
+          type: integer
+          format: int32
+          description: |-
+            The index of this choice. If `n` was set in [`CreateChatCompletionRequest`], this is
+            which stream this choice belongs to.
+          minimum: 0
+    ChatCompletionChunkDelta:
+      type: object
+      description: A delta-encoded difference for an ongoing, stream-mode chat completion.
+      properties:
+        content:
+          type: string
+          description: If present, new content added to the end of the completion stream.
+          nullable: true
+        role:
+          type: string
+          description: If present, `content` is being generated under a new role.
+          nullable: true
+    ChatCompletionError:
+      oneOf:
+      - type: object
+        description: The provided model could not be found on the local system.
+        required:
+        - model_name
+        - error
+        properties:
+          error:
+            type: string
+            enum:
+            - no_such_model
+          model_name:
+            type: string
+            description: The name of the model.
+      - type: object
+        description: The provided model name contains prohibited characters.
+        required:
+        - model_name
+        - reason
+        - error
+        properties:
+          error:
+            type: string
+            enum:
+            - prohibited_name
+          model_name:
+            type: string
+            description: The name of the model provided.
+          reason:
+            type: string
+            description: A human-readable error message.
+      - type: object
+        required:
+        - error
+        properties:
+          error:
+            type: string
+            enum:
+            - ffi
+      description: |-
+        An error condition raised by the chat completion API.
+
+        This is **not normative** with OpenAI's specification, which does not document any specific
+        failure modes.
+      discriminator:
+        propertyName: error
+    ChatCompletionUsage:
+      type: object
+      description: |-
+        Statistics about a completed chat completion.
+
+        See [the documentation for creating chat completions][openai] for more details.
+
+        [openai]: https://platform.openai.com/docs/api-reference/completions/object
+      required:
+      - completion_tokens
+      - prompt_tokens
+      - total_tokens
+      properties:
+        completion_tokens:
+          type: integer
+          format: int32
+          description: The number of generated tokens.
+          minimum: 0
+        prompt_tokens:
+          type: integer
+          format: int32
+          description: The number of tokens in the prompt.
+          minimum: 0
+        total_tokens:
+          type: integer
+          format: int32
+          description: |-
+            `completion_tokens` + `prompt_tokens`; the total number of tokens in the dialogue
+            so far.
+          minimum: 0
+    ChatMessage:
+      oneOf:
+      - type: object
+        description: |-
+          A message from the system. This is typically used to set the initial system prompt; for
+          example, "you are a helpful assistant".
+        required:
+        - role
+        properties:
+          content:
+            type: string
+            description: The content of the message, if any.
+            nullable: true
+          name:
+            type: string
+            description: If present, a name for the system.
+            nullable: true
+          role:
+            type: string
+            enum:
+            - system
+      - type: object
+        description: A message from a user.
+        required:
+        - content
+        - role
+        properties:
+          content:
+            type: string
+            description: |-
+              The content of the message. This can be a sequence of multiple plain text or image
+              parts.
+          name:
+            type: string
+            description: If present, a name for the user.
+            nullable: true
+          role:
+            type: string
+            enum:
+            - user
+      - type: object
+        description: A message from an assistant.
+        required:
+        - role
+        properties:
+          content:
+            type: string
+            description: The plaintext message of the message, if any.
+            nullable: true
+          name:
+            type: string
+            description: The name of the assistant, if any.
+            nullable: true
+          role:
+            type: string
+            enum:
+            - assistant
+          tool_calls:
+            type: array
+            items:
+              $ref: '#/components/schemas/AssistantToolCall'
+            description: |-
+              If the assistant used any tools in generating this message, the tools that the assistant
+              used.
+            nullable: true
+      - type: object
+        description: A message from a tool accessible by other peers in the dialogue.
+        required:
+        - tool_call_id
+        - role
+        properties:
+          content:
+            type: string
+            description: The plaintext that the tool generated, if any.
+            nullable: true
+          role:
+            type: string
+            enum:
+            - tool
+          tool_call_id:
+            type: string
+            description: A unique identifier for the specific invocation that generated this message.
+      description: |-
+        A chat message in a multi-user dialogue.
+
+        This is as context for a [`CreateChatCompletionRequest`].
+
+        See [the documentation for creating chat completions][openai] for more details.
+
+        [openai]: https://platform.openai.com/docs/api-reference/chat/create
+      discriminator:
+        propertyName: role
+    ChatMessages:
+      type: array
+      items:
+        $ref: '#/components/schemas/ChatMessage'
+      description: |-
+        A sequence of chat messages in a [`CreateChatCompletionRequest`].
+
+        This implements [`Display`] to generate a transcript of the chat messages compatible with most
+        LLaMa-based models.
+    ContentPart:
+      oneOf:
+      - type: object
+        description: Plain text.
+        required:
+        - text
+        - type
+        properties:
+          text:
+            type: string
+            description: The plain text.
+          type:
+            type: string
+            enum:
+            - text
+      - type: object
+        description: A URL to an image.
+        required:
+        - url
+        - type
+        properties:
+          detail:
+            type: string
+            description: A description of the image behind the URL, if any.
+            nullable: true
+          type:
+            type: string
+            enum:
+            - image_url
+          url:
+            type: string
+            description: The URL.
+      description: |-
+        The plaintext or image content of a [`ChatMessage`] within a [`CreateChatCompletionRequest`].
+
+        This can be plain text or a URL to an image.
+
+        See [the documentation for creating chat completions][openai] for more details.
+
+        [openai]: https://platform.openai.com/docs/api-reference/chat/create
+      discriminator:
+        propertyName: type
+    CreateChatCompletionRequest:
+      type: object
+      description: |-
+        A request to generate chat completions for the provided context.
+
+        An `axum` handler, [`chat_completions`][chat_completions], is provided to handle this request.
+
+        See [the documentation for creating chat completions][openai] for more details.
+
+        [chat_completions]: fn.chat_completions.html
+        [openai]: https://platform.openai.com/docs/api-reference/chat/create
+      required:
+      - model
+      properties:
+        frequency_penalty:
+          type: number
+          format: float
+          description: |-
+            A number in `[-2.0, 2.0]`. A higher number decreases the likelihood that the model
+            repeats itself.
+          nullable: true
+        logit_bias:
+          type: object
+          description: |-
+            A map of token IDs to `[-100.0, +100.0]`. Adds a percentage bias to those tokens before
+            sampling; a value of `-100.0` prevents the token from being selected at all.
+
+            You could use this to, for example, prevent the model from emitting profanity.
+          additionalProperties:
+            type: number
+            format: float
+          nullable: true
+        max_tokens:
+          type: integer
+          format: int32
+          description: |-
+            The maximum number of tokens to generate. If `None`, terminates at the first stop token
+            or the end of sentence.
+          nullable: true
+          minimum: 0
+        messages:
+          $ref: '#/components/schemas/ChatMessages'
+        model:
+          type: string
+          description: The model to use for generating completions.
+        n:
+          type: number
+          format: float
+          description: |-
+            How many choices to generate for each token in the output. `1` by default. You can use
+            this to generate several sets of completions for the same prompt.
+          nullable: true
+        presence_penalty:
+          type: number
+          format: float
+          description: |-
+            A number in `[-2.0, 2.0]`. Positive values "increase the model's likelihood to talk about
+            new topics."
+          nullable: true
+        response_format:
+          description: |-
+            The format of the response stream.
+
+            This is always assumed to be JSON, which is non-conformant with the OpenAI spec.
+          nullable: true
+        seed:
+          type: integer
+          format: int32
+          description: An RNG seed for the session. Random by default.
+          nullable: true
+          minimum: 0
+        stop:
+          type: string
+          description: |-
+            A stop phrase or set of stop phrases.
+
+            The server will pause emitting completions if it appears to be generating a stop phrase,
+            and will terminate completions if a full stop phrase is detected.
+
+            Stop phrases are never emitted to the client.
+        stream:
+          type: boolean
+          description: |-
+            If `true`, emit [`ChatCompletionChunk`]s instead of a single [`ChatCompletion`].
+
+            You can use this to live-stream completions to a client.
+          nullable: true
+        temperature:
+          type: number
+          format: float
+          description: The sampling temperature, in `[0.0, 2.0]`. Higher values make the output more random.
+          nullable: true
+        tool_choice:
+          type: string
+          description: |-
+            If present, the tool that the user has chosen to use.
+
+            OpenAI states:
+
+            - `none` prevents any tool from being used,
+            - `auto` allows any tool to be used, or
+            - you can provide a description of the tool entirely instead of a name.
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolStub'
+          description: A list of tools made available to the model.
+          nullable: true
+        top_p:
+          type: number
+          format: float
+          description: |-
+            Nucleus sampling. If you set this value to 10%, only the top 10% of tokens are used for
+            sampling, preventing sampling of very low-probability tokens.
+          nullable: true
+        user:
+          type: string
+          description: |-
+            A unique identifier for the _end user_ creating this request. This is used for telemetry
+            and user tracking, and is unused within Edgen.
+          nullable: true
+    CreateTranscriptionRequest:
+      type: object
+      description: |-
+        A request to transcribe an audio file into text in either the specified language, or whichever
+        language is automatically detected, if none is specified.
+
+        An `axum` handler, [`create_transcription`][create_transcription], is provided to handle this request.
+
+        See [the documentation for creating transcriptions][openai] for more details.
+
+        [create_transcription]: fn.create_transcription.html
+        [openai]: https://platform.openai.com/docs/api-reference/audio/createTranscription
+      required:
+      - file
+      - model
+      properties:
+        file:
+          type: string
+          format: binary
+          description: |-
+            The audio file object (not file name) to transcribe, in one of these formats: `aac`, `flac`,
+            `mp3`, `m4a`, `m4b`, `ogg`, `oga`, `mogg`, `wav`, `webm` TODO check working formats.
+        language:
+          type: string
+          description: |-
+            The language of the input audio. Supplying the input language in ISO-639-1 format will
+            improve accuracy and latency.
+          nullable: true
+        model:
+          type: string
+          description: ID of the model to use.
+        prompt:
+          type: string
+          description: |-
+            An optional text to guide the model's style or continue a previous audio segment. The prompt
+            should match the audio language.
+          nullable: true
+        response_format:
+          type: string
+          description: |-
+            The format of the transcript output, in one of these options: json, text, srt, verbose_json,
+            or vtt. TODO whats this?
+          nullable: true
+        temperature:
+          type: number
+          format: float
+          description: |-
+            The sampling temperature, between 0 and 1. Higher values like 0.8 will make the output more
+            random, while lower values like 0.2 will make it more focused and deterministic. If set to 0,
+            the model will use log probability to automatically increase the temperature until certain
+            thresholds are hit.
+          nullable: true
+    DecodeSessionError:
+      oneOf:
+      - type: string
+        enum:
+        - SessionOver
+      - type: object
+        required:
+        - Send
+        properties:
+          Send:
+            type: string
+      - type: object
+        required:
+        - SessionRunner
+        properties:
+          SessionRunner:
+            $ref: '#/components/schemas/SessionRunnerError'
+      - type: object
+        required:
+        - Join
+        properties:
+          Join:
+            type: string
+    FunctionStub:
+      type: object
+      description: |-
+        A tool made available to an assistant that invokes a named function.
+
+        This is included in [`ToolStub`]s within [`CreateChatCompletionRequest`]s.
+
+        See [the documentation for creating chat completions][openai] for more details.
+
+        [openai]: https://platform.openai.com/docs/api-reference/chat/create
+      required:
+      - name
+      - parameters
+      properties:
+        description:
+          type: string
+          description: A human-readable description of what the tool does.
+          nullable: true
+        name:
+          type: string
+          description: The name of the tool.
+        parameters:
+          description: |-
+            A [JSON schema][json-schema] describing the parameters that the tool accepts.
+
+            [json-schema]: https://json-schema.org/
+    ModelError:
+      oneOf:
+      - type: object
+        required:
+        - FileNotFound
+        properties:
+          FileNotFound:
+            type: string
+      - type: object
+        required:
+        - UnknownModel
+        properties:
+          UnknownModel:
+            $ref: '#/components/schemas/ModelKind'
+      - type: object
+        required:
+        - API
+        properties:
+          API:
+            type: string
+      - type: string
+        enum:
+        - NotPreloaded
+    ModelKind:
+      oneOf:
+      - type: string
+        enum:
+        - LLM
+      - type: object
+        required:
+        - Whisper
+        properties:
+          Whisper:
+            $ref: '#/components/schemas/WhisperKind'
+      - type: string
+        enum:
+        - Unknown
+    SessionRunnerError:
+      oneOf:
+      - type: object
+        required:
+        - Executor
+        properties:
+          Executor:
+            $ref: '#/components/schemas/WhisperError'
+    ToolStub:
+      oneOf:
+      - type: object
+        description: A named function that can be invoked by an assistant.
+        required:
+        - function
+        - type
+        properties:
+          function:
+            $ref: '#/components/schemas/FunctionStub'
+          type:
+            type: string
+            enum:
+            - function
+      description: |-
+        A tool made available to an assistant.
+
+        At present, this can only be a [`FunctionStub`], but this enum is marked `#[non_exhaustive]`
+        for the (likely) event that more variants are added in the future.
+
+        This is included in [`CreateChatCompletionRequest`]s.
+
+        See [the documentation for creating chat completions][openai] for more details.
+
+        [openai]: https://platform.openai.com/docs/api-reference/chat/create
+      discriminator:
+        propertyName: type
+    Version:
+      type: object
+      description: Current Edgend Version.
+      required:
+      - major
+      - minor
+      - patch
+      - build
+      properties:
+        build:
+          type: string
+        major:
+          type: integer
+          format: int32
+          minimum: 0
+        minor:
+          type: integer
+          format: int32
+          minimum: 0
+        patch:
+          type: integer
+          format: int32
+          minimum: 0
+    WhisperEndpointError:
+      oneOf:
+      - type: object
+        required:
+        - FileNotFound
+        properties:
+          FileNotFound:
+            type: string
+      - type: object
+        required:
+        - SessionNotFound
+        properties:
+          SessionNotFound:
+            type: string
+      - type: object
+        required:
+        - Internal
+        properties:
+          Internal:
+            $ref: '#/components/schemas/WhisperError'
+      - type: object
+        required:
+        - Session
+        properties:
+          Session:
+            $ref: '#/components/schemas/DecodeSessionError'
+      - type: object
+        required:
+        - Audio
+        properties:
+          Audio:
+            $ref: '#/components/schemas/AudioError'
+      - type: object
+        required:
+        - Model
+        properties:
+          Model:
+            $ref: '#/components/schemas/ModelError'
+    WhisperError:
+      oneOf:
+      - type: object
+        required:
+        - UnsupportedMime
+        properties:
+          UnsupportedMime:
+            type: object
+            required:
+            - mime
+            - supported
+            properties:
+              mime:
+                type: string
+              supported:
+                type: string
+      - type: object
+        required:
+        - UnsupportedSampleRate
+        properties:
+          UnsupportedSampleRate:
+            type: object
+            required:
+            - value
+            - supported
+            properties:
+              supported:
+                type: string
+              value:
+                type: integer
+                format: int32
+                minimum: 0
+      - type: object
+        required:
+        - Parsing
+        properties:
+          Parsing:
+            type: string
+      - type: object
+        required:
+        - Internal
+        properties:
+          Internal:
+            type: string
+      - type: object
+        required:
+        - ModelInitialization
+        properties:
+          ModelInitialization:
+            type: string
+      - type: object
+        required:
+        - SessionInitialization
+        properties:
+          SessionInitialization:
+            type: string
+      - type: object
+        required:
+        - Other
+        properties:
+          Other:
+            type: string
+    WhisperKind:
+      type: string
+      enum:
+      - Base
+      - En
+      - Unknown
+
