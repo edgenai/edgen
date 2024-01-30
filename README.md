@@ -57,11 +57,13 @@
 
 ## Use-Cases
 
+⚡[EdgenChat](https://chat.edgen.co)
+
 <!-- TODO: add Edgen-Desk demo -->
-<figure>
+<!-- <figure>
     <img src="image_path_or_URL" alt="Alt Text">
     <figcaption>Edgen-Desk, an app made with Edgen</figcaption>
-</figure>
+</figure> -->
 
 ## Why local GenAI?
 
