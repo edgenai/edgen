@@ -9,7 +9,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- 
+
 use edgen_core::settings;
 use edgen_server;
 use opener;

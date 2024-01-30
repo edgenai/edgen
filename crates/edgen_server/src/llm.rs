@@ -9,7 +9,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- 
+
 use futures::Stream;
 use once_cell::sync::Lazy;
 use serde_derive::Serialize;

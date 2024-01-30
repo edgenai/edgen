@@ -9,7 +9,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- 
+
 //! Mechanisms for shutting down application without destroying anything important.
 
 use time::{Duration, OffsetDateTime};

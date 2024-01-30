@@ -9,7 +9,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- 
+
 //! JSON structures and Axum endpoints compatible with [OpenAI's API][openai], providing a thin
 //! shim between an HTTP REST API server to Edgen's Protobuf-based messaging system.
 //!

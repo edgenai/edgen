@@ -9,7 +9,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- 
+
 //! A batteries-included, transport-agnostic server for interacting with large AI models.
 
 #![deny(unsafe_code)]

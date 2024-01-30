@@ -9,7 +9,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- 
+
 use std::future::Future;
 
 use edgen_core::settings::SETTINGS;

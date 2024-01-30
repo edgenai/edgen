@@ -9,7 +9,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- 
+
 //! A brutally simple session management framework for Edgen's transport-agnostic, Protobuf-based
 //! message-passing protocol.
 //!

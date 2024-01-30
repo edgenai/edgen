@@ -9,7 +9,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- 
+
 use core::future::Future;
 use core::time::Duration;
 use futures::Stream;
