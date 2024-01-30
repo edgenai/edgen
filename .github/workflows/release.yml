@@ -2,10 +2,10 @@ name: "release"
 on:
   push:
     branches:
-      - main
+      - release
 
 # This is the example from the readme.
-# On each push to the `main` branch it will create or update a GitHub release, build your app, and upload the artifacts to the release.
+# On each push to the `release` branch it will create or update a GitHub release, build your app, and upload the artifacts to the release.
 
 jobs:
   release:
