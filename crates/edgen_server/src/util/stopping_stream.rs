@@ -9,7 +9,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- 
+
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -119,16 +119,10 @@ mod test {
     // here my changes:
     // - I replaced the original raw string with the concat macro
     // - the right element of the assert was a vector containing one string
-    //   namely "apple
-banana".
+    //   namely "apple\nbanana".
     #[tokio::test]
     async fn stopping_stream() {
-        let stream_content = concat!("apple
-", "banana
-", "coconut
-", "dill
-", "eggplant
-",);
+        let stream_content = concat!("apple\n", "banana\n", "coconut\n", "dill\n", "eggplant\n",);
 
         let content_stream =
             futures::stream::iter(stream_content.lines().map(|line| line.to_string()));
