@@ -35,6 +35,10 @@ use edgen_core::llm::{
 use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, PerishableWriteGuard};
 use edgen_core::settings::SETTINGS;
 
+// TODO this should be in settings
+const SINGLE_MESSAGE_LIMIT: usize = 4096;
+const CONTEXT_SIZE: u32 = 4096;
+
 /// A large language model endpoint, implementing [`LLMEndpoint`] using a [`llama_cpp`] backend.
 pub struct LlamaCppEndpoint {
     /// A map of the models currently loaded into memory, with their path as the key.
@@ -230,7 +234,7 @@ impl UnloadingModel {
             id.advance(new_context);
 
             let sampler = StandardSampler::default();
-            let handle = session_guard.start_completing_with(sampler, 1024);
+            let handle = session_guard.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
 
             (session_signal, handle)
         };
@@ -315,7 +319,7 @@ async fn get_or_init_session(
             //params.seed = args.seed;
             params.n_threads = threads;
             params.n_threads_batch = threads;
-            params.n_ctx = 2048;
+            params.n_ctx = CONTEXT_SIZE;
 
             model.create_session(params)
         })
@@ -504,7 +508,7 @@ impl CompletionStream {
 
             (
                 session_signal,
-                session_guard.start_completing_with(sampler, 1024),
+                session_guard.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT),
             )
         };
 
