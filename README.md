@@ -27,7 +27,7 @@
 - [x] **Model Caching**: ⚡Edgen caches foundational models locally, so 1 model can power hundreds of different apps - users don't need to download the same model multiple times.
 - [x] **OpenAI Compliant API**: ⚡Edgen is a drop-in replacement for OpenAI.
 
-⚡Edgen lets you use GenAI in your app, completely **locally** on your user's devices, for **free** and with **data-privacy**. It's easy to replace OpenAI's API, supports various functions like text and image generation, speech-to-text, and text-to-speech, and works on Windows, Linux, and MacOS.
+⚡Edgen lets you use GenAI in your app, completely **locally** on your user's devices, for **free** and with **data-privacy**. It's a drop-in replacement for OpenAI (it uses the a compatible API), supports various functions like text and image generation, speech-to-text, and text-to-speech, and works on Windows, Linux, and MacOS.
 
 ### Endpoints
 
