@@ -439,6 +439,8 @@ mod tests {
     }
 
     #[tokio::test]
+    // Note that the model must exist in the model path,
+    // otherwise the test fails.
     async fn test_axum_transcriptions() {
         init_settings_for_test().await;
 
