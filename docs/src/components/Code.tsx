@@ -16,9 +16,9 @@ import { create } from 'zustand'
 import { Tag } from '@/components/Tag'
 
 const languageNames: Record<string, string> = {
-  js: 'Node.js',
-  ts: 'TypeScript',
-  javascript: 'Node.js',
+  js: 'Node',
+  ts: 'Node',
+  javascript: 'Node',
   typescript: 'TypeScript',
   php: 'PHP',
   python: 'Python',
