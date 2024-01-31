@@ -1,5 +1,5 @@
 <p align="center">
-    <img alt="GitHub" src="https://img.shields.io/github/license/binedge/edgen">
+    <img alt="GitHub" src="https://img.shields.io/github/license/edgenai/edgen">
     <!-- TODO: uncomment to show discord -->
     <!-- <img alt="Discord" src="https://img.shields.io/discord/1163068604074426408?logo=discord&label=Discord&link=https%3A%2F%2Fdiscord.gg%2FMMUcgBtV"> -->
 </p>
