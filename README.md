@@ -39,21 +39,21 @@
 
 ⚡Edgen lets you use GenAI in your app, completely **locally** on your user's devices, for **free** and with **data-privacy**. It's easy to replace OpenAI's API, supports various functions like text and image generation, speech-to-text, and text-to-speech, and works on Windows, Linux, and MacOS.
 
-## 🔥 Hot Topics
+### Endpoints
 
-## Endpoints
-
-- [x] \[Chat\] Completions
+- [x] \[Chat\] [Completions](https://docs.edgen.co)
 - [x] \[Audio\] Transcriptions
 - [ ] \[Image\] Generation
 - [ ] \[Chat\] Multimodal chat completions
 - [ ] \[Audio\] Speech
 
-## Supported platforms
+### Supported platforms
 
 - [x] Windows
 - [x] Linux
 - [x] MacOS
+
+## 🔥 Hot Topics
 
 ## Use-Cases
 
