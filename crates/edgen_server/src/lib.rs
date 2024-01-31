@@ -258,6 +258,8 @@ async fn run_server(args: &cli::Serve) -> bool {
     let flag_clone = reset_flag.clone();
 
     let _callback_handle = SETTINGS.read().await.add_change_callback(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let _guard = rt.enter();
         flag_clone.store(true, Ordering::SeqCst);
         reset_channels.clear();
         block_on(crate::llm::reset_environment());
