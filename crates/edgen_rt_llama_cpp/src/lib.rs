@@ -122,7 +122,6 @@ impl LLMEndpoint for LlamaCppEndpoint {
 impl Default for LlamaCppEndpoint {
     fn default() -> Self {
         let models: Arc<DashMap<String, UnloadingModel>> = Default::default();
-
         let models_clone = models.clone();
         let cleanup_thread = spawn(async move {
             let mut interval = interval(cleanup_interval());
