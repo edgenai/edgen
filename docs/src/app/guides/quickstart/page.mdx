@@ -14,11 +14,12 @@ This guide will get you all set up and ready to use the Protocol API. We'll cove
 </Note>
 
 ## Download and install ⚡Edgen
+
 <Button href="https://edgen.co/download">⚡ Download</Button>
 
 ## Choose your client
 
-Before making your first API request, you need to pick which API client you will use. ⚡Edgen offers clients for Python, JavaScript, Rust, and Go. In the following example, you can see how to install each client.
+Before making your first API request, you need to pick which API client you will use. ⚡Edgen offers clients for Python and Node.js. In the following example, you can see how to install each client.
 
 {/* TODO: Edit with our published packages */}
 
@@ -30,24 +31,19 @@ curl --version
 ```
 
 ```bash {{ language: 'js' }}
-# Install the Protocol JavaScript SDK
-npm install @example/protocol-api --save
+# Install the Node API client
+npm install edgen --save
 ```
 
 ```bash {{ language: 'python' }}
-# Install the Protocol Python SDK
-pip install protocol_api
-```
-
-```bash {{ language: 'php' }}
-# Install the Protocol PHP SDK
-composer require protocol/sdk
+# Install the Python API client
+pip install edgen
 ```
 
 </CodeGroup>
 
 <div className="not-prose">
-  <Button href="/sdks" variant="text" arrow="right">
+  <Button href="/api-clients" variant="text" arrow="right">
     <>Check out our API Clients</>
   </Button>
 </div>
@@ -58,6 +54,7 @@ You are ready to make your first call to the ⚡Edgen API. Below, you can see ho
 
 {/* TODO: Edit with our published packages */}
 {/* TODO: Do not hardcode this codegroup. Since it's already defined in /api-reference/chat */}
+
 <CodeGroup tag="GET" label="/v1/conversations">
 
 ```bash {{ title: 'cURL' }}
@@ -97,4 +94,5 @@ $client->conversations->list();
 </div>
 
 ## Next steps
+
 In the next section, you will learn more complex examples.

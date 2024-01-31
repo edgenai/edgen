@@ -16,14 +16,15 @@ import { create } from 'zustand'
 import { Tag } from '@/components/Tag'
 
 const languageNames: Record<string, string> = {
-  js: 'JavaScript',
+  js: 'Node.js',
   ts: 'TypeScript',
-  javascript: 'JavaScript',
+  javascript: 'Node.js',
   typescript: 'TypeScript',
   php: 'PHP',
   python: 'Python',
   ruby: 'Ruby',
   go: 'Go',
+  rust: 'Rust',
 }
 
 function getPanelTitle({

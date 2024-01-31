@@ -7,7 +7,7 @@ import logoNode from '@/images/logos/node.svg'
 import logoPython from '@/images/logos/python.svg'
 import logoRust from '@/images/logos/rust.svg'
 
-const sdks = [
+const apiclients = [
   {
     href: 'https://github.com/edgenai/edgen-client-python',
     name: 'Python',
@@ -38,14 +38,14 @@ const sdks = [
   // },
 ]
 
-export function SDKs() {
+export function APIClients() {
   return (
     <div className="my-16 xl:max-w-none">
-      <Heading level={2} id="official-sdks">
-        Official SDKs
+      <Heading level={2} id="official-apiclients">
+        Official API Clients
       </Heading>
       <div className="not-prose mt-4 grid grid-cols-1 gap-x-6 gap-y-10 border-t border-zinc-900/5 pt-10 dark:border-white/5 sm:grid-cols-2 xl:max-w-none xl:grid-cols-3">
-        {sdks.map((library) => (
+        {apiclients.map((library) => (
           <div key={library.name} className="flex flex-row-reverse gap-6">
             <div className="flex-auto">
               <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">

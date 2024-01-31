@@ -31,8 +31,8 @@
 
 ### Endpoints
 
-- [x] \[Chat\] [Completions](https://docs.edgen.co)
-- [x] \[Audio\] Transcriptions
+- [x] \[Chat\] [Completions](https://docs.edgen.co/api-reference/chat)
+- [x] \[Audio\] [Transcriptions](https://docs.edgen.co/api-reference/audio)
 - [ ] \[Image\] Generation
 - [ ] \[Chat\] Multimodal chat completions
 - [ ] \[Audio\] Speech

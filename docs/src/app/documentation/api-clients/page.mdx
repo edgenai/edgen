@@ -1,0 +1,23 @@
+import { APIClients } from '@/components/APIClients'
+
+export const metadata = {
+  title: 'Edgen API Clients',
+  description:
+    'Edgen offers several ready-to-use API Clients: Python and Node.js SDKs.',
+}
+
+export const sections = [
+  { title: 'Official API Clients', id: 'official-apiclients' },
+]
+
+# Edgen API Clients
+
+The recommended way to interact with the Edgen API is by using one of our official API clients. {{ className: 'lead' }}
+
+<div className="not-prose">
+  <Button href="/api-reference" variant="text" arrow="right">
+    <>Checkout how to use our API Clients to interact with Edgen's endpoints</>
+  </Button>
+</div>
+
+<APIClients />

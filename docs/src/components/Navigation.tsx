@@ -245,7 +245,7 @@ export const navigation: Array<NavGroup> = [
       { title: 'Getting-Started', href: '/documentation/getting-started' },
       { title: 'Configuration', href: '/documentation/configuration' },
       { title: 'Models', href: '/documentation/models' },
-      { title: 'SDKs', href: '/documentation/sdks' },
+      { title: 'API Clients', href: '/documentation/api-clients' },
       { title: 'Errors', href: '/documentation/errors' },
       { title: 'Contribute', href: '/documentation/contribute' },
     ],
