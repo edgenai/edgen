@@ -14,8 +14,7 @@ def test_version():
     except APIConnectionError:
         pytest.fail("No connection. Is edgen running?")
 
-    # print(version)
-    # print(f"{expected} == {format_version(version)}")   
+    print(f"{expected} == {format_version(version)}")
 
     assert(type(version) is Version)
     assert(format_version(version) == expected)

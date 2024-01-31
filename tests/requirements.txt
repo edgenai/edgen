@@ -1,0 +1,2 @@
+edgen==0.1.2
+Levenshtein==0.24.0
