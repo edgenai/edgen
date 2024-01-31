@@ -36,8 +36,6 @@ use edgen_core::whisper::{DecodeSessionError, SessionRunnerError, WhisperError};
 use openai_shim as chat;
 use openai_shim as audio;
 
-#[cfg(test)]
-use levenshtein;
 #[macro_use]
 pub mod misc;
 
@@ -295,6 +293,7 @@ mod tests {
     use axum::Router;
     use axum_test::multipart;
     use axum_test::TestServer;
+    use levenshtein;
     use serde_json::from_str;
 
     fn completion_streaming_request() -> String {
