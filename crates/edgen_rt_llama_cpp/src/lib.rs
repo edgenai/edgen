@@ -26,6 +26,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::task::JoinHandle;
 use tokio::time::{interval, MissedTickBehavior};
 use tokio::{select, spawn};
+use tokio::runtime::{Handle, Runtime};
 use tracing::{error, info};
 
 use edgen_core::llm::{
@@ -123,6 +124,14 @@ impl Default for LlamaCppEndpoint {
     fn default() -> Self {
         let models: Arc<DashMap<String, UnloadingModel>> = Default::default();
 
+        let (handle, _rt) = match Handle::try_current() {
+            Ok(h) => (h, None),
+            Err(_) => {
+                let rt = Runtime::new().unwrap();
+                (rt.handle().clone(), Some(rt))
+            },
+        };
+        let _guard = handle.enter();
         let models_clone = models.clone();
         let cleanup_thread = spawn(async move {
             let mut interval = interval(cleanup_interval());
