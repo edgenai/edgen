@@ -37,3 +37,6 @@ utoipa = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 tower-http = { version = "0.5.1", features = ["cors"] }
 edgen_core = { path = "../edgen_core" }
+
+[dev-dependencies]
+levenshtein = "1.0.5"

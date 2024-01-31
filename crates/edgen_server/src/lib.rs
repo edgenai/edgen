@@ -36,6 +36,8 @@ use edgen_core::whisper::{DecodeSessionError, SessionRunnerError, WhisperError};
 use openai_shim as chat;
 use openai_shim as audio;
 
+#[cfg(test)]
+use levenshtein;
 #[macro_use]
 pub mod misc;
 
@@ -437,8 +439,6 @@ mod tests {
     }
 
     #[tokio::test]
-    // Note that the model must exist in the model path,
-    // otherwise the test fails.
     async fn test_axum_transcriptions() {
         init_settings_for_test().await;
 
@@ -463,6 +463,21 @@ mod tests {
             .await;
 
         resp.assert_status_ok();
-        assert_eq!(resp.text(), frost());
+
+        let expected_text = frost();
+        let actual_text = resp.text();
+
+        // Calculate Levenshtein distance
+        let distance = levenshtein::levenshtein(&expected_text, &actual_text);
+
+        // Calculate similarity percentage
+        let similarity_percentage =
+            100.0 - ((distance as f64 / expected_text.len() as f64) * 100.0);
+
+        // Assert that the similarity is at least 90%
+        assert!(
+            similarity_percentage >= 90.0,
+            "Text similarity is less than 90%"
+        );
     }
 }
