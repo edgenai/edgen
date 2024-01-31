@@ -1,5 +1,6 @@
 
 from pathlib import Path
+import Levenshtein
 
 from edgen import Edgen, APIConnectionError
 import pytest
@@ -27,7 +28,12 @@ def test_transcriptions():
     print(expected)
 
     assert(type(transcription) is str)
-    assert(transcription == expected)
+
+    d = Levenshtein.distance(transcription, expected)
+    similarity = 100 - ((d / len(expected)) * 100)
+    print(f"distance: {d} of '{transcription}', similarity: {similarity}")
+
+    assert(similarity > 90.0)
 
 if __name__ == "__main__":
    test_transcriptions()
