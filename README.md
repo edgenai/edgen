@@ -1,14 +1,4 @@
 <p align="center">
-    <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/edgen_light.svg>
-        <source media="(prefers-color-scheme: light)" srcset="./docs/assets/edgen_dark.svg>
-        <img alt="Edgen Local API Server" src="./docs/assets/edgen_dark.svg" width="352" height="59" style="max-width: 100%;">
-    </picture>
-    <br/>
-    <br/>
-</p>
-
-<p align="center">
     <img alt="GitHub" src="https://img.shields.io/github/license/binedge/edgen">
     <!-- TODO: uncomment to show discord -->
     <!-- <img alt="Discord" src="https://img.shields.io/discord/1163068604074426408?logo=discord&label=Discord&link=https%3A%2F%2Fdiscord.gg%2FMMUcgBtV"> -->
@@ -28,7 +18,7 @@
 </p>
 
 <div align="center">
-    <img src="docs/docs/assets/edgen_architecture_overview.svg" alt="⚡Edgen architecture overview" height="500">
+    <img src="docs/assets/edgen_architecture_overview.svg" alt="⚡Edgen architecture overview" height="500">
     <p align="center">⚡Edgen architecture overview</p>
 </div>
 
