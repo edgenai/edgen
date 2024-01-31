@@ -7,9 +7,8 @@ name: "docs"
 on:
   # Runs on pushes targeting the path
   push:
-    branches:
-      - "**" # matches every branch
-    #paths: ["docs/**"]
+    branches: ["main"]
+    paths: ["docs/**"]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
