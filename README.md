@@ -45,16 +45,6 @@
 
 ## 🔥 Hot Topics
 
-## Use-Cases
-
-⚡[EdgenChat](https://chat.edgen.co)
-
-<!-- TODO: add Edgen-Desk demo -->
-<!-- <figure>
-    <img src="image_path_or_URL" alt="Alt Text">
-    <figcaption>Edgen-Desk, an app made with Edgen</figcaption>
-</figure> -->
-
 ## Why local GenAI?
 
 - **Data Private**: On-device inference means **users' data** never leave their devices.
@@ -66,6 +56,9 @@
 - **Free**: It runs locally on hardware the user already owns.
 
 ## Quickstart
+
+1. [Download](https://edgen.co/download) ⚡Edgen
+2. Chat with ⚡[EdgenChat](https://chat.edgen.co)
 
 # Developers
 

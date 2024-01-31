@@ -246,8 +246,6 @@ export const navigation: Array<NavGroup> = [
       { title: 'Configuration', href: '/documentation/configuration' },
       { title: 'Models', href: '/documentation/models' },
       { title: 'API Clients', href: '/documentation/api-clients' },
-      { title: 'Errors', href: '/documentation/errors' },
-      { title: 'Contribute', href: '/documentation/contribute' },
     ],
   },
   {

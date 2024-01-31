@@ -13,12 +13,6 @@ const guides = [
     description: 'Understand how to work with paginated responses.',
   },
   {
-    href: '/errors',
-    name: 'Errors',
-    description:
-      'Read about the different types of errors returned by the API.',
-  },
-  {
     href: '/webhooks',
     name: 'Webhooks',
     description:
