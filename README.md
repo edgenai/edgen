@@ -11,10 +11,10 @@
 <p align="center">
     |
     <!-- TODO: add proper links -->
-    <a href="https://binedge.ai"><b>Documentation</b></a> |
-    <a href="https://binedge.ai"><b>Blog</b></a> |
-    <a href="https://discord.gg/MMUcgBtV"><b>Discord</b></a> |
-    <a href="https://github.com/orgs/binedge/projects/1/views/1"><b>Roadmap</b></a> |
+    <a href="https://docs.edgen.co"><b>Documentation</b></a> |
+    <a href="https://blog.edgen.co"><b>Blog</b></a> |
+    <a href="https://discord.gg/QUXbwqdMRs"><b>Discord</b></a> |
+    <a href="https://github.com/orgs/edgenai/projects/1/views/1"><b>Roadmap</b></a> |
 </p>
 
 <div align="center">
@@ -81,10 +81,10 @@ Then open your favorite IDE from the shell, and you're ready to go!
 
 ## Communication Channels
 
-- [Edgen Discord server](https://discord.gg/MMUcgBtV): Real time discussions with the ⚡Edgen team and other users.
-- [GitHub issues](https://github.com/binedge/edgen/issues): Feature requests, bugs.
-- [GitHub discussions](https://github.com/binedge/edgen/discussions/): Q&A.
-- [Blog](https://binedge.ai): Big announcements.
+- [Edgen Discord server](https://discord.gg/QUXbwqdMRs): Real time discussions with the ⚡Edgen team and other users.
+- [GitHub issues](https://github.com/edgenai/edgen/issues): Feature requests, bugs.
+- [GitHub discussions](https://github.com/edgenai/edgen/discussions/): Q&A.
+- [Blog](https://blog.edgen.co): Big announcements.
 
 ## Special Thanks
 
