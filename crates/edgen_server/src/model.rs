@@ -82,11 +82,25 @@ impl Model {
             .build()
             .map_err(move |e| ModelError::API(e.to_string()))?;
         let api = api.model(self.repo.to_string());
-        let path = api
-            .get(&self.name)
-            .map_err(move |e| ModelError::API(e.to_string()))?;
 
-        self.path = path;
+        // progress observer
+        let progress_handle = crate::status::observe_chat_completions_progress(&self.dir).await;
+
+        let name = self.name.clone();
+        let download_handle = tokio::spawn(async move {
+            crate::status::set_chat_completions_download(true).await;
+            let path = api
+                .get(&name)
+                .map_err(move |e| ModelError::API(e.to_string()));
+            crate::status::set_chat_completions_progress(100.0).await;
+            crate::status::set_chat_completions_download(false).await;
+            return path;
+        });
+
+        let _ = progress_handle.await.unwrap();
+        let path = download_handle.await.unwrap();
+
+        self.path = path?;
         self.preloaded = true;
 
         Ok(())

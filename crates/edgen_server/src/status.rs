@@ -12,6 +12,8 @@
 
 //! Edgen AI service status.
 
+use std::path::PathBuf;
+
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use once_cell::sync::Lazy;
@@ -44,13 +46,14 @@ pub enum ActivityResult {
 }
 
 /// Current Endpoint status.
-#[derive(ToSchema, Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+#[derive(ToSchema, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct AIStatus {
     active_model: String,
     last_activity: Activity,
     last_activity_result: ActivityResult,
     completions_ongoing: bool,
     download_ongoing: bool,
+    download_progress: f64,
     last_errors: Vec<String>,
 }
 
@@ -62,6 +65,7 @@ impl Default for AIStatus {
             last_activity_result: ActivityResult::Unknown,
             completions_ongoing: false,
             download_ongoing: false,
+            download_progress: 0.0,
             last_errors: vec![],
         }
     }
@@ -77,6 +81,36 @@ pub fn get_chat_completions_status() -> &'static RwLock<AIStatus> {
 /// Call read() or write() on the returned value to get either read or write access.
 pub fn get_audio_transcriptions_status() -> &'static RwLock<AIStatus> {
     &AISTATES.endpoints[EP_AUDIO_TRANSCRIPTIONS]
+}
+
+/// Set download ongoing
+pub async fn set_chat_completions_download(ongoing: bool) {
+    let rwstate = get_chat_completions_status();
+    let mut state = rwstate.write().await;
+    state.download_ongoing = ongoing;
+}
+
+/// Set download progress
+pub async fn set_chat_completions_progress(progress: f64) {
+    let rwstate = get_chat_completions_status();
+    let mut state = rwstate.write().await;
+    state.download_progress = progress;
+}
+
+/// Set download progress
+pub async fn observe_chat_completions_progress(tempdir: &PathBuf) -> tokio::task::JoinHandle<()> {
+    observe_progress(tempdir).await
+}
+
+
+/// GET `/v1/chat/completions/status`: returns the current status of the /chat/completions endpoint.
+///
+/// The status is returned as json value AIStatus.
+/// For any error, the version endpoint returns "internal server error".
+pub async fn chat_completions_status() -> Response {
+    let rwstate = get_chat_completions_status();
+    let locked = rwstate.read().await;
+    Json(locked.clone()).into_response()
 }
 
 // axum provides shared state but using this shared state would force us
@@ -99,18 +133,67 @@ impl Default for AIStates {
     }
 }
 
-/// GET `/v1/chat/completions/status`: returns the current status of the /chat/completions endpoint.
-///
-/// The status is returned as json value AIStatus.
-/// For any error, the version endpoint returns "internal server error".
-pub async fn chat_completions_status() -> Response {
-    let rwstate = get_chat_completions_status();
-    let locked = rwstate.read().await;
-    Json(locked.clone()).into_response()
-}
-
 #[allow(dead_code)]
 fn internal_server_error(msg: &str) -> Response {
     eprintln!("[ERROR] {}", msg);
     StatusCode::INTERNAL_SERVER_ERROR.into_response()
+}
+
+// This is a mess
+async fn observe_progress(tempfile: &PathBuf) -> tokio::task::JoinHandle<()> {
+        let tmp = tempfile.join("tmp");
+        let progress_handle = tokio::spawn(async move {
+            let mut d = tokio::fs::metadata(&tmp).await;
+            for _ in 0 .. 3 {
+                if d.is_ok() {
+                    break;
+                };
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                d = tokio::fs::metadata(&tmp).await;
+            };
+            if d.is_err() {
+                return;
+            };
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await; // sloppy
+            let mut t = None;
+            for _ in 0 .. 10 {
+                let es = std::fs::read_dir(&tmp).unwrap(); // .await.unwrap();
+                let mut e = None;
+                for x in es {
+                    let y = x.unwrap();
+                    println!("file: {:?}", y.path());
+                    e = Some(y);
+                    break;
+                };
+                if e.is_some() {
+                    t = e;
+                    break;
+                }
+            };
+          
+            if t.is_none() {
+                return;
+            }
+            let f = t.unwrap();
+            
+            let mut m = tokio::fs::metadata(&f.path()).await;
+            for _ in 0 .. 3 {
+                if m.is_ok() {
+                    break;
+                };
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                m = tokio::fs::metadata(&f.path()).await;
+            };
+            while m.is_ok() {
+                let z = m.unwrap();
+                let s = z.len() as f64;
+                let t = 1173610336 as f64;
+                let p = (s * 100.0) / t;
+                crate::status::set_chat_completions_progress(p).await;
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                m = tokio::fs::metadata(&f.path()).await;
+            }
+        });
+
+        progress_handle
 }
