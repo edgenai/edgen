@@ -25,9 +25,14 @@
 - [x] **Optimized Inference**: You don't need to take a PhD in AI optimization. ⚡Edgen abstracts the complexity of optimizing inference for different hardware, platforms and models.
 - [x] **Modular**: ⚡Edgen is **model** and **runtime** agnostic. New models can be added easily and ⚡Edgen can select the best runtime for the user's hardware: you don't need to keep up about the latest models and ML runtimes - **⚡Edgen will do that for you**.
 - [x] **Model Caching**: ⚡Edgen caches foundational models locally, so 1 model can power hundreds of different apps - users don't need to download the same model multiple times.
+- [x] **Native**: ⚡Edgen is build in 🦀Rust and is natively compiled to all popular platforms. No docker required.
 - [x] **OpenAI Compliant API**: ⚡Edgen is a drop-in replacement for OpenAI.
 
-⚡Edgen lets you use GenAI in your app, completely **locally** on your user's devices, for **free** and with **data-privacy**. It's a drop-in replacement for OpenAI (it uses the a compatible API), supports various functions like text and image generation, speech-to-text, and text-to-speech, and works on Windows, Linux, and MacOS.
+⚡Edgen lets you use GenAI in your app, completely **locally** on your user's devices, for **free** and with **data-privacy**. It's a drop-in replacement for OpenAI (it uses the a compatible API), supports various functions like text generation, speech-to-text and works on Windows, Linux, and MacOS.
+
+### Features
+
+- [x] Session Caching: ⚡Edgen maintains top performance with big contexts (big chat histories), by caching sessions. Sessions are auto-detected in function of the chat history.
 
 ### Endpoints
 
