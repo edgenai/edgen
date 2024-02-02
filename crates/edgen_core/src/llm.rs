@@ -44,7 +44,7 @@ pub struct CompletionArgs {
     pub frequency_penalty: f32,
 }
 
-/// A large language language model endpoint, that is, an object that provides various ways to interact with a large
+/// A large language model endpoint, that is, an object that provides various ways to interact with a large
 /// language model.
 pub trait LLMEndpoint {
     /// Given a prompt with several arguments, return a [`Box`]ed [`Future`] which may eventually contain the prompt
