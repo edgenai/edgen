@@ -28,7 +28,7 @@ pub struct StoppingStream<T> {
     /// The stop words (phrases) that this stream should stop at.
     ///
     /// These are never emitted downstream, and the stream will yield with `Pending` until it
-    /// is is impossible for any stop word to be generated.
+    /// is impossible for any stop word to be generated.
     stop_words: Vec<String>,
 
     /// If this stream is uncertain whether it's collecting a stop word, this buffer contains
