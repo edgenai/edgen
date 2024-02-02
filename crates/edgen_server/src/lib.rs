@@ -155,7 +155,11 @@ fn serve(args: &cli::Serve) -> EdgenResult {
 
 #[tokio::main]
 async fn start_server(args: &cli::Serve) -> EdgenResult {
-    console_subscriber::init();
+    // The console is disabled in release builds, so there is no need to initialise this
+    #[cfg(debug_assertions)]
+    {
+        console_subscriber::init();
+    }
 
     SETTINGS
         .write()
