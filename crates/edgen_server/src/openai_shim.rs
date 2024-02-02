@@ -521,8 +521,9 @@ impl IntoResponse for ChatCompletionError {
     }
 }
 
-/// The return type of [`chat_completions`]. Contains either a [`Stream`] of [`Event`]s or a [`Json`]
-/// of a [`ChatCompletion`].
+/// The return type of [`chat_completions`].
+///
+/// Contains either a [`Stream`] of [`Event`]s or the [`Json`] of a [`ChatCompletion`].
 enum ChatCompletionResponse<'a, S>
 where
     S: TryStream<Ok = Event> + Send + 'static,
@@ -686,7 +687,7 @@ pub async fn chat_completions(
 pub struct CreateTranscriptionRequest {
     /// The audio file object (not file name) to transcribe, in one of the following formats:
     /// **`aac`**, **`flac`**, **`mp3`**, **`m4a`**, **`m4b`**, **`ogg`**, **`oga`**, **`mogg`**,
-    /// **`wav`**, **`webm`**. TODO check working formats.
+    /// **`wav`**. TODO check working formats. webm
     #[form_data(limit = "unlimited")]
     #[schema(value_type = Vec < u8 >)]
     pub file: FieldData<axum::body::Bytes>,

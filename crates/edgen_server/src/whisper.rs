@@ -18,6 +18,7 @@ use rubato::Resampler;
 use serde_derive::Serialize;
 use thiserror::Error;
 use time::Duration;
+use tracing::info;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -201,6 +202,8 @@ fn to_pcm(audio_file: &[u8]) -> Result<Vec<f32>, AudioError> {
     /// The optimal sample rate for whisper models.
     const OPTIMAL_SAMPLE_RATE: u32 = 16000;
 
+    info!("Parsing audio file ({} bytes)", audio_file.len());
+
     // Initialisation.
     let cursor = std::io::Cursor::new(audio_file.to_vec());
     let stream = MediaSourceStream::new(Box::new(cursor), Default::default());
@@ -210,6 +213,7 @@ fn to_pcm(audio_file: &[u8]) -> Result<Vec<f32>, AudioError> {
     let meta_opts: MetadataOptions = Default::default();
     let fmt_opts: FormatOptions = Default::default();
 
+    // TODO this gets stuck in a loop for some invalid files
     let probed = symphonia::default::get_probe()
         .format(&hint, stream, &fmt_opts, &meta_opts)
         .map_err(move |e| AudioError::Parse(format!("failed to probe audio data: {e}")))?;

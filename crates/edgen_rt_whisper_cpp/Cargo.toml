@@ -7,16 +7,11 @@ edition = "2021"
 
 [dependencies]
 dashmap = { workspace = true }
-edgen_core = { version = "^0.1.0", path = "../edgen_core" }
+edgen_core = { path = "../edgen_core" }
 futures = { workspace = true }
 derive_more = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
-once_cell = "1.18.0"
+once_cell = { workspace = true }
 whisper_cpp = { workspace = true, features = ["native"] }
 
-[dev-dependencies]
-axum = { workspace = true, features = ["tokio", "http1"] }
-alsa = "0.8.1"
-tokio = { workspace = true, features = ["full"] }
-wav = "1.0.0"
