@@ -1,16 +1,15 @@
-name: "release"
+name: "build"
 on:
   push:
-    branches: [ "*" ]
+    branches: ["*"]
   pull_request:
-    branches: [ "*" ]
-
+    branches: ["*"]
 
 # This is the example from the readme.
-# On each push to the `main` branch it will create or update a GitHub release, build your app, and upload the artifacts to the release.
+# On each push to the `main` branch it will create or update a GitHub build, build your app, and upload the artifacts to the build.
 
 jobs:
-  release:
+  build:
     permissions:
       contents: write
     strategy:
