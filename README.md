@@ -62,8 +62,26 @@
 
 ## Quickstart
 
-1. [Download](https://edgen.co/download) ⚡Edgen
+1. [Download](https://edgen.co/download) and start ⚡Edgen
 2. Chat with ⚡[EdgenChat](https://chat.edgen.co)
+
+⚡Edgen usage:
+
+```
+Usage: edgen [<command>] [<args>]
+
+Toplevel CLI commands and options. Subcommands are optional. If no command is provided "serve" will be invoked with default options.
+
+Options:
+  --help            display usage information
+
+Commands:
+  serve             Starts the edgen server. This is the default command when no
+                    command is provided.
+  config            Configuration-related subcommands.
+  version           Prints the edgen version to stdout.
+  oasgen            Generates the Edgen OpenAPI specification.
+```
 
 # Developers
 
