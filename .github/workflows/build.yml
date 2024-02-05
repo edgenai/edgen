@@ -15,15 +15,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, ubuntu-20.04, windows-latest]
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: ubuntu-20.04
+          - os: windows-latest
 
-    runs-on: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
     steps:
       - name: "Setup actions/checkout"
         uses: actions/checkout@v4
 
       - name: "Setup rust"
         uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - if: matrix.target
+        run: rustup target add ${{ matrix.target }}
 
       - name: Install Node.js
         uses: actions/setup-node@v3
@@ -45,7 +54,7 @@ jobs:
 
       # install llvm (for llvm-copy) on macos only
       - name: Install LLVM
-        if: matrix.platform == 'macos-latest'
+        if: matrix.os == 'macos-latest'
         run: |
           brew update
           brew install llvm@17
