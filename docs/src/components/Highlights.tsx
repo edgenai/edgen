@@ -1,15 +1,15 @@
 import { Button } from '@/components/Button'
 import { Heading } from '@/components/Heading'
 
-const guides = [
+const highlights = [
   {
-    href: '/authentication',
-    name: 'Authentication',
+    href: '/guides/quickstart',
+    name: 'Quickstart',
     description: 'Learn how to authenticate your API requests.',
   },
   {
-    href: '/pagination',
-    name: 'Pagination',
+    href: '/documentation/configuration',
+    name: 'Configuration',
     description: 'Understand how to work with paginated responses.',
   },
   {
@@ -20,14 +20,14 @@ const guides = [
   },
 ]
 
-export function Guides() {
+export function Highlights() {
   return (
     <div className="my-16 xl:max-w-none">
-      <Heading level={2} id="guides">
-        Guides
+      <Heading level={2} id="highlights">
+        Highlights
       </Heading>
       <div className="not-prose mt-4 grid grid-cols-1 gap-8 border-t border-zinc-900/5 pt-10 dark:border-white/5 sm:grid-cols-2 xl:grid-cols-4">
-        {guides.map((guide) => (
+        {highlights.map((guide) => (
           <div key={guide.href}>
             <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">
               {guide.name}
