@@ -22,11 +22,14 @@
     <p align="center">⚡Edgen architecture overview</p>
 </div>
 
+- [x] **OpenAI Compliant API**: ⚡Edgen implements the same API as OpenAI, making it a drop-in replacement.
+- [x] **Multi-Endpoint Support**: ⚡Edgen exposes multiple AI endpoints such as chat completions (LLMs) and Speech-to-Text (Whisper) for audio transcriptions.
+- [x] **Model Agnostic**: LLMs (Llama2, Mistral, Mixtral...), Speech-to-text (whisper) and many others.
 - [x] **Optimized Inference**: You don't need to take a PhD in AI optimization. ⚡Edgen abstracts the complexity of optimizing inference for different hardware, platforms and models.
 - [x] **Modular**: ⚡Edgen is **model** and **runtime** agnostic. New models can be added easily and ⚡Edgen can select the best runtime for the user's hardware: you don't need to keep up about the latest models and ML runtimes - **⚡Edgen will do that for you**.
 - [x] **Model Caching**: ⚡Edgen caches foundational models locally, so 1 model can power hundreds of different apps - users don't need to download the same model multiple times.
-- [x] **Native**: ⚡Edgen is build in 🦀Rust and is natively compiled to all popular platforms. No docker required.
-- [x] **OpenAI Compliant API**: ⚡Edgen is a drop-in replacement for OpenAI.
+- [x] **Native**: ⚡Edgen is build in 🦀Rust and is natively compiled to all popular platforms: **Windows, MacOS and Linux**. No docker required.
+- [ ] **Graphical Interface**: A graphical user interface to help users efficiently manage their models, endpoints and permissions.
 
 ⚡Edgen lets you use GenAI in your app, completely **locally** on your user's devices, for **free** and with **data-privacy**. It's a drop-in replacement for OpenAI (it uses the a compatible API), supports various functions like text generation, speech-to-text and works on Windows, Linux, and MacOS.
 
@@ -62,8 +65,43 @@
 
 ## Quickstart
 
-1. [Download](https://edgen.co/download) ⚡Edgen
+1. [Download](https://edgen.co/download) and start ⚡Edgen
 2. Chat with ⚡[EdgenChat](https://chat.edgen.co)
+
+⚡Edgen usage:
+
+```
+Usage: edgen [<command>] [<args>]
+
+Toplevel CLI commands and options. Subcommands are optional. If no command is provided "serve" will be invoked with default options.
+
+Options:
+  --help            display usage information
+
+Commands:
+  serve             Starts the edgen server. This is the default command when no
+                    command is provided.
+  config            Configuration-related subcommands.
+  version           Prints the edgen version to stdout.
+  oasgen            Generates the Edgen OpenAPI specification.
+```
+
+`edgen serve` usage:
+
+```
+Usage: edgen serve [-b <uri...>] [-g]
+
+Starts the edgen server. This is the default command when no command is provided.
+
+Options:
+  -b, --uri         if present, one or more URIs/hosts to bind the server to.
+                    `unix://` (on Linux), `http://`, and `ws://` are supported.
+                    For use in scripts, it is recommended to explicitly add this
+                    option to make your scripts future-proof.
+  -g, --nogui       if present, edgen will not start the GUI; the default
+                    behavior is to start the GUI.
+  --help            display usage information
+```
 
 # Developers
 
