@@ -59,7 +59,7 @@ pub struct Serve {
     #[argh(option, short = 'b')]
     pub uri: Vec<String>,
     /// if present, edgen will not start the GUI;
-    /// the default behaviour is to start the GUI.
+    /// the default behavior is to start the GUI.
     #[argh(switch, short = 'g')]
     pub nogui: bool,
 }
@@ -110,7 +110,7 @@ pub struct Oasgen {
     #[argh(switch, short = 'y')]
     pub yaml: bool,
     /// if present, edgen will generate the OpenAPI spec in JSON format;
-    /// the default behaviour is to generate yaml output.
+    /// the default behavior is to generate yaml output.
     #[argh(switch, short = 'j')]
     pub json: bool,
 }
