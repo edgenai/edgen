@@ -84,16 +84,27 @@ impl Model {
         let api = api.model(self.repo.to_string());
 
         // progress observer
-        let progress_handle = crate::status::observe_chat_completions_progress(&self.dir).await;
+        let download = hf_hub::Cache::new(self.dir.clone())
+            .model(self.repo.to_string())
+            .get(&self.name)
+            .is_none();
+        let size = self.get_size(&api).await;
+        let progress_handle = crate::status::observe_chat_completions_progress(&self.dir, size, download).await;
 
         let name = self.name.clone();
         let download_handle = tokio::spawn(async move {
-            crate::status::set_chat_completions_download(true).await;
+            if download {
+                crate::status::set_chat_completions_download(true).await;
+            }
+
             let path = api
                 .get(&name)
                 .map_err(move |e| ModelError::API(e.to_string()));
-            crate::status::set_chat_completions_progress(100.0).await;
-            crate::status::set_chat_completions_download(false).await;
+
+            if download {
+                crate::status::set_chat_completions_progress(100).await;
+                crate::status::set_chat_completions_download(false).await;
+            }
             return path;
         });
 
@@ -104,6 +115,16 @@ impl Model {
         self.preloaded = true;
 
         Ok(())
+    }
+
+    async fn get_size(&self, api: &hf_hub::api::sync::ApiRepo) -> Option<u64> {
+        let metadata = reqwest::Client::new()
+            .get(api.url(&self.name))
+            .header("Content-Range", "bytes 0-0")
+            .header("Range", "bytes 0-0")
+            .send()
+            .await.unwrap();
+        return metadata.content_length();
     }
 
     /// Returns a [`PathBuf`] pointing to the local model file.

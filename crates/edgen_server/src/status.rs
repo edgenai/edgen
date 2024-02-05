@@ -19,6 +19,7 @@ use axum::response::{IntoResponse, Json, Response};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock};
+use tracing::{warn, info};
 use utoipa::ToSchema;
 
 /// Recent Activity on a specific endpoint, e.g. Completions or Download.
@@ -53,7 +54,7 @@ pub struct AIStatus {
     last_activity_result: ActivityResult,
     completions_ongoing: bool,
     download_ongoing: bool,
-    download_progress: f64,
+    download_progress: u64,
     last_errors: Vec<String>,
 }
 
@@ -65,7 +66,7 @@ impl Default for AIStatus {
             last_activity_result: ActivityResult::Unknown,
             completions_ongoing: false,
             download_ongoing: false,
-            download_progress: 0.0,
+            download_progress: 0,
             last_errors: vec![],
         }
     }
@@ -85,21 +86,26 @@ pub fn get_audio_transcriptions_status() -> &'static RwLock<AIStatus> {
 
 /// Set download ongoing
 pub async fn set_chat_completions_download(ongoing: bool) {
+    if ongoing {
+        info!("starting model download");
+    } else {
+        info!("model download finished");
+    };
     let rwstate = get_chat_completions_status();
     let mut state = rwstate.write().await;
     state.download_ongoing = ongoing;
 }
 
 /// Set download progress
-pub async fn set_chat_completions_progress(progress: f64) {
+pub async fn set_chat_completions_progress(progress: u64) {
     let rwstate = get_chat_completions_status();
     let mut state = rwstate.write().await;
     state.download_progress = progress;
 }
 
-/// Set download progress
-pub async fn observe_chat_completions_progress(tempdir: &PathBuf) -> tokio::task::JoinHandle<()> {
-    observe_progress(tempdir).await
+/// Observe download progress
+pub async fn observe_chat_completions_progress(tempdir: &PathBuf, size: Option<u64>, download: bool) -> tokio::task::JoinHandle<()> {
+    observe_progress(tempdir, size, download).await
 }
 
 
@@ -140,9 +146,21 @@ fn internal_server_error(msg: &str) -> Response {
 }
 
 // This is a mess
-async fn observe_progress(tempfile: &PathBuf) -> tokio::task::JoinHandle<()> {
+async fn observe_progress(tempfile: &PathBuf, size: Option<u64>, download: bool) -> tokio::task::JoinHandle<()> {
         let tmp = tempfile.join("tmp");
+
         let progress_handle = tokio::spawn(async move {
+            if !download {
+                info!("progress observer: no download necessary, file is already there");
+                return;
+            }
+
+            if size.is_none() {
+                warn!("progress observer: unknown file size. No progress reported on download");
+                return;
+            }
+            let size = size.unwrap();
+
             let mut d = tokio::fs::metadata(&tmp).await;
             for _ in 0 .. 3 {
                 if d.is_ok() {
@@ -186,9 +204,10 @@ async fn observe_progress(tempfile: &PathBuf) -> tokio::task::JoinHandle<()> {
             };
             while m.is_ok() {
                 let z = m.unwrap();
-                let s = z.len() as f64;
-                let t = 1173610336 as f64;
-                let p = (s * 100.0) / t;
+                let s = z.len() as u64;
+                let t = size;
+                let p = (s * 100) / t;
+
                 crate::status::set_chat_completions_progress(p).await;
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 m = tokio::fs::metadata(&f.path()).await;
