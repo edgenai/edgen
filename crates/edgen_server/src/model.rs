@@ -66,6 +66,7 @@ impl Model {
             preloaded: false,
         }
     }
+
     /// Checks if a file of the model is already present locally, and if not, downloads it.
     pub async fn preload(&mut self) -> Result<(), ModelError> {
         if self.path.is_file() {
@@ -105,6 +106,7 @@ impl Model {
                 crate::status::set_chat_completions_progress(100).await;
                 crate::status::set_chat_completions_download(false).await;
             }
+
             return path;
         });
 
@@ -117,6 +119,7 @@ impl Model {
         Ok(())
     }
 
+    // get size of the remote file when we download.
     async fn get_size(&self, api: &hf_hub::api::sync::ApiRepo) -> Option<u64> {
         let metadata = reqwest::Client::new()
             .get(api.url(&self.name))
