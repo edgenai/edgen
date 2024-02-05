@@ -75,3 +75,4 @@ jobs:
           releaseDraft: true
           prerelease: false
           projectPath: ./edgen
+          args: ${{ matrix.target && format('--target {0}', matrix.target) }}
