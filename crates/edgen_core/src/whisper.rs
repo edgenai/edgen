@@ -80,6 +80,8 @@ pub enum AudioError {
     Resample(String),
 }
 
+/// Parse an audio file and convert it into a *PCM* audio segment, using the optimal sample rate
+/// for whisper models.
 pub fn parse_pcm(audio_file: &[u8]) -> Result<Vec<f32>, AudioError> {
     use rubato::{SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction};
     use symphonia::core::audio::Signal;

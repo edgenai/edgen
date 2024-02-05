@@ -60,6 +60,8 @@ impl WhisperCppEndpoint {
         self.models.get(&key).unwrap()
     }
 
+    /// Helper `async` function that returns the transcription for the specified model and
+    /// [`TranscriptionArgs`]
     async fn async_transcription(
         &self,
         model_path: impl AsRef<Path>,
@@ -177,6 +179,7 @@ impl UnloadingModel {
         session_perishable
     }
 
+    /// Computes the full transcription for the provided *PCM*;
     async fn transcription(
         &self,
         uuid: Option<Uuid>,
