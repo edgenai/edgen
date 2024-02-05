@@ -95,7 +95,6 @@ pub async fn reset_chat_completions_status() {
     status.download_ongoing = default.download_ongoing;
     status.download_progress = default.download_progress;
     status.last_errors = VecDeque::from([]);
-   
 }
 
 /// Get a protected audio transcriptions status.
@@ -294,107 +293,107 @@ async fn wait_for_tempfile(tmp: &PathBuf) -> Option<std::fs::DirEntry> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use std::io::{Error, ErrorKind};
+    use super::*;
+    use std::io::{Error, ErrorKind};
 
-  #[tokio::test]
-  async fn test_get_status_untouched() {
-      reset_chat_completions_status().await;
-      let status = get_chat_completions_status().read().await;
-      assert_eq!(*status, AIStatus::default());
-  }
+    #[tokio::test]
+    async fn test_get_status_untouched() {
+        reset_chat_completions_status().await;
+        let status = get_chat_completions_status().read().await;
+        assert_eq!(*status, AIStatus::default());
+    }
 
-  #[tokio::test]
-  async fn test_get_status_changed() {
-      reset_chat_completions_status().await;
-      // default
-      let mut expected = AIStatus::default();
+    #[tokio::test]
+    async fn test_get_status_changed() {
+        reset_chat_completions_status().await;
+        // default
+        let mut expected = AIStatus::default();
 
-      {
-          let status = get_chat_completions_status().read().await;
-          assert_eq!(*status, AIStatus::default());
-      }
+        {
+            let status = get_chat_completions_status().read().await;
+            assert_eq!(*status, AIStatus::default());
+        }
 
-      // download ongoing
-      expected.download_ongoing = true;
-      set_chat_completions_download(true).await;
+        // download ongoing
+        expected.download_ongoing = true;
+        set_chat_completions_download(true).await;
 
-      {
-          let status = get_chat_completions_status().read().await;
-          assert_eq!(*status, expected);
-      }
+        {
+            let status = get_chat_completions_status().read().await;
+            assert_eq!(*status, expected);
+        }
 
-      // download progress
-      expected.download_progress = 42;
-      set_chat_completions_progress(42).await;
+        // download progress
+        expected.download_progress = 42;
+        set_chat_completions_progress(42).await;
 
-      {
-          let status = get_chat_completions_status().read().await;
-          assert_eq!(*status, expected);
-      }
+        {
+            let status = get_chat_completions_status().read().await;
+            assert_eq!(*status, expected);
+        }
 
-      // errors
-      let e1 = Error::new(ErrorKind::Interrupted, "couldn't finish");
-      expected.last_errors.push_back(format!("{:?}", e1));
-      add_chat_completions_error(e1).await;
+        // errors
+        let e1 = Error::new(ErrorKind::Interrupted, "couldn't finish");
+        expected.last_errors.push_back(format!("{:?}", e1));
+        add_chat_completions_error(e1).await;
 
-      {
-          let status = get_chat_completions_status().read().await;
-          assert_eq!(*status, expected);
-      }
+        {
+            let status = get_chat_completions_status().read().await;
+            assert_eq!(*status, expected);
+        }
 
-      let e2 = Error::new(ErrorKind::NotFound, "I still haven't found");
-      expected.last_errors.push_back(format!("{:?}", e2));
-      add_chat_completions_error(e2).await;
+        let e2 = Error::new(ErrorKind::NotFound, "I still haven't found");
+        expected.last_errors.push_back(format!("{:?}", e2));
+        add_chat_completions_error(e2).await;
 
-      assert_eq!(expected.last_errors.len(), 2);
+        assert_eq!(expected.last_errors.len(), 2);
 
-      {
-          let status = get_chat_completions_status().read().await;
-          assert_eq!(*status, expected);
-      }
+        {
+            let status = get_chat_completions_status().read().await;
+            assert_eq!(*status, expected);
+        }
 
-      let e3 = Error::new(ErrorKind::PermissionDenied, "verboten");
-      expected.last_errors.push_back(format!("{:?}", e3));
-      add_chat_completions_error(e3).await;
+        let e3 = Error::new(ErrorKind::PermissionDenied, "verboten");
+        expected.last_errors.push_back(format!("{:?}", e3));
+        add_chat_completions_error(e3).await;
 
-      assert_eq!(expected.last_errors.len(), 3);
+        assert_eq!(expected.last_errors.len(), 3);
 
-      {
-          let status = get_chat_completions_status().read().await;
-          assert_eq!(*status, expected);
-      }
+        {
+            let status = get_chat_completions_status().read().await;
+            assert_eq!(*status, expected);
+        }
 
-      // make sure there are at most MAX_ERRORS
-      for i in 0 .. 29 {
-          let message = format!("{} times verboten", i+1);
-          let e = Error::new(ErrorKind::PermissionDenied, message);
-          expected.last_errors.push_back(format!("{:?}", e));
-          add_chat_completions_error(e).await;
-      }
+        // make sure there are at most MAX_ERRORS
+        for i in 0..29 {
+            let message = format!("{} times verboten", i + 1);
+            let e = Error::new(ErrorKind::PermissionDenied, message);
+            expected.last_errors.push_back(format!("{:?}", e));
+            add_chat_completions_error(e).await;
+        }
 
-      assert_eq!(expected.last_errors.len(), MAX_ERRORS);
+        assert_eq!(expected.last_errors.len(), MAX_ERRORS);
 
-      {
-          let status = get_chat_completions_status().read().await;
-          assert_eq!(*status, expected);
-      }
+        {
+            let status = get_chat_completions_status().read().await;
+            assert_eq!(*status, expected);
+        }
 
-      for i in 0 .. 10 {
-          let message = format!("{} times more verboten", i+1);
-          let e = Error::new(ErrorKind::PermissionDenied, message);
-          expected.last_errors.pop_front();
-          expected.last_errors.push_back(format!("{:?}", e));
-          add_chat_completions_error(e).await;
-      }
+        for i in 0..10 {
+            let message = format!("{} times more verboten", i + 1);
+            let e = Error::new(ErrorKind::PermissionDenied, message);
+            expected.last_errors.pop_front();
+            expected.last_errors.push_back(format!("{:?}", e));
+            add_chat_completions_error(e).await;
+        }
 
-      assert_eq!(expected.last_errors.len(), MAX_ERRORS);
+        assert_eq!(expected.last_errors.len(), MAX_ERRORS);
 
-      {
-          let status = get_chat_completions_status().read().await;
-          let mut v1 = Vec::from(status.last_errors.clone());
-          let mut v2 = Vec::from(expected.last_errors.clone());
-          assert_eq!(v1.sort(), v2.sort());
-      }
-  }
+        {
+            let status = get_chat_completions_status().read().await;
+            let mut v1 = Vec::from(status.last_errors.clone());
+            let mut v2 = Vec::from(expected.last_errors.clone());
+            assert_eq!(v1.sort(), v2.sort());
+        }
+    }
 }
