@@ -56,6 +56,6 @@ toml_edit = "0.21.0"
 tracing = "0.1.40"
 uuid = "1.6.1"
 utoipa = { version = "4", features = ["yaml"] }
-llama_cpp = { git = "https://github.com/edgenai/llama_cpp-rs", branch = "main" }
+llama_cpp = { git = "https://github.com/edgenai/llama_cpp-rs", branch = "wip/arm64-compilation" }
 whisper_cpp = { git = "https://github.com/edgenai/whisper_cpp-rs", branch = "main" }
 tauri = { version = "1.5.4", features = [] }
