@@ -33,7 +33,7 @@ pub static SETTINGS: Lazy<RwLock<StaticSettings>> = Lazy::new(Default::default);
 
 /// The configuration, and data directories for Edgen.
 pub static PROJECT_DIRS: Lazy<ProjectDirs> =
-    Lazy::new(|| ProjectDirs::from("com", "Binedge", "Edgen").unwrap());
+    Lazy::new(|| ProjectDirs::from("com", "EdgenAI", "Edgen").unwrap());
 pub static CONFIG_FILE: Lazy<PathBuf> = Lazy::new(|| build_config_file_path());
 pub static CHAT_COMPLETIONS_MODEL_DIR: Lazy<PathBuf> =
     Lazy::new(|| build_chat_completions_model_dir());

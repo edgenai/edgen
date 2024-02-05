@@ -17,7 +17,6 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::convert::Infallible;
 use std::fmt::{Display, Formatter};
 
 use axum::http::StatusCode;
@@ -26,10 +25,9 @@ use axum::response::{IntoResponse, Response, Sse};
 use axum::Json;
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use derive_more::{Deref, DerefMut, From};
-use edgen_core::settings::SETTINGS;
-use edgen_core::settings::{get_audio_transcriptions_model_dir, get_chat_completions_model_dir};
+use edgen_core::llm::LLMEndpointError;
 use either::Either;
-use futures::StreamExt;
+use futures::{Stream, StreamExt, TryStream};
 use serde_derive::{Deserialize, Serialize};
 use thiserror::Error;
 use time::OffsetDateTime;
@@ -38,8 +36,11 @@ use tracing::error;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::model::{Model, ModelKind};
-use crate::whisper::WhisperEndpointError;
+use edgen_core::settings::SETTINGS;
+use edgen_core::settings::{get_audio_transcriptions_model_dir, get_chat_completions_model_dir};
+use edgen_core::whisper::WhisperEndpointError;
+
+use crate::model::{Model, ModelError, ModelKind};
 
 /// The plaintext or image content of a [`ChatMessage`] within a [`CreateChatCompletionRequest`].
 ///
@@ -512,12 +513,37 @@ pub enum ChatCompletionError {
 
     /// An error occurred while processing the request to this endpoint.
     #[error("an error occurred while processing the request: {0}")]
-    Endpoint(#[from] crate::llm::LLMEndpointError),
+    Endpoint(#[from] LLMEndpointError),
 }
 
 impl IntoResponse for ChatCompletionError {
     fn into_response(self) -> Response {
         (StatusCode::INTERNAL_SERVER_ERROR, Json(self)).into_response()
+    }
+}
+
+/// The return type of [`chat_completions`].
+///
+/// Contains either a [`Stream`] of [`Event`]s or the [`Json`] of a [`ChatCompletion`].
+#[derive(ToSchema)]
+enum ChatCompletionResponse<'a, S>
+where
+    S: TryStream<Ok = Event> + Send + 'static,
+{
+    Stream(Sse<S>),
+    Full(Json<ChatCompletion<'a>>),
+}
+
+impl<'a, S, E> IntoResponse for ChatCompletionResponse<'a, S>
+where
+    S: Stream<Item = Result<Event, E>> + Send + 'static,
+    E: Into<axum::BoxError>,
+{
+    fn into_response(self) -> Response {
+        match self {
+            ChatCompletionResponse::Stream(stream) => stream.into_response(),
+            ChatCompletionResponse::Full(full) => full.into_response(),
+        }
     }
 }
 
@@ -542,7 +568,7 @@ post,
 path = "/chat/completions",
 request_body = CreateChatCompletionRequest,
 responses(
-(status = 200, description = "OK", body = ChatCompletion),
+(status = 200, description = "OK", body = ChatCompletionResponse),
 (status = 500, description = "unexpected internal server error", body = ChatCompletionError)
 ),
 )]
@@ -590,12 +616,18 @@ pub async fn chat_completions(
 
     let untokenized_context = format!("{}<|ASSISTANT|>", req.messages);
 
-    let completions_stream = crate::llm::chat_completion_stream(model, untokenized_context)
-        .await?
-        .map(|chunk| {
-            let fp = format!("edgen-{}", cargo_crate_version!());
-            Event::default()
-                .json_data(ChatCompletionChunk {
+    let stream_response = if let Some(stream) = req.stream {
+        stream
+    } else {
+        false
+    };
+
+    let fp = format!("edgen-{}", cargo_crate_version!());
+    let response = if stream_response {
+        let completions_stream = crate::llm::chat_completion_stream(model, untokenized_context)
+            .await?
+            .map(move |chunk| {
+                Event::default().json_data(ChatCompletionChunk {
                     id: Uuid::new_v4().to_string().into(),
                     choices: tiny_vec![ChatCompletionChunkChoice {
                         index: 0,
@@ -610,11 +642,37 @@ pub async fn chat_completions(
                     system_fingerprint: Cow::Borrowed(&fp), // use macro for version
                     object: Cow::Borrowed("text_completion"),
                 })
-                .expect("Could not serialize JSON; this should never happen")
-        })
-        .map(Ok::<Event, Infallible>);
+            });
 
-    Ok(Sse::new(completions_stream))
+        ChatCompletionResponse::Stream(Sse::new(completions_stream))
+    } else {
+        let content_str = crate::llm::chat_completion(model, untokenized_context).await?;
+        let response = ChatCompletion {
+            id: Uuid::new_v4().to_string().into(),
+            choices: vec![ChatCompletionChoice {
+                message: ChatMessage::Assistant {
+                    content: Some(Cow::Owned(content_str)),
+                    name: None,
+                    tool_calls: None,
+                },
+                finish_reason: None,
+                index: 0,
+            }],
+            created: OffsetDateTime::now_utc().unix_timestamp(),
+            model: Cow::Borrowed("main"),
+            object: Cow::Borrowed("text_completion"),
+            system_fingerprint: Cow::Owned(fp), // use macro for version
+            usage: ChatCompletionUsage {
+                completion_tokens: 0,
+                prompt_tokens: 0,
+                total_tokens: 0,
+            },
+        };
+
+        ChatCompletionResponse::Full(Json(response))
+    };
+
+    Ok(response)
 }
 
 /// A request to transcribe an audio file into text in either the specified language, or whichever
@@ -631,7 +689,7 @@ pub async fn chat_completions(
 pub struct CreateTranscriptionRequest {
     /// The audio file object (not file name) to transcribe, in one of the following formats:
     /// **`aac`**, **`flac`**, **`mp3`**, **`m4a`**, **`m4b`**, **`ogg`**, **`oga`**, **`mogg`**,
-    /// **`wav`**, **`webm`**. TODO check working formats.
+    /// **`wav`**. TODO check working formats. webm
     #[form_data(limit = "unlimited")]
     #[schema(value_type = Vec < u8 >)]
     pub file: FieldData<axum::body::Bytes>,
@@ -662,7 +720,7 @@ pub struct CreateTranscriptionRequest {
 ///
 /// See [the original OpenAI API specification][openai], which this endpoint is compatible with.
 ///
-/// [openai]: https://platform.openai.com/docs/api-reference/auddio/createTranscription
+/// [openai]: https://platform.openai.com/docs/api-reference/audio/createTranscription
 ///
 /// On failure, may raise a `500 Internal Server Error` with a JSON-encoded [`WhisperEndpointError`]
 /// to the peer.
@@ -672,12 +730,12 @@ path = "/audio/transcriptions",
 request_body = CreateTranscriptionRequest,
 responses(
 (status = 200, description = "OK", body = String),
-(status = 500, description = "unexpected internal server error", body = WhisperEndpointError)
+(status = 500, description = "unexpected internal server error", body = TranscriptionError)
 ),
 )]
 pub async fn create_transcription(
     req: TypedMultipart<CreateTranscriptionRequest>,
-) -> Result<impl IntoResponse, WhisperEndpointError> {
+) -> Result<impl IntoResponse, TranscriptionError> {
     // For MVP1, the model string in the request is *always* ignored.
     let model_name = SETTINGS
         .read()
@@ -698,7 +756,10 @@ pub async fn create_transcription(
 
     // invalid
     if model_name.is_empty() {
-        return Err(WhisperEndpointError::FileNotFound(model_name));
+        return Err(TranscriptionError::ProhibitedName {
+            model_name,
+            reason: Cow::Borrowed("Empty name"),
+        });
     }
 
     let mut model = Model::new(
@@ -709,11 +770,6 @@ pub async fn create_transcription(
     );
 
     model.preload().await?;
-
-    model
-        .preload()
-        .await
-        .map_err(move |_| WhisperEndpointError::FileNotFound(model_name))?;
 
     let res = crate::whisper::create_transcription(
         &req.file.contents,
@@ -727,7 +783,45 @@ pub async fn create_transcription(
     Ok(res.into_boxed_str())
 }
 
-impl IntoResponse for WhisperEndpointError {
+/// An error condition raised by the audio transcription API.
+///
+/// This is **not normative** with OpenAI's specification, which does not document any specific
+/// failure modes.
+#[derive(Serialize, Error, ToSchema, Debug)]
+#[serde(rename_all = "snake_case")]
+#[serde(tag = "error")]
+pub enum TranscriptionError {
+    /// The provided model could not be found on the local system.
+    #[error("no such model: {model_name}")]
+    NoSuchModel {
+        /// The name of the model.
+        model_name: String,
+    },
+
+    /// The provided model name contains prohibited characters.
+    #[error("model {model_name} could not be fetched from the system: {reason}")]
+    ProhibitedName {
+        /// The name of the model provided.
+        model_name: String,
+
+        /// A human-readable error message.
+        reason: Cow<'static, str>,
+    },
+
+    /// The provided model could not be preloaded.
+    #[error("failed to preload the model: {0}")]
+    Preload(#[from] ModelError),
+
+    /// An error occurred on the other side of an FFI boundary.
+    #[error("an error occurred on the other side of a C FFI boundary; check `tracing`")]
+    Ffi,
+
+    /// An error occurred while processing the request to this endpoint.
+    #[error("an error occurred while processing the request: {0}")]
+    Endpoint(#[from] WhisperEndpointError),
+}
+
+impl IntoResponse for TranscriptionError {
     fn into_response(self) -> Response {
         (StatusCode::INTERNAL_SERVER_ERROR, Json(self)).into_response()
     }

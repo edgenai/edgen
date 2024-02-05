@@ -25,7 +25,6 @@ rubato = "0.14.1"
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }
-symphonia = { version = "0.5.3", features = ["all-codecs", "all-formats"] }
 time = { workspace = true }
 tinyvec = { workspace = true, features = ["serde"] }
 thiserror = { workspace = true }

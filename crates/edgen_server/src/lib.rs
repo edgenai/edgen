@@ -32,7 +32,6 @@ use utoipa::OpenApi;
 
 use edgen_core::settings;
 use edgen_core::settings::SETTINGS;
-use edgen_core::whisper::{DecodeSessionError, SessionRunnerError, WhisperError};
 use openai_shim as chat;
 use openai_shim as audio;
 
@@ -77,11 +76,7 @@ mod whisper;
         openai_shim::AssistantFunctionStub,
         openai_shim::AssistantToolCall,
         openai_shim::CreateTranscriptionRequest,
-        whisper::WhisperEndpointError,
-        whisper::AudioError,
-        WhisperError,
-        DecodeSessionError,
-        SessionRunnerError,
+        openai_shim::TranscriptionError,
         model::ModelError,
         model::ModelKind,
     ))

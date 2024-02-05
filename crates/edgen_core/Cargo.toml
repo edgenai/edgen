@@ -12,9 +12,11 @@ edgen_async_compat = { path = "../edgen_async_compat", features = ["runtime-toki
 notify = { workspace = true }
 num_cpus = { workspace = true }
 once_cell = { workspace = true }
+rubato = "0.14.1"
 serde = { workspace = true, features = ["derive"] }
 serde_yaml = { workspace = true }
 smol = { workspace = true }
+symphonia = { version = "0.5.3", features = ["all-codecs", "all-formats"] }
 time = { workspace = true }
 tracing = { workspace = true }
 futures = { workspace = true }

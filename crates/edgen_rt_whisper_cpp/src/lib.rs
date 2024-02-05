@@ -11,247 +11,276 @@
  */
 
 use std::future::Future;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use dashmap::DashMap;
+use futures::executor::block_on;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::task::JoinHandle;
+use tokio::time::{interval, MissedTickBehavior};
+use tokio::{select, spawn};
+use tracing::{error, info};
+use uuid::Uuid;
+use whisper_cpp::{WhisperModel, WhisperParams, WhisperSampling, WhisperSession};
+
+use edgen_core::cleanup_interval;
+use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, PerishableWriteGuard};
 use edgen_core::settings::SETTINGS;
-use thiserror::Error;
-use whisper_cpp::{WhisperModel, WhisperParams, WhisperSampling};
+use edgen_core::whisper::{
+    inactive_whisper_session_ttl, inactive_whisper_ttl, parse_pcm, TranscriptionArgs,
+    WhisperEndpoint, WhisperEndpointError,
+};
 
-use edgen_core::whisper::{Whisper, WhisperError, WhisperRunner, WhisperSession};
+/// A large language model endpoint, implementing [`WhisperEndpoint`] using a [`whisper_cpp`] backend.
+pub struct WhisperCppEndpoint {
+    /// A map of the models currently loaded into memory, with their path as the key.
+    models: Arc<DashMap<String, UnloadingModel>>,
 
-#[derive(Error, Debug)]
-enum WhisperCppError {
-    #[error("failed initialize whisper.cpp model: {0}")]
-    Initialization(#[from] whisper_cpp::WhisperError),
+    /// A background thread that periodically removes models from the `models` collection, if they
+    /// are not loaded at the time.
+    cleanup_thread: JoinHandle<()>,
 }
 
-pub struct WhisperCpp {
-    model: WhisperModel,
-}
-
-impl WhisperCpp {
-    pub fn load<P>(model_path: P) -> Result<Self, WhisperError>
-    where
-        P: AsRef<std::path::Path>,
-    {
-        Ok(Self {
-            model: WhisperModel::new_from_file(model_path, false)
-                .map_err(move |e| WhisperError::ModelInitialization(e.to_string()))?,
-        })
-    }
-
-    async fn async_decode(&self, data: &[f32]) -> Result<String, WhisperError> {
-        let mut session: whisper_cpp::WhisperSession = self
-            .model
-            .new_session()
-            .await
-            .map_err(move |e| WhisperError::SessionInitialization(e.to_string()))?;
-
-        let mut params = WhisperParams::new(WhisperSampling::default_greedy());
-        params.thread_count = SETTINGS.read().await.read().await.auto_threads(false);
-
-        session
-            .full(params, data)
-            .await
-            .map_err(move |e| WhisperError::Internal(e.to_string()))?;
-
-        let mut res = "".to_string();
-        for i in 0..session.segment_count() {
-            res += &*session
-                .segment_text(i)
-                .map_err(move |e| WhisperError::Internal(e.to_string()))?;
-        }
-
-        Ok(res)
-    }
-
-    async fn async_new_session(
+impl WhisperCppEndpoint {
+    /// Gets the [`UnloadingModel`] loaded from the specified path. If the model isn't already
+    /// loaded, first initialise it and add it to the `models` collection.
+    async fn get(
         &self,
-        callback: Box<dyn Fn(String) + Send + 'static>,
-    ) -> Result<WhisperSession, WhisperError> {
-        Ok(WhisperSession::new(
-            WhisperCppRunner {
-                session: self
-                    .model
-                    .new_session()
-                    .await
-                    .map_err(move |e| WhisperError::SessionInitialization(e.to_string()))?,
-            },
-            callback,
-        ))
-    }
-}
+        model_path: impl AsRef<Path>,
+    ) -> dashmap::mapref::one::Ref<String, UnloadingModel> {
+        let key = model_path.as_ref().to_string_lossy().to_string();
 
-impl Whisper for WhisperCpp {
-    fn decode<'a>(
-        &'a self,
-        data: &'a [f32],
-    ) -> Box<dyn Future<Output = Result<String, WhisperError>> + Send + Unpin + 'a> {
-        // todo are the 2 boxes really needed?
-        let fut = Box::pin(self.async_decode(data));
-        Box::new(fut)
-    }
-
-    fn new_session<'a>(
-        &'a self,
-        callback: Box<dyn Fn(String) + Send + 'static>,
-    ) -> Box<dyn Future<Output = Result<WhisperSession, WhisperError>> + Send + Unpin + 'a> {
-        // todo are the 2 boxes really needed?
-        let fut = Box::pin(self.async_new_session(callback));
-        Box::new(fut)
-    }
-}
-
-struct WhisperCppRunner {
-    session: whisper_cpp::WhisperSession,
-}
-
-impl WhisperRunner for WhisperCppRunner {
-    async fn forward_decode(&mut self, data: &[f32]) -> Result<String, WhisperError> {
-        let params = WhisperParams::new(WhisperSampling::default_greedy());
-
-        self.session
-            .full(params, data)
-            .await
-            .map_err(move |e| WhisperError::Internal(e.to_string()))?;
-
-        let _segment_count = self.session.segment_count();
-        /*self
-        .session
-        .segment_text(segment_count - 1)
-        .map_err(move |e| WhisperError::Internal(e.to_string()))*/
-
-        let mut res = "".to_string();
-        for i in 0..self.session.segment_count() {
-            // we should review if this is correct!
-            res += &*self
-                .session
-                .segment_text(i)
-                .map_err(move |e| WhisperError::Internal(e.to_string()))?;
+        if !self.models.contains_key(&key) {
+            let model = UnloadingModel::new(model_path).await;
+            self.models.insert(key.clone(), model);
         }
 
-        Ok(res)
+        // PANIC SAFETY: Just inserted the element if it isn't already inside the map, so must be present in the map
+        self.models.get(&key).unwrap()
+    }
+
+    /// Helper `async` function that returns the transcription for the specified model and
+    /// [`TranscriptionArgs`]
+    async fn async_transcription(
+        &self,
+        model_path: impl AsRef<Path>,
+        args: TranscriptionArgs,
+    ) -> Result<String, WhisperEndpointError> {
+        let pcm = parse_pcm(&args.file)?;
+        let model = self.get(model_path).await;
+        model.transcription(args.session, pcm).await
     }
 }
 
-#[cfg(test)]
-mod tests {
-    /*
-    use alsa::pcm::{Access, Format, HwParams};
-    use alsa::{Direction, ValueOr, PCM};
-    use tokio::sync::mpsc::error::TryRecvError;
-
-    use crate::*;
-
-    #[derive(Error, Debug)]
-    enum TestError {
-        #[error("whisper error: {0}")]
-        Whisper(#[from] edgen_core::whisper::WhisperError),
-        #[error("decode session error: {0}")]
-        Session(#[from] edgen_core::whisper::DecodeSessionError),
-        #[error("whisper.cpp error: {0}")]
-        WhisperCpp(#[from] WhisperCppError),
-        #[error("alsa error: {0}")]
-        Alsa(#[from] alsa::Error),
-        #[error("failed to write test file: {0}")]
-        File(#[from] std::io::Error),
+impl WhisperEndpoint for WhisperCppEndpoint {
+    fn transcription<'a>(
+        &'a self,
+        model_path: impl AsRef<Path> + Send + 'a,
+        args: TranscriptionArgs,
+    ) -> Box<dyn Future<Output = Result<String, WhisperEndpointError>> + Send + Unpin + 'a> {
+        let pinned = Box::pin(self.async_transcription(model_path, args));
+        Box::new(pinned)
     }
 
-    #[tokio::test]
-    async fn live_transcription() -> Result<(), TestError> {
+    fn reset(&self) {
+        self.models.clear();
+    }
+}
 
-        //TODO change to use env variables
-        let model = WhisperCpp::load("/home/pedro/dev/models/ggml-base.en.bin")?;
-
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        let mut session = model
-            .new_session(Box::new(move |str| {
-                println!("{str}");
-                tx.send(str).unwrap();
-            }))
-            .await?;
-
-        let _rate;
-        let pcm = PCM::new("default", Direction::Capture, false)?;
-        {
-            // For this example, we assume 44100Hz, one channel, 16 bit audio.
-            let hwp = HwParams::any(&pcm)?;
-            hwp.set_channels(1)?;
-            hwp.set_rate(16000, ValueOr::Nearest)?;
-            hwp.set_format(Format::s16())?;
-            hwp.set_access(Access::RWInterleaved)?;
-            pcm.hw_params(&hwp)?;
-
-            _rate = hwp.get_rate()?; // is there any side effect that justifies this assignment?
-        }
-        pcm.start()?;
-
-        let io = pcm.io_i16()?;
-        let mut buf = [0i16; 8192 * 10];
-
-        loop {
-            let mut stop = false;
-
-            tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
-            let _size_read = io.readi(&mut buf)?;
-            let samples: Vec<_> = buf[..].iter().map(|v| *v as f32 / 32768.).collect();
-
-            session.push(&samples)?;
-            println!("aaaaaa");
+impl Default for WhisperCppEndpoint {
+    fn default() -> Self {
+        let models: Arc<DashMap<String, UnloadingModel>> = Default::default();
+        let models_clone = models.clone();
+        let cleanup_thread = spawn(async move {
+            let mut interval = interval(cleanup_interval());
+            interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
             loop {
-                println!("huh?");
-                let output = rx.try_recv();
-                match output {
-                    Ok(str) => {
-                        println!("{str}");
-                        if str.contains("stop") | str.contains("Stop") | str.contains("STOP") {
-                            session.end().await?;
-                            stop = true;
-                            break;
+                interval.tick().await;
+                models_clone.retain(move |_, model| block_on(model.loaded()));
+            }
+        });
+
+        Self {
+            models,
+            cleanup_thread,
+        }
+    }
+}
+
+impl Drop for WhisperCppEndpoint {
+    fn drop(&mut self) {
+        self.cleanup_thread.abort()
+    }
+}
+
+/// A [`WhisperModel`] (as well as its associated [`WhisperSession`]s) that unloads itself from
+/// memory after not being used for a period of time.
+struct UnloadingModel {
+    model: Perishable<WhisperModel>,
+    path: PathBuf,
+    sessions: Arc<DashMap<Uuid, Perishable<WhisperSession>>>,
+    maintenance_thread: JoinHandle<()>,
+    finished_tx: UnboundedSender<(Uuid, Perishable<WhisperSession>)>,
+}
+
+impl UnloadingModel {
+    /// Creates a new instance of this model, provided it's [`Path`].
+    ///
+    /// This function is lazy and does not actually load the model into system memory, the model must be accessed in
+    /// order to be loaded.
+    async fn new(model_path: impl AsRef<Path>) -> Self {
+        let sessions: Arc<DashMap<Uuid, Perishable<WhisperSession>>> = Default::default();
+        let (tx, mut rx) = unbounded_channel();
+
+        let sessions_clone = sessions.clone();
+        let maintenance_thread = spawn(async move {
+            let mut interval = interval(cleanup_interval());
+            interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+            loop {
+                select! {
+                    _ = interval.tick() => sessions_clone.retain(move |_, session| block_on(session.is_alive())),
+                    item = rx.recv() => {
+                        if let Some((id, session)) = item {
+                            sessions_clone.insert(id, session);
                         }
-                    }
-                    Err(TryRecvError::Empty) => break,
-                    Err(_) => {
-                        panic!()
                     }
                 }
             }
+        });
 
-            if stop {
-                break;
+        Self {
+            model: Perishable::with_ttl(inactive_whisper_ttl()),
+            path: model_path.as_ref().to_path_buf(),
+            sessions,
+            maintenance_thread,
+            finished_tx: tx,
+        }
+    }
+
+    /// Returns **`true`** if this model is currently loaded in system memory, **`false`** otherwise.
+    async fn loaded(&self) -> bool {
+        self.model.is_alive().await
+    }
+
+    /// Either takes an existing chat [`WhisperSession`] matching the provided [`Uuid`], or creates
+    /// a new one.
+    async fn take_session(&self, uuid: Uuid) -> Perishable<WhisperSession> {
+        let session_perishable = if let Some((_, session)) = self.sessions.remove(&uuid) {
+            info!("Matching session found, continuing");
+            session
+        } else {
+            info!("No matching session found, creating new one");
+            Perishable::with_ttl(inactive_whisper_session_ttl())
+        };
+
+        session_perishable
+    }
+
+    /// Computes the full transcription for the provided *PCM*;
+    async fn transcription(
+        &self,
+        uuid: Option<Uuid>,
+        pcm: Vec<f32>,
+    ) -> Result<String, WhisperEndpointError> {
+        let (_model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
+
+        let mut params = WhisperParams::new(WhisperSampling::default_greedy());
+        let threads = SETTINGS.read().await.read().await.auto_threads(false);
+
+        params.thread_count = threads;
+
+        if let Some(uuid) = uuid {
+            let session = self.take_session(uuid).await;
+
+            let res = {
+                let (_session_signal, mut session_guard) = {
+                    let (session_signal, session_guard) =
+                        get_or_init_session(&session, model_guard.clone()).await?;
+
+                    (session_signal, session_guard)
+                };
+
+                session_guard
+                    .full(params, &pcm)
+                    .await
+                    .map_err(move |e| WhisperEndpointError::Advance(e.to_string()))?;
+
+                let mut res = "".to_string();
+                for i in 0..session_guard.segment_count() {
+                    res += &*session_guard
+                        .segment_text(i)
+                        .map_err(move |e| WhisperEndpointError::Decode(e.to_string()))?;
+                }
+
+                res
+            };
+
+            self.finished_tx
+                .send((uuid, session))
+                .unwrap_or_else(move |e| {
+                    error!("Failed to send session to maintenance thread: {e}")
+                });
+
+            Ok(res)
+        } else {
+            let mut session = model_guard
+                .new_session()
+                .await
+                .map_err(move |e| WhisperEndpointError::Session(e.to_string()))?;
+
+            session
+                .full(params, &pcm)
+                .await
+                .map_err(move |e| WhisperEndpointError::Advance(e.to_string()))?;
+
+            let mut res = "".to_string();
+            for i in 0..session.segment_count() {
+                res += &*session
+                    .segment_text(i)
+                    .map_err(move |e| WhisperEndpointError::Decode(e.to_string()))?;
             }
+
+            Ok(res)
         }
-        Ok(())
     }
-    */
+}
 
-    /*
-    static ENDPOINT: OnceCell<Arc<RwLock<WhisperEndpoint<WhisperCpp>>>> = OnceCell::const_new();
-
-    #[tokio::test]
-    async fn server() -> Result<(), TestError> {
-        use axum::Router;
-        use axum::routing::post;
-        use axum::http::StatusCode;
-        use axum::Json;
-
-        async fn creation_helper() -> Arc<RwLock<WhisperEndpoint<WhisperCpp>>> {
-            Arc::new(RwLock::new(WhisperEndpoint::default()))
-        }
-
-        async fn request_helper(payload: Json<edgen_core::whisper::StandaloneForm>) -> (StatusCode, String) {
-            let mut locked = ENDPOINT.get_or_init(creation_helper).await.write().await;
-            locked.standalone(payload).await
-        }
-
-        let app = Router::new()
-            .route("/", post(request_helper));
-
-        let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-        axum::serve(listener, app).await.unwrap();
-
-        Ok(())
+impl Drop for UnloadingModel {
+    fn drop(&mut self) {
+        self.maintenance_thread.abort()
     }
+}
 
-    */
+/// Helper function to acquire a read guard to a [`WhisperModel`] (and its associated
+/// [`ActiveSignal`]).
+async fn get_or_init_model(
+    model: &Perishable<WhisperModel>,
+    path: impl AsRef<Path>,
+) -> Result<(ActiveSignal, PerishableReadGuard<WhisperModel>), WhisperEndpointError> {
+    let path = path.as_ref().to_path_buf();
+    model
+        .get_or_try_init(move || async move {
+            WhisperModel::new_from_file(path, false)
+                .map_err(move |e| WhisperEndpointError::Load(e.to_string()))
+        })
+        .await
+}
+
+/// Helper function to acquire a write guard to a [`WhisperSession`] (and its associated
+/// [`ActiveSignal`]).
+async fn get_or_init_session(
+    session: &Perishable<WhisperSession>,
+    model: WhisperModel,
+) -> Result<(ActiveSignal, PerishableWriteGuard<WhisperSession>), WhisperEndpointError> {
+    session
+        .get_or_try_init_mut(move || async move {
+            model
+                .new_session()
+                .await
+                .map_err(move |e| WhisperEndpointError::Session(e.to_string()))
+        })
+        .await
 }

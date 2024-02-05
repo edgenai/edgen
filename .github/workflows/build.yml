@@ -1,20 +1,21 @@
-name: "release"
+name: "build"
 on:
   push:
-    branches:
-      - main
+    branches: [ "*" ]
+  pull_request:
+    branches: [ "*" ]
 
 # This is the example from the readme.
-# On each push to the `main` branch it will create or update a GitHub release, build your app, and upload the artifacts to the release.
+# On each push to the `main` branch it will create or update a GitHub build, build your app, and upload the artifacts to the build.
 
 jobs:
-  release:
+  build:
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, ubuntu-20.04, windows-latest]
+        platform: [ macos-latest, ubuntu-20.04, windows-latest ]
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -58,6 +59,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          RUSTFLAGS: "--cfg tokio_unstable"
         with:
           tagName: v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version
           releaseName: "v__VERSION__"
