@@ -44,19 +44,20 @@ pub struct CompletionArgs {
     pub frequency_penalty: f32,
 }
 
-/// A large language model endpoint, that is, an object that provides various ways to interact with a large
-/// language model.
+/// A large language model endpoint, that is, an object that provides various ways to interact with
+/// a large language model.
 pub trait LLMEndpoint {
-    /// Given a prompt with several arguments, return a [`Box`]ed [`Future`] which may eventually contain the prompt
-    /// completion in [`String`] form.
+    /// Given a prompt with several arguments, return a [`Box`]ed [`Future`] which may eventually
+    /// contain the prompt completion in [`String`] form.
     fn chat_completions<'a>(
         &'a self,
         model_path: impl AsRef<Path> + Send + 'a,
         args: CompletionArgs,
     ) -> Box<dyn Future<Output = Result<String, LLMEndpointError>> + Send + Unpin + 'a>;
 
-    /// Given a prompt with several arguments, return a [`Box`]ed [`Future`] which may eventually contain a [`Stream`]
-    /// of [`String`] chunks of the prompt completion, acquired as they get processed.
+    /// Given a prompt with several arguments, return a [`Box`]ed [`Future`] which may eventually
+    /// contain a [`Stream`] of [`String`] chunks of the prompt completion, acquired as they get
+    /// processed.
     fn stream_chat_completions<'a>(
         &'a self,
         model_path: impl AsRef<Path> + Send + 'a,
@@ -72,23 +73,16 @@ pub trait LLMEndpoint {
     fn reset(&self);
 }
 
-/// Return the [`Duration`] for which a large language model lives while not being used before being unloaded from
-/// memory.
+/// Return the [`Duration`] for which a large language model lives while not being used before
+/// being unloaded from memory.
 pub fn inactive_llm_ttl() -> Duration {
     // TODO this should come from the settings
     Duration::from_secs(5 * 60)
 }
 
-/// Return the [`Duration`] for which a large language model session lives while not being used before being unloaded
-/// from memory.
+/// Return the [`Duration`] for which a large language model session lives while not being used
+/// before being unloaded from memory.
 pub fn inactive_llm_session_ttl() -> Duration {
     // TODO this should come from the settings
     Duration::from_secs(2 * 60)
-}
-
-/// Return the [`Duration`] that cleanup threads should wait before looking for and freeing unused resources, after
-/// last doing so.
-pub fn cleanup_interval() -> Duration {
-    // TODO this should come from the settings
-    Duration::from_secs(20)
 }

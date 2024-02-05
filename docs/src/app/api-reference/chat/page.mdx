@@ -118,3 +118,53 @@ Generate text from text. {{ className: 'lead' }}
 
   </Col>
 </Row>
+
+---
+
+## Chat completion status {{ tag: 'GET', label: 'http://localhost:33322/v1/chat/completions/status' }}
+
+<Row>
+  <Col>
+    Shows the current status of the chat completions endpoint (e.g. downloads).
+  </Col>
+  <Col sticky>
+
+    <CodeGroup title="Request" tag="GET" label="/v1/chat/completions/status">
+
+    ```bash {{ title: 'cURL' }}
+    curl http://localhost:33322/v1/chat/completions/status \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer no-key-required" \
+    ```
+
+    ```python
+    from edgen import Edgen
+    client = Edgen()
+
+    status = client.chat.completions.status.create()
+    print(status)
+
+    ```
+
+    ```ts
+    import Edgen from "edgen";
+
+    const client = new Edgen();
+
+    async function main() {
+      const status = await client.chat.completions.status.create();
+
+      console.log(status);
+    }
+
+    main();
+    ```
+
+    </CodeGroup>
+
+    ```json {{ title: 'Response' }}
+    {"active_model":"neural-chat-7b-v3-3.Q4_K_M.gguf","last_activity":"download","last_activity_result":"success","completions_ongoing":false,"download_ongoing":false,"download_progress":100,"last_errors":["Custom { kind: PermissionDenied, error: \"verboten\" }]}
+    ```
+
+  </Col>
+</Row>

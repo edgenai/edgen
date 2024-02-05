@@ -37,8 +37,6 @@ pub struct Version {
 
 /// GET `/v1/version`: returns the current version of edgend.
 ///
-/// [openai]: https://platform.edgen.io/docs/api-reference/version
-///
 /// The version is returned as json value with major, minor and patch as integer
 /// and build as string (which may be empty).
 /// For any error, the version endpoint returns "internal server error".

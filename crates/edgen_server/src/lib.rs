@@ -32,7 +32,6 @@ use utoipa::OpenApi;
 
 use edgen_core::settings;
 use edgen_core::settings::SETTINGS;
-use edgen_core::whisper::{DecodeSessionError, SessionRunnerError, WhisperError};
 use openai_shim as chat;
 use openai_shim as audio;
 
@@ -44,6 +43,7 @@ pub mod graceful_shutdown;
 mod llm;
 mod model;
 pub mod openai_shim;
+pub mod status;
 pub mod util;
 mod whisper;
 
@@ -76,11 +76,7 @@ mod whisper;
         openai_shim::AssistantFunctionStub,
         openai_shim::AssistantToolCall,
         openai_shim::CreateTranscriptionRequest,
-        whisper::WhisperEndpointError,
-        whisper::AudioError,
-        WhisperError,
-        DecodeSessionError,
-        SessionRunnerError,
+        openai_shim::TranscriptionError,
         model::ModelError,
         model::ModelKind,
     ))
@@ -173,14 +169,24 @@ async fn start_server(args: &cli::Serve) -> EdgenResult {
 
 async fn run_server(args: &cli::Serve) -> bool {
     let http_app = Router::new()
+        // -- AI endpoints -----------------------------------------------------
+        // ---- Chat -----------------------------------------------------------
         .route(
             "/v1/chat/completions",
             axum::routing::post(openai_shim::chat_completions),
         )
+        // ---- Audio ----------------------------------------------------------
         .route(
             "/v1/audio/transcriptions",
             axum::routing::post(openai_shim::create_transcription),
         )
+        // -- AI status endpoints ----------------------------------------------
+        // ---- Chat -----------------------------------------------------------
+        .route(
+            "/v1/chat/completions/status",
+            axum::routing::get(status::chat_completions_status),
+        )
+        // -- Miscellaneous services -------------------------------------------
         .route("/v1/misc/version", axum::routing::get(misc::edgen_version))
         .layer(CorsLayer::permissive());
 

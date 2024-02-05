@@ -12,10 +12,8 @@
 
 use futures::Stream;
 use once_cell::sync::Lazy;
-use serde_derive::Serialize;
-use thiserror::Error;
 
-use edgen_core::llm::{CompletionArgs, LLMEndpoint};
+use edgen_core::llm::{CompletionArgs, LLMEndpoint, LLMEndpointError};
 use edgen_rt_llama_cpp::LlamaCppEndpoint;
 
 use crate::model::Model;
@@ -23,20 +21,6 @@ use crate::util::StoppingStream;
 
 static ENDPOINT: Lazy<LlamaCppEndpoint> = Lazy::new(Default::default);
 
-#[derive(Serialize, Error, Debug)]
-pub enum LLMEndpointError {
-    #[error("the provided model file name does does not exist, or isn't a file: ({0})")]
-    FileNotFound(String),
-    #[error("there is no session associated with the provided uuid ({0})")]
-    SessionNotFound(String),
-    #[error("failed to run inference: {0}")]
-    Inference(#[from] edgen_core::llm::LLMEndpointError),
-    #[error("failed to load model: {0}")]
-    Model(#[from] crate::model::ModelError),
-}
-
-// TODO use this
-#[allow(dead_code)]
 pub async fn chat_completion(model: Model, context: String) -> Result<String, LLMEndpointError> {
     let args = CompletionArgs {
         prompt: context,
@@ -44,7 +28,14 @@ pub async fn chat_completion(model: Model, context: String) -> Result<String, LL
         frequency_penalty: 0.0,
     };
 
-    Ok(ENDPOINT.chat_completions(model.file_path()?, args).await?)
+    ENDPOINT
+        .chat_completions(
+            model
+                .file_path()
+                .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
+            args,
+        )
+        .await
 }
 
 pub async fn chat_completion_stream(
@@ -58,7 +49,12 @@ pub async fn chat_completion_stream(
     };
 
     let stream = ENDPOINT
-        .stream_chat_completions(model.file_path()?, args)
+        .stream_chat_completions(
+            model
+                .file_path()
+                .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
+            args,
+        )
         .await?;
 
     Ok(StoppingStream::wrap_with_stop_words(
