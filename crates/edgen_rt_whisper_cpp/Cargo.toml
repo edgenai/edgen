@@ -13,5 +13,7 @@ derive_more = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 once_cell = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 whisper_cpp = { workspace = true, features = ["native"] }
 

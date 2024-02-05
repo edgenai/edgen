@@ -10,394 +10,189 @@
  * limitations under the License.
  */
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::path::Path;
+use std::time::Duration;
 
-use futures::executor::block_on;
+use rubato::Resampler;
 use serde::Serialize;
 use smol::future::Future;
 use thiserror::Error;
-use tokio::spawn;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::sync::{mpsc, RwLock};
-use tokio::task::JoinHandle;
+use tracing::info;
 use utoipa::ToSchema;
+use uuid::Uuid;
+
+#[derive(Serialize, Error, Debug)]
+pub enum WhisperEndpointError {
+    #[error("failed to advance context: {0}")]
+    Advance(String),
+    #[error("failed to decode result: {0}")]
+    Decode(String),
+    #[error("failed to load the model: {0}")]
+    Load(String),
+    #[error("failed to create a session: {0}")]
+    Session(String),
+    #[error("failed to parse audio file data: {0}")]
+    Audio(#[from] AudioError),
+}
+
+pub struct TranscriptionArgs {
+    pub file: Vec<u8>,
+    pub language: Option<String>,
+    pub prompt: Option<String>,
+    pub temperature: Option<f32>,
+    pub session: Option<Uuid>,
+}
+
+pub trait WhisperEndpoint {
+    /// Given an audio segment with several arguments, return a [`Box`]ed [`Future`] which may
+    /// eventually contain its transcription in [`String`] form.
+    fn transcription<'a>(
+        &'a self,
+        model_path: impl AsRef<Path> + Send + 'a,
+        args: TranscriptionArgs,
+    ) -> Box<dyn Future<Output = Result<String, WhisperEndpointError>> + Send + Unpin + 'a>;
+
+    /// Unloads everything from memory.
+    fn reset(&self);
+}
+
+/// Return the [`Duration`] for which a whisper model lives while not being used before being
+/// unloaded from memory.
+pub fn inactive_whisper_ttl() -> Duration {
+    // TODO this should come from the settings
+    Duration::from_secs(5 * 60)
+}
+
+/// Return the [`Duration`] for which a whisper model session lives while not being used before
+/// being unloaded from memory.
+pub fn inactive_whisper_session_ttl() -> Duration {
+    // TODO this should come from the settings
+    Duration::from_secs(2 * 60)
+}
 
 #[derive(Serialize, Error, ToSchema, Debug)]
-pub enum WhisperError {
-    #[error("{mime:?} mime is unsupported, this executor supports: {supported:?}")]
-    UnsupportedMime { mime: String, supported: String },
-    #[error("audio has unsupported sample rate {value:?}, executor supports: {supported:?}")]
-    UnsupportedSampleRate { value: u32, supported: String },
-    #[error("could not parse input data: {0}")]
-    Parsing(String),
-    #[error("failed to run the internal executor: {0}")]
-    Internal(String),
-    #[error("failed to load model: {0}")]
-    ModelInitialization(String),
-    #[error("failed to create a new session: {0}")]
-    SessionInitialization(String),
-    #[error("failed to prepare the execution: {0}")]
-    Other(String),
+pub enum AudioError {
+    #[error("failed to parse mime data: {0}")]
+    Parse(String),
+    #[error("failed to initialise resampler: {0}")]
+    ResamplerInit(String),
+    #[error("failed to resample the input audio: {0}")]
+    Resample(String),
 }
 
-pub trait Whisper {
-    fn decode<'a>(
-        &'a self,
-        data: &'a [f32],
-    ) -> Box<dyn Future<Output = Result<String, WhisperError>> + Send + Unpin + 'a>;
+pub fn parse_pcm(audio_file: &[u8]) -> Result<Vec<f32>, AudioError> {
+    use rubato::{SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction};
+    use symphonia::core::audio::Signal;
+    use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
+    use symphonia::core::errors::Error;
+    use symphonia::core::formats::FormatOptions;
+    use symphonia::core::io::MediaSourceStream;
+    use symphonia::core::meta::MetadataOptions;
+    use symphonia::core::probe::Hint;
 
-    fn new_session<'a>(
-        &'a self,
-        callback: Box<dyn Fn(String) + Send + 'static>,
-    ) -> Box<dyn Future<Output = Result<WhisperSession, WhisperError>> + Send + Unpin + 'a>;
-}
+    /// The optimal sample rate for whisper models.
+    const OPTIMAL_SAMPLE_RATE: u32 = 16000;
 
-pub trait WhisperRunner {
-    fn forward_decode(
-        &mut self,
-        data: &[f32],
-    ) -> impl Future<Output = Result<String, WhisperError>> + Send;
-}
+    info!("Parsing audio file ({} bytes)", audio_file.len());
 
-#[derive(Serialize, Error, ToSchema, Debug)]
-pub enum DecodeSessionError {
-    #[error("the session has already been closed or aborted")]
-    SessionOver,
-    #[error("failed to send input to worker thread: {0}")]
-    Send(String),
-    #[error("error occurred in the session runner: {0}")]
-    SessionRunner(#[from] SessionRunnerError),
-    #[error("failed to join runner thread: {0}")]
-    Join(String),
-}
+    // Initialisation.
+    let cursor = std::io::Cursor::new(audio_file.to_vec());
+    let stream = MediaSourceStream::new(Box::new(cursor), Default::default());
 
-pub struct WhisperSession {
-    current_result: Arc<RwLock<String>>,
-    tx: Option<UnboundedSender<Vec<f32>>>,
-    rx: Option<UnboundedReceiver<f32>>,
-    runner: Option<JoinHandle<Result<(), SessionRunnerError>>>,
-    closed: Arc<AtomicBool>,
-}
+    let hint = Hint::new();
 
-// TODO turn session into a receiver-transmitter pair
-impl WhisperSession {
-    /// Creates a new [`WhisperSession`].
-    ///
-    /// ## Arguments
-    /// * `runner` - A *Whisper* backend instance that implements [`WhisperRunner`]
-    /// * `callback` - A callback function (of type [`Fn(String)`]) that is called for every item
-    /// processed, receiving the result of the item as input
-    pub fn new<F>(runner: impl WhisperRunner + Send + 'static, callback: F) -> Self
-    where
-        F: Fn(String) + Send + 'static,
-    {
-        let (tx, rx) = mpsc::unbounded_channel();
-        let (status_tx, status_rx) = mpsc::unbounded_channel();
-        let mut session = Self {
-            current_result: Arc::new(RwLock::new("".to_string())),
-            tx: Some(tx),
-            rx: Some(status_rx),
-            runner: None,
-            closed: Arc::new(AtomicBool::new(false)),
+    let meta_opts: MetadataOptions = Default::default();
+    let fmt_opts: FormatOptions = Default::default();
+
+    // TODO this gets stuck in a loop for some invalid files
+    let probed = symphonia::default::get_probe()
+        .format(&hint, stream, &fmt_opts, &meta_opts)
+        .map_err(move |e| AudioError::Parse(format!("failed to probe audio data: {e}")))?;
+
+    let mut format = probed.format;
+    let track = format
+        .tracks()
+        .iter()
+        .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
+        .ok_or(AudioError::Parse("codec is null".to_string()))?;
+
+    let dec_opts: DecoderOptions = Default::default();
+
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&track.codec_params, &dec_opts)
+        .map_err(move |e| AudioError::Parse(format!("failed to initialize decoder: {e}")))?;
+
+    let track_id = track.id;
+
+    let sample_rate = track
+        .codec_params
+        .sample_rate
+        .ok_or_else(move || AudioError::Parse("could not get sample rate".to_string()))?;
+
+    let mut samples = vec![];
+
+    // Decoding loop.
+    loop {
+        let packet = match format.next_packet() {
+            Ok(packet) => packet,
+            Err(Error::ResetRequired) => {
+                break;
+            }
+            Err(Error::IoError(e)) => {
+                // TODO this isnt ideal, but gonna have to wait for symphonia to be updated
+                // https://github.com/pdeljanov/Symphonia/issues/134#issuecomment-1146990539
+                if e.kind() == std::io::ErrorKind::UnexpectedEof && e.to_string() == "end of stream"
+                {
+                    break;
+                } else {
+                    return Err(AudioError::Parse(format!("unexpected end of file: {e:#?}")));
+                }
+            }
+            Err(e) => {
+                return Err(AudioError::Parse(format!(
+                    "failed to acquire next packet: {e}"
+                )));
+            }
         };
 
-        session.runner = Some(spawn(run_session(
-            runner,
-            rx,
-            status_tx,
-            callback,
-            session.current_result.clone(),
-            session.closed.clone(),
-        )));
+        if packet.track_id() != track_id {
+            continue;
+        }
 
-        session
+        let decoded = decoder
+            .decode(&packet)
+            .map_err(move |e| AudioError::Parse(format!("failed to decode packet: {e}")))?;
+
+        let mut sample_slice = decoded.make_equivalent::<f32>();
+        decoded.convert(&mut sample_slice);
+        samples.extend_from_slice(sample_slice.chan(0));
     }
 
-    /// Push an item to the session queue to be processed.
-    ///
-    /// Does nothing if the provided slice is empty.
-    ///
-    /// ## Arguments
-    /// * `data` - A [`f32`] normalized slice of *PCM* data to be pushed to the queue
-    pub fn push(&self, data: &[f32]) -> Result<(), DecodeSessionError> {
-        if data.is_empty() {
-            return Ok(());
-        }
+    // Resample the pcm data if necessary.
+    if sample_rate != OPTIMAL_SAMPLE_RATE {
+        let params = SincInterpolationParameters {
+            sinc_len: 256,
+            f_cutoff: 0.95,
+            interpolation: SincInterpolationType::Linear,
+            oversampling_factor: 256,
+            window: WindowFunction::BlackmanHarris2,
+        };
 
-        self.unchecked_push(data)
+        let mut resampler = SincFixedIn::<f64>::new(
+            OPTIMAL_SAMPLE_RATE as f64 / sample_rate as f64,
+            2.0,
+            params,
+            samples.len(),
+            1,
+        )
+        .map_err(move |e| AudioError::ResamplerInit(e.to_string()))?;
+
+        let pre: Vec<_> = samples.drain(..).map(move |x| x as f64).collect();
+        let mut resampled = resampler
+            .process(&[pre], None)
+            .map_err(move |e| AudioError::Resample(e.to_string()))?;
+        samples = resampled[0].drain(..).map(move |x| x as f32).collect();
     }
 
-    /// Push an item to the session queue to be processed.
-    ///
-    /// ## Arguments
-    /// * `data` -A [`f32`] normalized slice of *PCM* data to be pushed to the queue
-    fn unchecked_push(&self, data: &[f32]) -> Result<(), DecodeSessionError> {
-        if let Some(tx) = &self.tx {
-            tx.send(data.to_vec())
-                .map_err(move |e| DecodeSessionError::Send(e.to_string()))?;
-            Ok(())
-        } else {
-            Err(DecodeSessionError::SessionOver)
-        }
-    }
-
-    /// Returns the current cumulative [`String`] result of the session.
-    pub async fn result(&self) -> String {
-        let locked = self.current_result.read().await;
-        locked.clone()
-    }
-
-    /// Wait for every item submitted to the session queue up to this point to processed.
-    pub async fn sync(&mut self) -> Result<(), DecodeSessionError> {
-        if self.closed() {
-            return Err(DecodeSessionError::SessionOver);
-        }
-
-        let empty: Vec<f32> = vec![];
-        self.unchecked_push(&empty)?;
-
-        if let Some(rx) = &mut self.rx {
-            let _ = rx.recv().await;
-        } else {
-            // Should never happen, since we check if the session is already closed above.
-            return Err(DecodeSessionError::SessionOver);
-        }
-
-        Ok(())
-    }
-
-    /// Terminates the session and waits for the remaining items in the queue to be processed and
-    /// joining with the worker thread.
-    pub async fn end(&mut self) -> Result<(), DecodeSessionError> {
-        {
-            let _ = self.rx.take();
-        }
-
-        let empty: Vec<f32> = vec![];
-        self.unchecked_push(&empty)?;
-
-        if let Some(tx) = self.tx.take() {
-            tx.closed().await;
-        }
-
-        if let Some(runner) = self.runner.take() {
-            runner
-                .await
-                .map_err(move |e| DecodeSessionError::Join(e.to_string()))??;
-        }
-
-        Ok(())
-    }
-
-    /// Abruptly ends the session, joining with the worker thread as soon as possible. Any remaining
-    /// items in the queue are ignored.
-    pub async fn abort(&mut self) -> Result<(), DecodeSessionError> {
-        if self.closed() {
-            return Err(DecodeSessionError::SessionOver);
-        }
-
-        self.closed.store(true, Ordering::Relaxed);
-
-        if let Some(tx) = self.tx.take() {
-            // Make sure that the runner iterates at least once more
-            tx.send(vec![])
-                .map_err(move |e| DecodeSessionError::Send(e.to_string()))?;
-        }
-
-        if let Some(runner) = self.runner.take() {
-            runner
-                .await
-                .map_err(move |e| DecodeSessionError::Join(e.to_string()))??;
-        }
-
-        Ok(())
-    }
-
-    /// Checks if the session has been terminated.
-    pub fn closed(&self) -> bool {
-        self.tx.is_none()
-            || self.rx.is_none()
-            || self.runner.is_none()
-            || self.closed.load(Ordering::Relaxed)
-    }
-}
-
-impl Drop for WhisperSession {
-    fn drop(&mut self) {
-        let e = block_on(self.abort());
-        match e {
-            // Nothing to do, session got terminated previously
-            Err(DecodeSessionError::SessionOver) => { /* nothing */ }
-            Err(DecodeSessionError::Send(_)) => {
-                println!("Failed to send end signal: {e:?}");
-            }
-            Err(DecodeSessionError::SessionRunner(_)) => {
-                println!("Error occurred while session was running: {e:?}");
-            }
-            Err(DecodeSessionError::Join(_)) => {
-                // todo should this panic?
-                println!("Failed to join runner thread: {e:?}");
-            }
-            _ => { /* nothing */ }
-        }
-    }
-}
-
-#[derive(Serialize, Error, ToSchema, Debug)]
-pub enum SessionRunnerError {
-    #[error("could not run the executor: {0}")]
-    Executor(#[from] WhisperError),
-}
-
-/// The runtime of the session runner thread.
-///
-/// ## Arguments
-/// * `runner` -
-/// * `rx` -
-/// * `tx` -
-/// * `callback` -
-/// * `current_result` -  
-/// * `closed` -
-async fn run_session<R, F>(
-    mut runner: R,
-    mut rx: UnboundedReceiver<Vec<f32>>,
-    tx: UnboundedSender<f32>,
-    callback: F,
-    current_result: Arc<RwLock<String>>,
-    closed: Arc<AtomicBool>,
-) -> Result<(), SessionRunnerError>
-where
-    R: WhisperRunner,
-    F: Fn(String),
-{
-    while let Some(data) = rx.recv().await {
-        if closed.load(Ordering::Relaxed) {
-            rx.close();
-            break;
-        }
-
-        if data.is_empty() {
-            if tx.send(0.0).is_err() {
-                // session.end() was called, probably
-                break;
-            } else {
-                continue;
-            }
-        }
-
-        let segment = runner.forward_decode(&data).await?;
-        {
-            let mut locked = current_result.write().await;
-            let len = locked.len();
-            locked.insert_str(len, &segment);
-        }
-        callback(segment);
-    }
-
-    closed.store(true, Ordering::Relaxed);
-    rx.close();
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use std::future::Future;
-
-    use thiserror::Error;
-
-    use crate::whisper::{
-        DecodeSessionError, Whisper, WhisperError, WhisperRunner, WhisperSession,
-    };
-
-    #[derive(Error, Debug)]
-    enum TestError {
-        #[error("whisper error: {0}")]
-        Whisper(#[from] WhisperError),
-        #[error("decode session error: {0}")]
-        Session(#[from] DecodeSessionError),
-    }
-
-    struct TestWhisper {}
-
-    impl TestWhisper {
-        async fn async_decode(&self, _data: &[f32]) -> Result<String, WhisperError> {
-            Ok("decode".to_string())
-        }
-
-        async fn async_new_session(
-            &self,
-            callback: Box<dyn Fn(String) + Send + 'static>,
-        ) -> Result<WhisperSession, WhisperError> {
-            Ok(WhisperSession::new(TestRunner {}, callback))
-        }
-    }
-
-    impl Whisper for TestWhisper {
-        fn decode<'a>(
-            &'a self,
-            data: &'a [f32],
-        ) -> Box<dyn Future<Output = Result<String, WhisperError>> + Send + Unpin + 'a> {
-            let fut = Box::pin(self.async_decode(data));
-            Box::new(fut)
-        }
-
-        fn new_session<'a>(
-            &'a self,
-            callback: Box<dyn Fn(String) + Send + 'static>,
-        ) -> Box<dyn Future<Output = Result<WhisperSession, WhisperError>> + Send + Unpin + 'a>
-        {
-            let fut = Box::pin(self.async_new_session(callback));
-            Box::new(fut)
-        }
-    }
-
-    struct TestRunner {}
-
-    impl WhisperRunner for TestRunner {
-        async fn forward_decode(&mut self, _data: &[f32]) -> Result<String, WhisperError> {
-            Ok("forward".to_string())
-        }
-    }
-
-    #[tokio::test]
-    async fn decode() -> Result<(), TestError> {
-        let test = TestWhisper {};
-
-        let e: Vec<f32> = vec![];
-        let res = test.decode(&e).await?;
-
-        assert_eq!(res, "decode".to_string());
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn session() -> Result<(), TestError> {
-        let test = TestWhisper {};
-
-        let mut session = test
-            .new_session(Box::new(move |e| assert_eq!(e, "forward".to_string())))
-            .await?;
-
-        let e: Vec<f32> = vec![1.0];
-
-        for _ in 0..3 {
-            session.push(&e)?;
-        }
-        session.sync().await?;
-        assert_eq!(session.result().await, "forwardforwardforward".to_string());
-
-        for _ in 0..2 {
-            session.push(&e)?;
-        }
-        session.end().await?;
-        assert_eq!(
-            session.result().await,
-            "forwardforwardforwardforwardforward".to_string()
-        );
-
-        Ok(())
-    }
+    Ok(samples)
 }

@@ -25,6 +25,7 @@ use axum::response::{IntoResponse, Response, Sse};
 use axum::Json;
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use derive_more::{Deref, DerefMut, From};
+use edgen_core::llm::LLMEndpointError;
 use either::Either;
 use futures::{Stream, StreamExt, TryStream};
 use serde_derive::{Deserialize, Serialize};
@@ -37,9 +38,9 @@ use uuid::Uuid;
 
 use edgen_core::settings::SETTINGS;
 use edgen_core::settings::{get_audio_transcriptions_model_dir, get_chat_completions_model_dir};
+use edgen_core::whisper::WhisperEndpointError;
 
-use crate::model::{Model, ModelKind};
-use crate::whisper::WhisperEndpointError;
+use crate::model::{Model, ModelError, ModelKind};
 
 /// The plaintext or image content of a [`ChatMessage`] within a [`CreateChatCompletionRequest`].
 ///
@@ -512,7 +513,7 @@ pub enum ChatCompletionError {
 
     /// An error occurred while processing the request to this endpoint.
     #[error("an error occurred while processing the request: {0}")]
-    Endpoint(#[from] crate::llm::LLMEndpointError),
+    Endpoint(#[from] LLMEndpointError),
 }
 
 impl IntoResponse for ChatCompletionError {
@@ -524,6 +525,7 @@ impl IntoResponse for ChatCompletionError {
 /// The return type of [`chat_completions`].
 ///
 /// Contains either a [`Stream`] of [`Event`]s or the [`Json`] of a [`ChatCompletion`].
+#[derive(ToSchema)]
 enum ChatCompletionResponse<'a, S>
 where
     S: TryStream<Ok = Event> + Send + 'static,
@@ -566,7 +568,7 @@ post,
 path = "/chat/completions",
 request_body = CreateChatCompletionRequest,
 responses(
-(status = 200, description = "OK", body = ChatCompletion),
+(status = 200, description = "OK", body = ChatCompletionResponse),
 (status = 500, description = "unexpected internal server error", body = ChatCompletionError)
 ),
 )]
@@ -728,12 +730,12 @@ path = "/audio/transcriptions",
 request_body = CreateTranscriptionRequest,
 responses(
 (status = 200, description = "OK", body = String),
-(status = 500, description = "unexpected internal server error", body = WhisperEndpointError)
+(status = 500, description = "unexpected internal server error", body = TranscriptionError)
 ),
 )]
 pub async fn create_transcription(
     req: TypedMultipart<CreateTranscriptionRequest>,
-) -> Result<impl IntoResponse, WhisperEndpointError> {
+) -> Result<impl IntoResponse, TranscriptionError> {
     // For MVP1, the model string in the request is *always* ignored.
     let model_name = SETTINGS
         .read()
@@ -754,7 +756,10 @@ pub async fn create_transcription(
 
     // invalid
     if model_name.is_empty() {
-        return Err(WhisperEndpointError::FileNotFound(model_name));
+        return Err(TranscriptionError::ProhibitedName {
+            model_name,
+            reason: Cow::Borrowed("Empty name"),
+        });
     }
 
     let mut model = Model::new(
@@ -765,11 +770,6 @@ pub async fn create_transcription(
     );
 
     model.preload().await?;
-
-    model
-        .preload()
-        .await
-        .map_err(move |_| WhisperEndpointError::FileNotFound(model_name))?;
 
     let res = crate::whisper::create_transcription(
         &req.file.contents,
@@ -783,7 +783,45 @@ pub async fn create_transcription(
     Ok(res.into_boxed_str())
 }
 
-impl IntoResponse for WhisperEndpointError {
+/// An error condition raised by the audio transcription API.
+///
+/// This is **not normative** with OpenAI's specification, which does not document any specific
+/// failure modes.
+#[derive(Serialize, Error, ToSchema, Debug)]
+#[serde(rename_all = "snake_case")]
+#[serde(tag = "error")]
+pub enum TranscriptionError {
+    /// The provided model could not be found on the local system.
+    #[error("no such model: {model_name}")]
+    NoSuchModel {
+        /// The name of the model.
+        model_name: String,
+    },
+
+    /// The provided model name contains prohibited characters.
+    #[error("model {model_name} could not be fetched from the system: {reason}")]
+    ProhibitedName {
+        /// The name of the model provided.
+        model_name: String,
+
+        /// A human-readable error message.
+        reason: Cow<'static, str>,
+    },
+
+    /// The provided model could not be preloaded.
+    #[error("failed to preload the model: {0}")]
+    Preload(#[from] ModelError),
+
+    /// An error occurred on the other side of an FFI boundary.
+    #[error("an error occurred on the other side of a C FFI boundary; check `tracing`")]
+    Ffi,
+
+    /// An error occurred while processing the request to this endpoint.
+    #[error("an error occurred while processing the request: {0}")]
+    Endpoint(#[from] WhisperEndpointError),
+}
+
+impl IntoResponse for TranscriptionError {
     fn into_response(self) -> Response {
         (StatusCode::INTERNAL_SERVER_ERROR, Json(self)).into_response()
     }
