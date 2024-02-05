@@ -83,6 +83,21 @@ pub fn get_chat_completions_status() -> &'static RwLock<AIStatus> {
     &AISTATES.endpoints[EP_CHAT_COMPLETIONS]
 }
 
+/// Get a protected chat completions status.
+/// Call read() or write() on the returned value to get either read or write access.
+pub async fn reset_chat_completions_status() {
+    let mut status = get_chat_completions_status().write().await;
+    let default = AIStatus::default();
+    status.active_model = default.active_model;
+    status.last_activity = default.last_activity;
+    status.last_activity_result = default.last_activity_result;
+    status.completions_ongoing = default.completions_ongoing;
+    status.download_ongoing = default.download_ongoing;
+    status.download_progress = default.download_progress;
+    status.last_errors = VecDeque::from([]);
+   
+}
+
 /// Get a protected audio transcriptions status.
 /// Call read() or write() on the returned value to get either read or write access.
 pub fn get_audio_transcriptions_status() -> &'static RwLock<AIStatus> {
@@ -284,12 +299,14 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_status_untouched() {
+      reset_chat_completions_status().await;
       let status = get_chat_completions_status().read().await;
       assert_eq!(*status, AIStatus::default());
   }
 
   #[tokio::test]
   async fn test_get_status_changed() {
+      reset_chat_completions_status().await;
       // default
       let mut expected = AIStatus::default();
 
@@ -314,17 +331,6 @@ mod tests {
       {
           let status = get_chat_completions_status().read().await;
           assert_eq!(*status, expected);
-      }
-  }
-
-  #[tokio::test]
-  async fn test_get_status_errors() {
-      // default
-      let mut expected = AIStatus::default();
-
-      {
-          let status = get_chat_completions_status().read().await;
-          assert_eq!(*status, AIStatus::default());
       }
 
       // errors
