@@ -5,18 +5,17 @@ const highlights = [
   {
     href: '/guides/quickstart',
     name: 'Quickstart',
-    description: 'Learn how to authenticate your API requests.',
+    description: 'Start developing your next GenAI app powered by Edgen.',
   },
   {
     href: '/documentation/configuration',
     name: 'Configuration',
-    description: 'Understand how to work with paginated responses.',
+    description: 'How to configure Edgen. How to switch between models.',
   },
   {
-    href: '/webhooks',
-    name: 'Webhooks',
-    description:
-      'Learn how to programmatically configure webhooks for your app.',
+    href: '/documentation/models',
+    name: 'Models',
+    description: 'Learn which models Edgen support, for each endpoint.',
   },
 ]
 
