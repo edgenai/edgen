@@ -8,14 +8,13 @@ export const metadata = {
 
 This guide will get you all set up and ready to use the Protocol API. We'll cover how to get started using one of our API clients and how to make your first API request. We'll also look at where to go next to find all the information you need to take full advantage of our powerful REST API. {{ className: 'lead' }}
 
-<Note>
-  Before you can make requests to the Protocol API, you will need to grab your
-  API key from your dashboard. You find it under [Settings &raquo; API](#).
-</Note>
-
 ## Download and install ⚡Edgen
-
+\
 <Button href="https://edgen.co/download">⚡ Download</Button>
+
+<Note>
+  If you're a developer looking into building Edgen from source, please follow [Documentation &raquo; Getting Started](/documentation/getting-started).
+</Note>
 
 ## Choose your client
 
@@ -30,20 +29,20 @@ Before making your first API request, you need to pick which API client you will
 curl --version
 ```
 
-```bash {{ language: 'js' }}
-# Install the Node API client
-npm install edgen --save
-```
-
 ```bash {{ language: 'python' }}
 # Install the Python API client
 pip install edgen
 ```
 
+```bash {{ language: 'ts' }}
+# Install the Node API client
+npm install edgen --save
+```
+
 </CodeGroup>
 
 <div className="not-prose">
-  <Button href="/api-clients" variant="text" arrow="right">
+  <Button href="/documentation/api-clients" variant="text" arrow="right">
     <>Check out our API Clients</>
   </Button>
 </div>
@@ -52,44 +51,74 @@ pip install edgen
 
 You are ready to make your first call to the ⚡Edgen API. Below, you can see how to send a GET request to the chat completions endpoint to create a chat response, given an list of input chat messages.
 
-{/* TODO: Edit with our published packages */}
 {/* TODO: Do not hardcode this codegroup. Since it's already defined in /api-reference/chat */}
+<CodeGroup title="Request" tag="POST" label="/v1/chat/completions">
 
-<CodeGroup tag="GET" label="/v1/conversations">
+  ```bash {{ title: 'cURL' }}
+  curl http://localhost:33322/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer no-key-required" \
+  -d '{
+    "model": "default",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are EdgenChat, a helpful AI assistant."
+      },
+      {
+        "role": "user",
+        "content": "Hello!"
+      }
+    ],
+    "stream": true
+  }'
+  ```
 
-```bash {{ title: 'cURL' }}
-curl -G https://api.protocol.chat/v1/conversations \
-  -H "Authorization: Bearer {token}" \
-  -d limit=10
-```
+  ```python
+  from edgen import Edgen
+  client = Edgen()
 
-```js
-import ApiClient from '@example/protocol-api'
+  completion = client.chat.completions.create(
+    model="default",
+    messages=[
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Hello!"}
+    ],
+    stream=True
+  )
 
-const client = new ApiClient(token)
+  for chunk in completion:
+    print(chunk.choices[0].delta)
+  ```
 
-await client.conversations.list()
-```
+  ```ts
+  import Edgen from "edgen";
 
-```python
-from protocol_api import ApiClient
+  const client = new Edgen();
 
-client = ApiClient(token)
+  async function main() {
+    const completion = await client.chat.completions.create({
+      model: "default",
+      messages: [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Hello!"}
+      ],
+      stream: true,
+    });
 
-client.conversations.list()
-```
+    for await (const chunk of completion) {
+      console.log(chunk.choices[0].delta.content);
+    }
+  }
 
-```php
-$client = new \Protocol\ApiClient($token);
-
-$client->conversations->list();
-```
+  main();
+  ```
 
 </CodeGroup>
 
 <div className="not-prose">
   <Button href="/api-reference/chat" variant="text" arrow="right">
-    <>Read the docs for the Chat endpoint</>
+    <>Read the docs for the chat endpoint</>
   </Button>
 </div>
 
