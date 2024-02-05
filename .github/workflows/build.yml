@@ -1,8 +1,9 @@
 name: "build"
 on:
+  push:
+    branches: ["main"]
   pull_request:
-    branches:
-      - "main"
+    branches: ["main"]
 
 # This is the example from the readme.
 # On each push to the `main` branch it will create or update a GitHub build, build your app, and upload the artifacts to the build.
