@@ -20,7 +20,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::task::JoinHandle;
 use tokio::time::{interval, MissedTickBehavior};
 use tokio::{select, spawn};
-use tracing::info;
+use tracing::{error, info};
 use uuid::Uuid;
 use whisper_cpp::{WhisperModel, WhisperParams, WhisperSampling, WhisperSession};
 
@@ -195,24 +195,34 @@ impl UnloadingModel {
         if let Some(uuid) = uuid {
             let session = self.take_session(uuid).await;
 
-            let (_session_signal, mut session_guard) = {
-                let (session_signal, mut session_guard) =
-                    get_or_init_session(&session, model_guard.clone()).await?;
+            let res = {
+                let (_session_signal, mut session_guard) = {
+                    let (session_signal, session_guard) =
+                        get_or_init_session(&session, model_guard.clone()).await?;
 
-                (session_signal, session_guard)
+                    (session_signal, session_guard)
+                };
+
+                session_guard
+                    .full(params, &pcm)
+                    .await
+                    .map_err(move |e| WhisperEndpointError::Advance(e.to_string()))?;
+
+                let mut res = "".to_string();
+                for i in 0..session_guard.segment_count() {
+                    res += &*session_guard
+                        .segment_text(i)
+                        .map_err(move |e| WhisperEndpointError::Decode(e.to_string()))?;
+                }
+
+                res
             };
 
-            session_guard
-                .full(params, &pcm)
-                .await
-                .map_err(move |e| WhisperEndpointError::Advance(e.to_string()))?;
-
-            let mut res = "".to_string();
-            for i in 0..session_guard.segment_count() {
-                res += &*session_guard
-                    .segment_text(i)
-                    .map_err(move |e| WhisperEndpointError::Decode(e.to_string()))?;
-            }
+            self.finished_tx
+                .send((uuid, session))
+                .unwrap_or_else(move |e| {
+                    error!("Failed to send session to maintenance thread: {e}")
+                });
 
             Ok(res)
         } else {
