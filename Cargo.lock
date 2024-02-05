@@ -1384,6 +1384,8 @@ dependencies = [
  "levenshtein",
  "once_cell",
  "pin-project",
+ "reqwest",
+ "rubato",
  "serde",
  "serde_derive",
  "serde_json",

@@ -20,6 +20,8 @@ hyper = { workspace = true }
 hyper-util = { workspace = true }
 once_cell = { workspace = true }
 pin-project = { workspace = true }
+reqwest = { workspace = true }
+rubato = "0.14.1"
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }
