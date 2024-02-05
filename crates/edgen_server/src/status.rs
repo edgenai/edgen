@@ -15,14 +15,14 @@
 use std::collections::VecDeque;
 use std::error::Error;
 use std::path::PathBuf;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{RwLock};
-use tracing::{error, warn, info};
+use tokio::sync::RwLock;
+use tracing::{error, info, warn};
 use utoipa::ToSchema;
 
 /// Recent Activity on a specific endpoint, e.g. Completions or Download.
@@ -107,13 +107,18 @@ pub async fn set_chat_completions_progress(progress: u64) {
 }
 
 /// Observe download progress
-pub async fn observe_chat_completions_progress(datadir: &PathBuf, size: Option<u64>, download: bool) -> tokio::task::JoinHandle<()> {
+pub async fn observe_chat_completions_progress(
+    datadir: &PathBuf,
+    size: Option<u64>,
+    download: bool,
+) -> tokio::task::JoinHandle<()> {
     observe_progress(datadir, size, download).await
 }
 
 /// Add an error to the last errors
 pub async fn add_chat_completions_error<E>(e: E)
-where E: Error
+where
+    E: Error,
 {
     let rwstate = get_chat_completions_status();
     let mut state = rwstate.write().await;
@@ -122,7 +127,6 @@ where E: Error
     }
     state.last_errors.push_back(format!("{:?}", e));
 }
-
 
 /// GET `/v1/chat/completions/status`: returns the current status of the /chat/completions endpoint.
 ///
@@ -148,8 +152,10 @@ struct AIStates {
 impl Default for AIStates {
     fn default() -> AIStates {
         AIStates {
-            endpoints: vec![RwLock::new(Default::default()),
-                            RwLock::new(Default::default())]
+            endpoints: vec![
+                RwLock::new(Default::default()),
+                RwLock::new(Default::default()),
+            ],
         }
     }
 }
@@ -169,83 +175,93 @@ fn internal_server_error(msg: &str) -> Response {
 // -   sets the percentage in the status.download_progress
 // - until the tempfile disappears or no progress was made for 1 minute.
 // TODO: This code should go to the module manager.
-async fn observe_progress(datadir: &PathBuf, size: Option<u64>, download: bool) -> tokio::task::JoinHandle<()> {
-        let tmp = datadir.join("tmp");
+async fn observe_progress(
+    datadir: &PathBuf,
+    size: Option<u64>,
+    download: bool,
+) -> tokio::task::JoinHandle<()> {
+    let tmp = datadir.join("tmp");
 
-        let progress_handle = tokio::spawn(async move {
-            if !download {
-                info!("progress observer: no download necessary, file is already there");
+    let progress_handle = tokio::spawn(async move {
+        if !download {
+            info!("progress observer: no download necessary, file is already there");
+            return;
+        }
+
+        if size.is_none() {
+            warn!("progress observer: unknown file size. No progress reported on download");
+            return;
+        }
+        let size = size.unwrap();
+
+        if !have_tempdir(&tmp).await {
+            return;
+        }
+
+        let t = wait_for_tempfile(&tmp).await;
+        if t.is_none() {
+            return;
+        }
+
+        let f = t.unwrap();
+
+        let mut m = tokio::fs::metadata(&f.path()).await;
+        let mut last_size = 0;
+        let mut timestamp = Instant::now();
+        while m.is_ok() {
+            let s = m.unwrap().len() as u64;
+            let t = size;
+            let p = (s * 100) / t;
+
+            if size > last_size {
+                last_size = size;
+                timestamp = Instant::now();
+            } else if Instant::now().duration_since(timestamp) > Duration::from_secs(60) {
+                warn!("progress observer: no download progress in a minute. Giving up");
                 return;
-            }
+            };
 
-            if size.is_none() {
-                warn!("progress observer: unknown file size. No progress reported on download");
-                return;
-            }
-            let size = size.unwrap();
+            set_chat_completions_progress(p).await;
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            m = tokio::fs::metadata(&f.path()).await;
+        }
+    });
 
-            if !have_tempdir(&tmp).await {
-                return;
-            }
-
-            let t = wait_for_tempfile(&tmp).await;
-            if t.is_none() {
-                return;
-            }
-
-            let f = t.unwrap();
-            
-            let mut m = tokio::fs::metadata(&f.path()).await;
-            let mut last_size = 0;
-            let mut timestamp = Instant::now();
-            while m.is_ok() {
-                let s = m.unwrap().len() as u64;
-                let t = size;
-                let p = (s * 100) / t;
-
-                if size > last_size {
-                    last_size = size;
-                    timestamp = Instant::now();
-                } else if Instant::now().duration_since(timestamp) > Duration::from_secs(60) {
-                    warn!("progress observer: no download progress in a minute. Giving up");
-                    return;
-                };
-
-                set_chat_completions_progress(p).await;
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                m = tokio::fs::metadata(&f.path()).await;
-            }
-        });
-
-        progress_handle
+    progress_handle
 }
 
 async fn have_tempdir(tmp: &PathBuf) -> bool {
     let mut d = tokio::fs::metadata(&tmp).await;
-    for _ in 0 .. 10 {
+    for _ in 0..10 {
         if d.is_ok() {
             break;
         };
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         d = tokio::fs::metadata(&tmp).await;
-    };
+    }
     if d.is_err() {
-        error!("progress observer: can't read tmp directory ({:?}). Giving up", d);
+        error!(
+            "progress observer: can't read tmp directory ({:?}). Giving up",
+            d
+        );
         add_chat_completions_error(d.unwrap_err()).await;
         return false;
     };
-    
+
     true
 }
 
 // TODO: we use the first file we find in the tmp directory.
 //       we should instead *know* the name of the file.
 async fn wait_for_tempfile(tmp: &PathBuf) -> Option<std::fs::DirEntry> {
-    for _ in 0 .. 30 {
+    for _ in 0..30 {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         let es = std::fs::read_dir(&tmp);
         if es.is_err() {
-            error!("progress observer: cannot read tmp directory ({:?}). Giving up", es);
+            error!(
+                "progress observer: cannot read tmp directory ({:?}). Giving up",
+                es
+            );
             add_chat_completions_error(es.unwrap_err()).await;
             return None;
         };
@@ -253,8 +269,8 @@ async fn wait_for_tempfile(tmp: &PathBuf) -> Option<std::fs::DirEntry> {
             if e.is_ok() {
                 return Some(e.unwrap());
             }
-        };
-    };
+        }
+    }
 
     None
 }

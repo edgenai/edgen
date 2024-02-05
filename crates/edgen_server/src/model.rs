@@ -16,6 +16,8 @@ use serde_derive::Serialize;
 use thiserror::Error;
 use utoipa::ToSchema;
 
+use crate::status;
+
 #[derive(Serialize, Error, ToSchema, Debug)]
 pub enum ModelError {
     #[error("the provided model file name does does not exist, or isn't a file: ({0})")]
@@ -90,12 +92,13 @@ impl Model {
             .get(&self.name)
             .is_none();
         let size = self.get_size(&api).await;
-        let progress_handle = crate::status::observe_chat_completions_progress(&self.dir, size, download).await;
+        let progress_handle =
+            status::observe_chat_completions_progress(&self.dir, size, download).await;
 
         let name = self.name.clone();
         let download_handle = tokio::spawn(async move {
             if download {
-                crate::status::set_chat_completions_download(true).await;
+                status::set_chat_completions_download(true).await;
             }
 
             let path = api
@@ -103,8 +106,8 @@ impl Model {
                 .map_err(move |e| ModelError::API(e.to_string()));
 
             if download {
-                crate::status::set_chat_completions_progress(100).await;
-                crate::status::set_chat_completions_download(false).await;
+                status::set_chat_completions_progress(100).await;
+                status::set_chat_completions_download(false).await;
             }
 
             return path;
@@ -126,7 +129,8 @@ impl Model {
             .header("Content-Range", "bytes 0-0")
             .header("Range", "bytes 0-0")
             .send()
-            .await.unwrap();
+            .await
+            .unwrap();
         return metadata.content_length();
     }
 

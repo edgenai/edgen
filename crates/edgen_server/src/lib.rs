@@ -193,7 +193,6 @@ async fn run_server(args: &cli::Serve) -> bool {
         )
         // -- Miscellaneous services -------------------------------------------
         .route("/v1/misc/version", axum::routing::get(misc::edgen_version))
-
         .layer(CorsLayer::permissive());
 
     let uri_vector = if !args.uri.is_empty() {
