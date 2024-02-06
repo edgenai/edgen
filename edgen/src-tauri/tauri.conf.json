@@ -6,7 +6,7 @@
     "distDir": "../dist"
   },
   "package": {
-    "productName": "Edgen",
+    "productName": "edgen",
     "version": "0.1.0"
   },
   "tauri": {
