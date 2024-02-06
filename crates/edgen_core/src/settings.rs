@@ -210,6 +210,15 @@ impl SettingsInner {
         let params = if is_new {
             info!("Creating new settings file: {}", path.to_string_lossy());
 
+            tokio::fs::create_dir_all(path.parent().ok_or_else(|| {
+                SettingsError::Directory(format!(
+                    "Failed to get config parent path from path: {}",
+                    path.to_string_lossy()
+                ))
+            })?)
+            .await
+            .map_err(move |e| SettingsError::Directory(e.to_string()))?;
+
             tokio::fs::write(&path, "")
                 .await
                 .map_err(move |e| SettingsError::Write(e.to_string()))?;
