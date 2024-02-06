@@ -34,7 +34,6 @@ pub enum ModelError {
 pub enum ModelKind {
     LLM,
     Whisper,
-    Unknown,
 }
 
 enum ModelQuantization {
@@ -92,23 +91,41 @@ impl Model {
             .get(&self.name)
             .is_none();
         let size = self.get_size(&api).await;
-        let progress_handle =
-            status::observe_chat_completions_progress(&self.dir, size, download).await;
+        let progress_handle = match self.kind {
+            ModelKind::LLM => {
+                status::observe_chat_completions_progress(&self.dir, size, download).await
+            }
+            ModelKind::Whisper => {
+                status::observe_audio_transcriptions_progress(&self.dir, size, download).await
+            }
+        };
 
         let name = self.name.clone();
+        let kind = self.kind.clone();
         let download_handle = tokio::spawn(async move {
             if download {
-                status::set_chat_completions_download(true).await;
-            }
+                match kind {
+                    ModelKind::LLM => status::set_chat_completions_download(true).await,
+                    ModelKind::Whisper => status::set_audio_transcriptions_download(true).await,
+                }
+            };
 
             let path = api
                 .get(&name)
                 .map_err(move |e| ModelError::API(e.to_string()));
 
             if download {
-                status::set_chat_completions_progress(100).await;
-                status::set_chat_completions_download(false).await;
-            }
+                match kind {
+                    ModelKind::LLM => {
+                        status::set_chat_completions_progress(100).await;
+                        status::set_chat_completions_download(false).await;
+                    }
+                    ModelKind::Whisper => {
+                        status::set_audio_transcriptions_progress(100).await;
+                        status::set_audio_transcriptions_download(false).await;
+                    }
+                }
+            };
 
             return path;
         });

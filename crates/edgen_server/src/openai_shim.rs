@@ -18,6 +18,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use std::path::PathBuf;
 
 use axum::http::StatusCode;
 use axum::response::sse::Event;
@@ -37,7 +38,6 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use edgen_core::settings::SETTINGS;
-use edgen_core::settings::{get_audio_transcriptions_model_dir, get_chat_completions_model_dir};
 use edgen_core::whisper::WhisperEndpointError;
 
 use crate::model::{Model, ModelError, ModelKind};
@@ -592,6 +592,14 @@ pub async fn chat_completions(
         .chat_completions_model_repo
         .trim()
         .to_string();
+    let dir = SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .chat_completions_models_dir
+        .trim()
+        .to_string();
 
     // invalid
     if model_name.is_empty() {
@@ -600,12 +608,7 @@ pub async fn chat_completions(
         });
     }
 
-    let mut model = Model::new(
-        ModelKind::LLM,
-        &model_name,
-        &repo,
-        &get_chat_completions_model_dir(),
-    );
+    let mut model = Model::new(ModelKind::LLM, &model_name, &repo, &PathBuf::from(&dir));
 
     model
         .preload()
@@ -753,6 +756,14 @@ pub async fn create_transcription(
         .audio_transcriptions_model_repo
         .trim()
         .to_string();
+    let dir = SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .audio_transcriptions_models_dir
+        .trim()
+        .to_string();
 
     // invalid
     if model_name.is_empty() {
@@ -762,12 +773,7 @@ pub async fn create_transcription(
         });
     }
 
-    let mut model = Model::new(
-        ModelKind::Whisper,
-        &model_name,
-        &repo,
-        &get_audio_transcriptions_model_dir(),
-    );
+    let mut model = Model::new(ModelKind::Whisper, &model_name, &repo, &PathBuf::from(&dir));
 
     model.preload().await?;
 
