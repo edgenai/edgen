@@ -168,15 +168,15 @@ async fn start_server(args: &cli::Serve) -> EdgenResult {
 }
 
 async fn run_server(args: &cli::Serve) -> bool {
-
     status::set_chat_completions_active_model(
         &SETTINGS
             .read()
             .await
             .read()
             .await
-            .chat_completions_model_name
-    ).await;
+            .chat_completions_model_name,
+    )
+    .await;
 
     status::set_audio_transcriptions_active_model(
         &SETTINGS
@@ -184,9 +184,9 @@ async fn run_server(args: &cli::Serve) -> bool {
             .await
             .read()
             .await
-            .audio_transcriptions_model_name
-    ).await;
-
+            .audio_transcriptions_model_name,
+    )
+    .await;
 
     let http_app = Router::new()
         // -- AI endpoints -----------------------------------------------------
@@ -302,16 +302,18 @@ async fn run_server(args: &cli::Serve) -> bool {
                     .await
                     .read()
                     .await
-                    .chat_completions_model_name
-            ).await;
+                    .chat_completions_model_name,
+            )
+            .await;
             status::set_audio_transcriptions_active_model(
                 &SETTINGS
                     .read()
                     .await
                     .read()
                     .await
-                    .audio_transcriptions_model_name
-            ).await;
+                    .audio_transcriptions_model_name,
+            )
+            .await;
         });
     });
 
