@@ -88,9 +88,6 @@ pub type EdgenResult = Result<(), String>;
 
 /// Main entry point for the server process
 pub fn start(command: &cli::TopLevel) -> EdgenResult {
-    // if the project dirs do not exist, try to create them.
-    // if that fails, exit.
-    settings::create_project_dirs().unwrap();
 
     match &command.subcommand {
         None => serve(&cli::Serve::default())?,
@@ -159,6 +156,8 @@ async fn start_server(args: &cli::Serve) -> EdgenResult {
         .init()
         .await
         .expect("Failed to initialise settings");
+
+    settings::create_project_dirs().await.unwrap();
 
     while run_server(args).await {
         info!("Settings have been updated, resetting environment")

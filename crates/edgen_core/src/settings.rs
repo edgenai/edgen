@@ -35,16 +35,29 @@ pub static SETTINGS: Lazy<RwLock<StaticSettings>> = Lazy::new(Default::default);
 pub static PROJECT_DIRS: Lazy<ProjectDirs> =
     Lazy::new(|| ProjectDirs::from("com", "EdgenAI", "Edgen").unwrap());
 pub static CONFIG_FILE: Lazy<PathBuf> = Lazy::new(|| build_config_file_path());
-pub static CHAT_COMPLETIONS_MODEL_DIR: Lazy<PathBuf> =
-    Lazy::new(|| build_chat_completions_model_dir());
-pub static AUDIO_TRANSCRIPTIONS_MODEL_DIR: Lazy<PathBuf> =
-    Lazy::new(|| build_audio_transcriptions_model_dir());
 
 /// Create project dirs if they don't exist
-pub fn create_project_dirs() -> Result<(), std::io::Error> {
+pub async fn create_project_dirs() -> Result<(), std::io::Error> {
     let config_dir = PROJECT_DIRS.config_dir();
-    let chat_completions_dir = get_chat_completions_model_dir();
-    let audio_transcriptions_dir = get_audio_transcriptions_model_dir();
+    let chat_completions_str = SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .chat_completions_models_dir
+        .to_string();
+
+    let chat_completions_dir = PathBuf::from(chat_completions_str);
+
+    let audio_transcriptions_str = SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .audio_transcriptions_models_dir
+        .to_string();
+
+    let audio_transcriptions_dir = PathBuf::from(audio_transcriptions_str);
 
     if !config_dir.is_dir() {
         std::fs::create_dir_all(&config_dir)?;
@@ -68,7 +81,7 @@ pub fn create_default_config_file() -> Result<(), std::io::Error> {
         return Ok(()); // everything is fine
     }
 
-    create_project_dirs()?;
+    std::fs::create_dir_all(&PROJECT_DIRS.config_dir())?;
 
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         StaticSettings { inner: None }.init().await.unwrap();
@@ -82,45 +95,9 @@ pub fn get_config_file_path() -> PathBuf {
     CONFIG_FILE.to_path_buf()
 }
 
-/// Get path to the directory for chat completion models
-pub fn get_chat_completions_model_dir() -> PathBuf {
-    CHAT_COMPLETIONS_MODEL_DIR.to_path_buf()
-}
-
-/// Get path to the directory for audio transcriptions models
-pub fn get_audio_transcriptions_model_dir() -> PathBuf {
-    AUDIO_TRANSCRIPTIONS_MODEL_DIR.to_path_buf()
-}
-
-/// Get path to the directory for chat completions models as string
-pub fn get_chat_completions_model_dir_as_string() -> String {
-    get_chat_completions_model_dir()
-        .into_os_string()
-        .into_string()
-        .unwrap()
-}
-
-/// Get path to the directory for audio transcriptions models as string
-pub fn get_audio_transcriptions_model_dir_as_string() -> String {
-    get_audio_transcriptions_model_dir()
-        .into_os_string()
-        .into_string()
-        .unwrap()
-}
-
 fn build_config_file_path() -> PathBuf {
     let config_dir = PROJECT_DIRS.config_dir();
     config_dir.join(Path::new("edgen.conf.yaml"))
-}
-
-fn build_chat_completions_model_dir() -> PathBuf {
-    let data_dir = PROJECT_DIRS.data_dir();
-    data_dir.join(Path::new("models/chat/completions"))
-}
-
-fn build_audio_transcriptions_model_dir() -> PathBuf {
-    let data_dir = PROJECT_DIRS.data_dir();
-    data_dir.join(Path::new("models/audio/transcriptions"))
 }
 
 #[derive(Error, Debug, Serialize)]
