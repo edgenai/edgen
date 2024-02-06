@@ -321,24 +321,17 @@ async fn observe_progress(
 }
 
 async fn have_tempdir(idx: usize, tmp: &PathBuf) -> bool {
-    let mut d = tokio::fs::metadata(&tmp).await;
-    for _ in 0..10 {
-        if d.is_ok() {
-            break;
-        };
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        d = tokio::fs::metadata(&tmp).await;
+    if !tmp.exists() {
+        let r = std::fs::create_dir(tmp);
+        if r.is_err() {
+            error!(
+                "progress observer: cannot create tmp directory ({:?}). Giving up",
+                r
+            );
+            add_error(idx, r.unwrap_err()).await;
+        }
     }
-    if d.is_err() {
-        error!(
-            "progress observer: can't read tmp directory ({:?}). Giving up",
-            d
-        );
-        add_error(idx, d.unwrap_err()).await;
-        return false;
-    };
-
-    true
+    return tmp.exists();
 }
 
 // TODO: we use the first file we find in the tmp directory.
@@ -625,8 +618,10 @@ mod tests {
         }
 
         // axum router
-        let router =
-            Router::new().route("/v1/audio/transcriptions/status", get(audio_transcriptions_status));
+        let router = Router::new().route(
+            "/v1/audio/transcriptions/status",
+            get(audio_transcriptions_status),
+        );
 
         let server = TestServer::new(router).expect("cannot instantiate TestServer");
 
