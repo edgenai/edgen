@@ -114,13 +114,13 @@ fn build_config_file_path() -> PathBuf {
 }
 
 fn build_chat_completions_model_dir() -> PathBuf {
-    let data_dir = PROJECT_DIRS.data_dir();
-    data_dir.join(Path::new("models/chat/completions"))
+    let cache_dir = PROJECT_DIRS.cache_dir();
+    cache_dir.join(Path::new("models/chat/completions"))
 }
 
 fn build_audio_transcriptions_model_dir() -> PathBuf {
-    let data_dir = PROJECT_DIRS.data_dir();
-    data_dir.join(Path::new("models/audio/transcriptions"))
+    let cache_dir = PROJECT_DIRS.cache_dir();
+    cache_dir.join(Path::new("models/audio/transcriptions"))
 }
 
 #[derive(Error, Debug, Serialize)]
@@ -187,9 +187,9 @@ impl SettingsParams {
 
 impl Default for SettingsParams {
     fn default() -> Self {
-        let data_dir = PROJECT_DIRS.data_dir();
-        let chat_completions_dir = data_dir.join(Path::new("models/chat/completions"));
-        let audio_transcriptions_dir = data_dir.join(Path::new("models/audio/transcriptions"));
+        let cache_dir = PROJECT_DIRS.cache_dir();
+        let chat_completions_dir = cache_dir.join(Path::new("models/chat/completions"));
+        let audio_transcriptions_dir = cache_dir.join(Path::new("models/audio/transcriptions"));
 
         let chat_completions_str = chat_completions_dir.into_os_string().into_string().unwrap();
         let audio_transcriptions_str = audio_transcriptions_dir
