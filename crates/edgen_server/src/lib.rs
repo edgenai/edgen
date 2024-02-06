@@ -186,6 +186,11 @@ async fn run_server(args: &cli::Serve) -> bool {
             "/v1/chat/completions/status",
             axum::routing::get(status::chat_completions_status),
         )
+        // ---- Audio ----------------------------------------------------------
+        .route(
+            "/v1/audio/transcriptions/status",
+            axum::routing::get(status::audio_transcriptions_status),
+        )
         // -- Miscellaneous services -------------------------------------------
         .route("/v1/misc/version", axum::routing::get(misc::edgen_version))
         .layer(CorsLayer::permissive());
@@ -386,7 +391,8 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
-    //TODO This test should pass with non-streaming completions!
+    // TODO This test should pass with non-streaming completions!
+    // TODO this is hanging inside LlamaModel::load_from_file_async
     async fn test_axum_completions() {
         init_settings_for_test().await;
 
