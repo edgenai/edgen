@@ -9,11 +9,14 @@ export const metadata = {
 For the chat completions endpoint, Edgen supports any model on Hugging Face that is tagged with the library GGUF. You can explore the available models in this [Hugging Face library](https://huggingface.co/models?library=gguf).
 
 ## Audio Transcriptions Endpoint
-For the audio transcriptions endpoint, Edgen supports models from the Hugging Face repo:
+For the audio transcriptions endpoint, Edgen supports all whisper.cpp models:
 
-| Model Size | Model URL |
+| Models | Model URL |
 |------------|-----------|
-| Small      | [distil-whisper/distil-small.en](https://huggingface.co/distil-whisper/distil-small.en/resolve/main/ggml-distil-small.en.bin) |
-| Medium     | [distil-whisper/distil-medium.en](https://huggingface.co/distil-whisper/distil-medium.en/resolve/main/ggml-medium-32-2.en.bin) |
-| Large V2   | [distil-whisper/distil-large-v2](https://huggingface.co/distil-whisper/distil-large-v2/resolve/main/ggml-large-32-2.en.bin) |
+| Whisper (all variants)    | [ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) |
+| distil-whisper-small.en      | [distil-whisper/distil-small.en](https://huggingface.co/distil-whisper/distil-small.en/resolve/main/ggml-distil-small.en.bin) |
+| distil-whisper-medium.en     | [distil-whisper/distil-medium.en](https://huggingface.co/distil-whisper/distil-medium.en/resolve/main/ggml-medium-32-2.en.bin) |
+| distil-whisper-large-v2   | [distil-whisper/distil-large-v2](https://huggingface.co/distil-whisper/distil-large-v2/resolve/main/ggml-large-32-2.en.bin) |
 
+## How to switch an active model?
+Just change the configuration file! Check [Documentation &raquo; Configuration](/documentation/configuration) and if Edgen cannot find the model you specified, it'll download it automatically from HuggingFace.

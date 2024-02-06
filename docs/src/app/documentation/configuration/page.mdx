@@ -10,18 +10,17 @@ The Edgen configuration. It is read from a file where you can define your models
 | --------------------------------- | ------------------------------------------ | ------------------------------------------------ |
 | `threads`                         | Number of CPU threads for processing       | \<number_physical_cores\> -1                     |
 | `default_uri`                     | Default URI for communication              | http://127.0.0.1:33322                           |
-| `chat_completions_models_dir`     | Directory for chat completions models      | `<CACHE_DIR>/edgen/models/chat/completions`      |
+| `chat_completions_models_dir`     | Directory for chat completions models      | `<DATA_DIR>/edgen/models/chat/completions`       |
 | `chat_completions_model_name`     | Name of chat completions model             | neural-chat-7b-v3-3.Q4_K_M.gguf                  |
 | `chat_completions_model_repo`     | HuggingFace repo for chat completions      | TheBloke/neural-chat-7B-v3-3-GGUF                |
-| `audio_transcriptions_models_dir` | Directory for audio transcriptions models  | `<CACHE_DIR>/edgen/models/audio/transcriptions`  |
+| `audio_transcriptions_models_dir` | Directory for audio transcriptions models  | `<DATA_DIR>/edgen/models/audio/transcriptions`   |
 | `audio_transcriptions_model_name` | Name of audio transcriptions model         | ggml-distil-small.en.bin                         |
 | `audio_transcriptions_model_repo` | HuggingFace repo for audio transcriptions  | distil-whisper/distil-small.en                   |
 
-### Configuration Paths for CACHE_DIR
+### Configuration Paths for DATA_DIR
 
 | Platform | Value                                                             | Example                                           |
 | -------- | ----------------------------------------------------------------- | ------------------------------------------------- |
-| Linux    | `$XDG_CACHE_HOME/_project_path_` or `$HOME/.cache/_project_path_` | `/home/alex/.cache/edgen`                         |
-| macOS    | `$HOME/Library/Caches/_project_path_`                             | `/Users/Alex/Library/Caches/com.EdgenAI.edgen`    |
-| Windows  | `{FOLDERID_LocalAppData}\_project_path_\cache`                    | `C:\Users\Alex\AppData\Local\EdgenAI\edgen\cache` |
-
+| Linux    | `$XDG_DATA_HOME/_project_path_` or `$HOME/.local/share/_project_path_` | `/home/Alex/.local/share/edgen`                 |
+| macOS    | `$HOME/Library/Application Support/_project_path_`               | `/Users/Alex/Library/Application Support/com.EdgenAI.Edgen`    |
+| Windows  | `{FOLDERID_RoamingAppData}\_project_path_\data`                   | `C:\Users\Alex\AppData\Roaming\EdgenAI\Edgen\data` |
