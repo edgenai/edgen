@@ -82,3 +82,50 @@ Discover how to convert audio to text or text to audio. OpenAI compliant. {{ cla
 
   </Col>
 </Row>
+
+---
+
+## Transcription status {{ tag: 'GET', label: 'http://localhost:33322/v1/audio/transcriptions/status' }}
+
+<Row>
+  <Col>
+
+    Shows the current status of the audio transcriptions endpoint (e.g. downloads)
+
+  </Col>
+  <Col sticky>
+
+    <CodeGroup title="Request" tag="GET" label="v1/audio/transcriptions/status">
+
+    ```bash {{ title: 'cURL' }}
+    curl http://localhost:33322/v1/audio/transcriptions/status \
+      -H "Authorization: Bearer no-key-required"
+    ```
+
+    ```python
+    from edgen import Edgen
+    client = Edgen()
+
+    status = client.audio.transcriptions.status.create()
+    print(status)
+    ```
+
+    ```ts
+    import Edgen from "edgen";
+
+    const client = new Edgen();
+
+    async function main() {
+      const status = await client.audio.transcriptions.status.create({});
+      console.log(status.text);
+    }
+    main();
+
+    ```
+    </CodeGroup>
+
+    ```json {{ title: 'Response' }}
+   {"active_model":"neural-chat-7b-v3-3.Q4_K_M.gguf","last_activity":"download","last_activity_result":"success","completions_ongoing":false,"download_ongoing":false,"download_progress":100,"last_errors":["Custom { kind: PermissionDenied, error: \"verboten\" }]}
+    ```
+  </Col>
+</Row>
