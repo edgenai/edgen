@@ -38,6 +38,7 @@
 ### Features
 
 - [x] Session Caching: ⚡Edgen maintains top performance with big contexts (big chat histories), by caching sessions. Sessions are auto-detected in function of the chat history.
+- [ ] GPU support: #16
 
 ### Endpoints
 
