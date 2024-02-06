@@ -4,3 +4,17 @@ export const metadata = {
 }
 
 # Configuration
+The Edgen configuration. It is read from a file where you can define your models' locations, select which model to use for each endpoint, the number of threads Edgen can use and more. {{ className: 'lead' }}
+
+| Config name                          | Description                                            | Default Value                                      |
+| ------------------------------------ | ------------------------------------------------------ | -------------------------------------------------- |
+| `threads`                            | Number of CPU threads for processing                      | \<number physical threads -1 \>                          |
+| `default_uri`                        | Default URI for communication                         | http://127.0.0.1:33322                             |
+| `chat_completions_models_dir`        | Directory for chat completions models                  | /home/francis/.local/share/edgen/models/chat/completions |
+| `chat_completions_model_name`        | Name of the chat completions model                     | neural-chat-7b-v3-3.Q4_K_M.gguf                    |
+| `chat_completions_model_repo`        | Repository for the chat completions model              | TheBloke/neural-chat-7B-v3-3-GGUF                  |
+| `audio_transcriptions_models_dir`    | Directory for audio transcriptions models             | /home/francis/.local/share/edgen/models/audio/transcriptions |
+| `audio_transcriptions_model_name`    | Name of the audio transcriptions model                 | ggml-distil-small.en.bin                          |
+| `audio_transcriptions_model_repo`    | Repository for the audio transcriptions model          | distil-whisper/distil-small.en                     |
+
+## Configuration file location

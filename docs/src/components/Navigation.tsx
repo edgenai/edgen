@@ -241,7 +241,6 @@ export const navigation: Array<NavGroup> = [
   {
     title: 'Documentation',
     links: [
-      { title: 'Overview', href: '/documentation/overview' },
       { title: 'Getting Started', href: '/documentation/getting-started' },
       { title: 'Configuration', href: '/documentation/configuration' },
       { title: 'Models', href: '/documentation/models' },
