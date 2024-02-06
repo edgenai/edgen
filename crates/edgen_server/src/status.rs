@@ -300,14 +300,13 @@ async fn observe_progress(
         let mut timestamp = Instant::now();
         while m.is_ok() {
             let s = m.unwrap().len() as u64;
-            let t = size;
-            let p = (s * 100) / t;
+            let p = (s * 100) / size;
 
-            if size > last_size {
-                last_size = size;
+            if s > last_size {
+                last_size = s;
                 timestamp = Instant::now();
-            } else if Instant::now().duration_since(timestamp) > Duration::from_secs(60) {
-                warn!("progress observer: no download progress in a minute. Giving up");
+            } else if Instant::now().duration_since(timestamp) > Duration::from_secs(180) {
+                warn!("progress observer: no download progress in three minutes. Giving up");
                 return;
             };
 
