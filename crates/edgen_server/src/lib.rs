@@ -88,7 +88,6 @@ pub type EdgenResult = Result<(), String>;
 
 /// Main entry point for the server process
 pub fn start(command: &cli::TopLevel) -> EdgenResult {
-
     match &command.subcommand {
         None => serve(&cli::Serve::default())?,
         Some(cli::Command::Serve(serve_args)) => serve(serve_args)?,

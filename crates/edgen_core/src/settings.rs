@@ -39,6 +39,7 @@ pub static CONFIG_FILE: Lazy<PathBuf> = Lazy::new(|| build_config_file_path());
 /// Create project dirs if they don't exist
 pub async fn create_project_dirs() -> Result<(), std::io::Error> {
     let config_dir = PROJECT_DIRS.config_dir();
+
     let chat_completions_str = SETTINGS
         .read()
         .await

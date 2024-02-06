@@ -608,12 +608,7 @@ pub async fn chat_completions(
         });
     }
 
-    let mut model = Model::new(
-        ModelKind::LLM,
-        &model_name,
-        &repo,
-        &PathBuf::from(&dir),
-    );
+    let mut model = Model::new(ModelKind::LLM, &model_name, &repo, &PathBuf::from(&dir));
 
     model
         .preload()
@@ -778,12 +773,7 @@ pub async fn create_transcription(
         });
     }
 
-    let mut model = Model::new(
-        ModelKind::Whisper,
-        &model_name,
-        &repo,
-        &PathBuf::from(&dir),
-    );
+    let mut model = Model::new(ModelKind::Whisper, &model_name, &repo, &PathBuf::from(&dir));
 
     model.preload().await?;
 
