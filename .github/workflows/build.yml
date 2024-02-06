@@ -18,7 +18,7 @@ jobs:
         include:
           - name: Linux-x86_64
             target: x86_64-unknown-linux-gnu
-            runner: ubuntu-18.04
+            runner: ubuntu-20.04
 
           - name: macOS-universal
             target: universal-apple-darwin
