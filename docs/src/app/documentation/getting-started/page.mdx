@@ -5,5 +5,98 @@ export const metadata = {
 
 # Getting Started
 
-This section is for developers looking to . {{ className: 'lead' }}
+This section is dedicated for developers looking to contribute to Edgen or build it from source. {{ className: 'lead' }}
 
+<Note>
+  If you just want to quickly use Edgen by using pre-built binaries, please check [Guides &raquo; Quickstart](/guides/quickstart).
+</Note>
+
+## Prerequisites
+
+### Windows
+
+{/* #### 1. Microsoft Visual Studio C++ Build Tools */}
+TODO
+
+
+### MacOS
+
+#### 1. CLang and macOS development dependencies
+```bash
+xcode-select --install
+```
+#### 2. Install rust
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### Linux
+
+#### 1. Install system dependencies
+<CodeGroup >
+
+```bash {{ title: 'Ubuntu' }}
+sudo apt update
+sudo apt install libwebkit2gtk-4.0-dev \
+    build-essential \
+    curl \
+    wget \
+    file \
+    libssl-dev \
+    libgtk-3-dev \
+    libayatana-appindicator3-dev \
+    librsvg2-dev
+```
+
+```bash {{ title: 'Fedora' }}
+sudo dnf check-update
+sudo dnf install webkit2gtk4.0-devel \
+    openssl-devel \
+    curl \
+    wget \
+    file \
+    libappindicator-gtk3-devel \
+    librsvg2-devel
+sudo dnf group install "C Development Tools and Libraries"
+```
+
+```bash {{ title: 'Arch' }}
+sudo pacman -Syu
+sudo pacman -S --needed \
+    webkit2gtk \
+    base-devel \
+    curl \
+    wget \
+    file \
+    openssl \
+    appmenu-gtk-module \
+    gtk3 \
+    libappindicator-gtk3 \
+    librsvg \
+    libvips
+```
+
+```bash {{ title: 'NixOS' }}
+# flake.nix
+nix develop
+```
+
+</CodeGroup>
+
+#### 2. Install rust
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+## Build
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/edgenai/edgen.git
+```
+
+### 2. Build and run
+```bash
+# or without --release for debug build
+cargo run --release
+```
