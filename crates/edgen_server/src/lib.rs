@@ -386,7 +386,8 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
-    //TODO This test should pass with non-streaming completions!
+    // TODO This test should pass with non-streaming completions!
+    // TODO this is hanging inside LlamaModel::load_from_file_async
     async fn test_axum_completions() {
         init_settings_for_test().await;
 

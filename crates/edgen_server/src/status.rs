@@ -25,6 +25,16 @@ use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 use utoipa::ToSchema;
 
+/// GET `/v1/chat/completions/status`: returns the current status of the /chat/completions endpoint.
+///
+/// The status is returned as json value AIStatus.
+/// For any error, the version endpoint returns "internal server error".
+pub async fn chat_completions_status() -> Response {
+    let rwstate = get_chat_completions_status();
+    let locked = rwstate.read().await;
+    Json(locked.clone()).into_response()
+}
+
 /// Recent Activity on a specific endpoint, e.g. Completions or Download.
 #[derive(ToSchema, Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub enum Activity {
@@ -50,7 +60,7 @@ pub enum ActivityResult {
 }
 
 /// Current Endpoint status.
-#[derive(ToSchema, Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[derive(ToSchema, Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct AIStatus {
     active_model: String,
     last_activity: Activity,
@@ -103,6 +113,13 @@ pub fn get_audio_transcriptions_status() -> &'static RwLock<AIStatus> {
     &AISTATES.endpoints[EP_AUDIO_TRANSCRIPTIONS]
 }
 
+/// Set active model
+pub async fn set_chat_completions_active_model(model: &str) {
+    let rwstate = get_chat_completions_status();
+    let mut state = rwstate.write().await;
+    state.active_model = model.to_string();
+}
+
 /// Set download ongoing
 pub async fn set_chat_completions_download(ongoing: bool) {
     if ongoing {
@@ -142,16 +159,6 @@ where
         state.last_errors.pop_front();
     }
     state.last_errors.push_back(format!("{:?}", e));
-}
-
-/// GET `/v1/chat/completions/status`: returns the current status of the /chat/completions endpoint.
-///
-/// The status is returned as json value AIStatus.
-/// For any error, the version endpoint returns "internal server error".
-pub async fn chat_completions_status() -> Response {
-    let rwstate = get_chat_completions_status();
-    let locked = rwstate.read().await;
-    Json(locked.clone()).into_response()
 }
 
 // axum provides shared state but using this shared state would force us
@@ -296,16 +303,45 @@ mod tests {
     use super::*;
     use std::io::{Error, ErrorKind};
 
-    #[tokio::test]
-    async fn test_get_status_untouched() {
-        reset_chat_completions_status().await;
-        let status = get_chat_completions_status().read().await;
-        assert_eq!(*status, AIStatus::default());
+    use axum::routing::get;
+    use axum::Router;
+    use axum_test::TestServer;
+
+    fn default_status_json() -> String {
+        "{\"active_model\":\"unknown\",\
+          \"last_activity\":\"Unknown\",\
+          \"last_activity_result\":\"Unknown\",\
+          \"completions_ongoing\":false,\
+          \"download_ongoing\":false,\
+          \"download_progress\":0,\
+          \"last_errors\":[]\
+         }"
+        .to_string()
     }
 
+    #[test]
+    fn test_serialize_status() {
+        let state = AIStatus::default();
+        assert_eq!(
+            serde_json::to_string(&state).unwrap(),
+            default_status_json()
+        );
+    }
+
+    #[test]
+    fn test_deserialize_status() {
+        let expected = AIStatus::default();
+        let state = serde_json::from_str::<AIStatus>(&default_status_json()).unwrap();
+        assert_eq!(state, expected);
+    }
+
+    // This test should not be split into sub-tests.
+    // The problem is that tests run in parallel
+    // and we are testing one common resource, the global status.
     #[tokio::test]
-    async fn test_get_status_changed() {
+    async fn test_get_status() {
         reset_chat_completions_status().await;
+
         // default
         let mut expected = AIStatus::default();
 
@@ -390,10 +426,34 @@ mod tests {
         assert_eq!(expected.last_errors.len(), MAX_ERRORS);
 
         {
+            // since we don't know the exact order in which tokio runs the tasks
+            // the order of errors in the deques is random.
+            // therefore, we sort them before asserting equality.
             let status = get_chat_completions_status().read().await;
             let mut v1 = Vec::from(status.last_errors.clone());
             let mut v2 = Vec::from(expected.last_errors.clone());
             assert_eq!(v1.sort(), v2.sort());
         }
+
+        // axum router
+        let router =
+            Router::new().route("/v1/chat/completions/status", get(chat_completions_status));
+
+        let server = TestServer::new(router).expect("cannot instantiate TestServer");
+
+        let response = server.get("/v1/chat/completions/status").await;
+
+        response.assert_status_ok();
+        assert!(response.text().len() > 0);
+        assert_eq!(response.json::<AIStatus>().active_model, "unknown");
+
+        let model = "shes-a-model-and-shes-looking-good".to_string();
+        set_chat_completions_active_model(&model).await;
+
+        let response = server.get("/v1/chat/completions/status").await;
+
+        response.assert_status_ok();
+        assert!(response.text().len() > 0);
+        assert_eq!(response.json::<AIStatus>().active_model, model);
     }
 }
