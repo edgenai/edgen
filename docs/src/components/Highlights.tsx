@@ -1,33 +1,32 @@
 import { Button } from '@/components/Button'
 import { Heading } from '@/components/Heading'
 
-const guides = [
+const highlights = [
   {
-    href: '/authentication',
-    name: 'Authentication',
-    description: 'Learn how to authenticate your API requests.',
+    href: '/guides/quickstart',
+    name: 'Quickstart',
+    description: 'Start developing your next GenAI app powered by Edgen.',
   },
   {
-    href: '/pagination',
-    name: 'Pagination',
-    description: 'Understand how to work with paginated responses.',
+    href: '/documentation/configuration',
+    name: 'Configuration',
+    description: 'How to configure Edgen. How to switch between models.',
   },
   {
-    href: '/webhooks',
-    name: 'Webhooks',
-    description:
-      'Learn how to programmatically configure webhooks for your app.',
+    href: '/documentation/models',
+    name: 'Models',
+    description: 'Learn which models Edgen support, for each endpoint.',
   },
 ]
 
-export function Guides() {
+export function Highlights() {
   return (
     <div className="my-16 xl:max-w-none">
-      <Heading level={2} id="guides">
-        Guides
+      <Heading level={2} id="highlights">
+        Highlights
       </Heading>
       <div className="not-prose mt-4 grid grid-cols-1 gap-8 border-t border-zinc-900/5 pt-10 dark:border-white/5 sm:grid-cols-2 xl:grid-cols-4">
-        {guides.map((guide) => (
+        {highlights.map((guide) => (
           <div key={guide.href}>
             <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">
               {guide.name}

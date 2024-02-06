@@ -200,6 +200,7 @@ impl Default for SettingsParams {
         let cpus = num_cpus::get_physical();
         let threads = if cpus > 1 { cpus - 1 } else { 1 };
 
+        // if changed, please update docs at docs/src/app/documentation/configuration/page.mdx
         Self {
             threads: threads as u32,
             default_uri: "http://127.0.0.1:33322".to_string(),

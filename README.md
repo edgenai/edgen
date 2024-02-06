@@ -5,7 +5,7 @@
 </p>
 
 <h3 align="center">
-    A Local GenAI API Server: A drop-in replacement for OpenAI's API
+    A Local GenAI API Server: A drop-in replacement for OpenAI's API for Local GenAI
 </h3>
 
 <p align="center">
@@ -18,17 +18,19 @@
 </p>
 
 <div align="center">
-    <img src="docs/assets/edgen_architecture_overview.svg" alt="⚡Edgen architecture overview" height="500">
-    <p align="center">⚡Edgen architecture overview</p>
+    <img src="https://edgen.co/images/demo.gif" alt="⚡Edgen architecture overview">
+    <p align="center">
+        <a href="https://chat.edgen.co">EdgenChat</a>, a local chat app powered by ⚡Edgen
+    </p>
 </div>
 
-- [x] **OpenAI Compliant API**: ⚡Edgen implements the same API as OpenAI, making it a drop-in replacement.
-- [x] **Multi-Endpoint Support**: ⚡Edgen exposes multiple AI endpoints such as chat completions (LLMs) and Speech-to-Text (Whisper) for audio transcriptions.
-- [x] **Model Agnostic**: LLMs (Llama2, Mistral, Mixtral...), Speech-to-text (whisper) and many others.
+- [x] **OpenAI Compliant API**: ⚡Edgen implements the [same API](https://docs.edgen.co/api-reference) as OpenAI, making it a drop-in replacement.
+- [x] **Multi-Endpoint Support**: ⚡Edgen exposes multiple AI endpoints such as chat completions (LLMs) and speech-to-text (Whisper) for audio transcriptions.
+- [x] **Model Agnostic**: LLMs (Llama2, Mistral, Mixtral...), Speech-to-text (whisper) and [many others](https://docs.edgen.co/documentation/models).
 - [x] **Optimized Inference**: You don't need to take a PhD in AI optimization. ⚡Edgen abstracts the complexity of optimizing inference for different hardware, platforms and models.
 - [x] **Modular**: ⚡Edgen is **model** and **runtime** agnostic. New models can be added easily and ⚡Edgen can select the best runtime for the user's hardware: you don't need to keep up about the latest models and ML runtimes - **⚡Edgen will do that for you**.
 - [x] **Model Caching**: ⚡Edgen caches foundational models locally, so 1 model can power hundreds of different apps - users don't need to download the same model multiple times.
-- [x] **Native**: ⚡Edgen is build in 🦀Rust and is natively compiled to all popular platforms: **Windows, MacOS and Linux**. No docker required.
+- [x] **Native**: ⚡Edgen is built in 🦀Rust and is natively compiled to all popular platforms: **Windows, MacOS and Linux**. No docker required.
 - [ ] **Graphical Interface**: A graphical user interface to help users efficiently manage their models, endpoints and permissions.
 
 ⚡Edgen lets you use GenAI in your app, completely **locally** on your user's devices, for **free** and with **data-privacy**. It's a drop-in replacement for OpenAI (it uses the a compatible API), supports various functions like text generation, speech-to-text and works on Windows, Linux, and MacOS.
@@ -68,6 +70,8 @@
 1. [Download](https://edgen.co/download) and start ⚡Edgen
 2. Chat with ⚡[EdgenChat](https://chat.edgen.co)
 
+Ready to start your own GenAI application? [Checkout our guides](https://docs.edgen.co/guides)!
+
 ⚡Edgen usage:
 
 ```
@@ -103,24 +107,17 @@ Options:
   --help            display usage information
 ```
 
-# Developers
-
-The following sections are for people looking to contribute to ⚡Edgen.
-
 ## Architecture Overview
 
-## Quickstart
+<div align="center">
+    <img src="docs/assets/edgen_architecture_overview.svg" alt="⚡Edgen architecture overview" width="400">
+    <p align="center">⚡Edgen architecture overview</p>
+</div>
 
-Edgen uses [Nix](https://nixos.org/) for dependency management and development environments.
-To get up-and-running quickly, [install Nix](https://nixos.org/download.html),
-[enable Nix flakes](https://nixos.wiki/wiki/Flakes), and run:
+## Contribute
 
-```bash
-nix develop
-# TODO: Insert run command here
-```
-
-Then open your favorite IDE from the shell, and you're ready to go!
+If you don't know where to start, check [Edgen's roadmap](https://github.com/orgs/edgenai/projects/1/views/1)!
+Before you start working on something, see if there's an existing issue/pull-request. Pop into Discord to check with the team or see if someone's already tackling it.
 
 ## Communication Channels
 
