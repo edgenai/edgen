@@ -114,6 +114,11 @@ Options:
     <p align="center">⚡Edgen architecture overview</p>
 </div>
 
+## Contribute
+
+If you don't know where to start, check [Edgen's roadmap](https://github.com/orgs/edgenai/projects/1/views/1)!
+Before you start working on something, see if there's an existing issue/pull-request. Pop into Discord to check with the team or see if someone's already tackling it.
+
 ## Communication Channels
 
 - [Edgen Discord server](https://discord.gg/QUXbwqdMRs): Real time discussions with the ⚡Edgen team and other users.

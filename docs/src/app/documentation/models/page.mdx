@@ -5,6 +5,15 @@ export const metadata = {
 
 # Models
 
+## Chat Completions Endpoint
+For the chat completions endpoint, Edgen supports any model on Hugging Face that is tagged with the library GGUF. You can explore the available models in this [Hugging Face library](https://huggingface.co/models?library=gguf).
 
+## Audio Transcriptions Endpoint
+For the audio transcriptions endpoint, Edgen supports models from the Hugging Face repo:
 
-## Models location
+| Model Size | Model URL |
+|------------|-----------|
+| Small      | [distil-whisper/distil-small.en](https://huggingface.co/distil-whisper/distil-small.en/resolve/main/ggml-distil-small.en.bin) |
+| Medium     | [distil-whisper/distil-medium.en](https://huggingface.co/distil-whisper/distil-medium.en/resolve/main/ggml-medium-32-2.en.bin) |
+| Large V2   | [distil-whisper/distil-large-v2](https://huggingface.co/distil-whisper/distil-large-v2/resolve/main/ggml-large-32-2.en.bin) |
+
