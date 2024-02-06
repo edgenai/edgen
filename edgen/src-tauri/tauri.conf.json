@@ -49,7 +49,7 @@
     "updater": {
       "active": true,
       "endpoints": [
-        "https://github.com/francis2tm/hello-world/releases/latest/download/latest.json"
+        "https://github.com/edgenai/edgen/releases/latest/download/latest.json"
       ],
       "dialog": true,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUzMjgzN0I5N0ZFQUM2QzEKUldUQnh1cC91VGNvNDlGYU44a3VqUk1KRHhOdzJUbjNjUzBIZTNIQU9HYWJ4Q3BTdTV2Q2U1TEIK"
