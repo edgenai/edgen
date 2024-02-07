@@ -6,12 +6,14 @@
 # runs tests with pytest
 # stops the server
 
+cargo build --release
+
 echo "================================================"
 date
-cargo run version
+target/release/edgen version
 echo "================================================"
 
-cargo run serve --nogui & > tests/tests.log 2>&1
+target/release/edgen serve --nogui & > tests/tests.log 2>&1
 PID=$!
 
 sleep 1
