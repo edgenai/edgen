@@ -321,7 +321,7 @@ async fn observe_progress(
 
 async fn have_tempdir(idx: usize, tmp: &PathBuf) -> bool {
     if !tmp.exists() {
-        let r = std::fs::create_dir(tmp);
+        let r = std::fs::create_dir_all(tmp);
         if r.is_err() {
             error!(
                 "progress observer: cannot create tmp directory ({:?}). Giving up",

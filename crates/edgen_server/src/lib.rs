@@ -122,7 +122,10 @@ pub fn config_reset() -> EdgenResult {
         std::fs::remove_file(&path).unwrap();
     }
 
-    settings::create_default_config_file().unwrap();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        settings::create_default_config_file().unwrap();
+    });
 
     Ok(())
 }
