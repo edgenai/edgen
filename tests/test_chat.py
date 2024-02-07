@@ -31,5 +31,26 @@ def test_completions_streaming():
     # print(answer)
     assert(type(answer) is str)
 
+"""
+def test_completions():
+    try:
+        answer = client.chat.completions.create(
+            model="default",
+            messages=[
+                {
+                    "role": "user",
+                    "content": "What is the result of 1+2?",
+                },
+            ],
+        )
+    except APIConnectionError:
+        pytest.fail("No connection. Is edgen running?")
+
+    assert(answer.response.status_code == 200)
+
+    print(answer)
+    assert(type(answer) is str)
+"""
+
 if __name__ == "__main__":
    test_completions_streaming()

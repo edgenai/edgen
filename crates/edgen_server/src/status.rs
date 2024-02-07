@@ -43,37 +43,10 @@ pub async fn audio_transcriptions_status() -> Response {
     Json(state.clone()).into_response()
 }
 
-/// Recent Activity on a specific endpoint, e.g. Completions or Download.
-#[derive(ToSchema, Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
-pub enum Activity {
-    /// Last activity was ChatCompletions
-    ChatCompletions,
-    /// Last activity was AudioTranscriptions
-    AudioTranscriptions,
-    /// Last activity was a model download
-    Download,
-    /// No known activity was recently performed
-    Unknown,
-}
-
-/// Result of the last activity on a specific endpoint, e.g. Success or Failed.
-#[derive(ToSchema, Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
-pub enum ActivityResult {
-    /// Last activity finished successfully
-    Success,
-    /// Last activity failed
-    Failed,
-    /// Result of the activity is unkown or there was no activity
-    Unknown,
-}
-
 /// Current Endpoint status.
 #[derive(ToSchema, Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct AIStatus {
     active_model: String,
-    last_activity: Activity,
-    last_activity_result: ActivityResult,
-    completions_ongoing: bool,
     download_ongoing: bool,
     download_progress: u64,
     last_errors: VecDeque<String>,
@@ -83,9 +56,6 @@ impl Default for AIStatus {
     fn default() -> AIStatus {
         AIStatus {
             active_model: "unknown".to_string(),
-            last_activity: Activity::Unknown,
-            last_activity_result: ActivityResult::Unknown,
-            completions_ongoing: false,
             download_ongoing: false,
             download_progress: 0,
             last_errors: VecDeque::from([]),
@@ -368,9 +338,6 @@ mod tests {
 
     fn default_status_json() -> String {
         "{\"active_model\":\"unknown\",\
-          \"last_activity\":\"Unknown\",\
-          \"last_activity_result\":\"Unknown\",\
-          \"completions_ongoing\":false,\
           \"download_ongoing\":false,\
           \"download_progress\":0,\
           \"last_errors\":[]\
