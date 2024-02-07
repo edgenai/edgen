@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use directories::ProjectDirs;
+use futures::executor::block_on;
 use notify::{Config, Event, EventHandler, EventKind, PollWatcher, RecursiveMode, Watcher};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -27,6 +28,7 @@ use uuid::Uuid;
 
 /// The file extension of a YAML file, which is the format used to store settings.
 const FILE_EXTENSION: &str = ".yaml";
+const FILE_NAME: &str = "edgen.conf";
 
 // TODO look for a better way to do this, since [Settings] already uses a lock
 pub static SETTINGS: Lazy<RwLock<StaticSettings>> = Lazy::new(Default::default);
@@ -48,7 +50,7 @@ pub async fn create_project_dirs() -> Result<(), std::io::Error> {
         .chat_completions_models_dir
         .to_string();
 
-    let chat_completions_dir = PathBuf::from(chat_completions_str);
+    let chat_completions_dir = PathBuf::from(&chat_completions_str);
 
     let audio_transcriptions_str = SETTINGS
         .read()
@@ -58,7 +60,7 @@ pub async fn create_project_dirs() -> Result<(), std::io::Error> {
         .audio_transcriptions_models_dir
         .to_string();
 
-    let audio_transcriptions_dir = PathBuf::from(audio_transcriptions_str);
+    let audio_transcriptions_dir = PathBuf::from(&audio_transcriptions_str);
 
     if !config_dir.is_dir() {
         std::fs::create_dir_all(&config_dir)?;
@@ -77,14 +79,7 @@ pub async fn create_project_dirs() -> Result<(), std::io::Error> {
 
 /// Create the default config file if it does not exist
 pub fn create_default_config_file() -> Result<(), std::io::Error> {
-    let config_file = get_config_file_path();
-    if config_file.is_file() {
-        return Ok(()); // everything is fine
-    }
-
-    std::fs::create_dir_all(&PROJECT_DIRS.config_dir())?;
-
-    tokio::runtime::Runtime::new().unwrap().block_on(async {
+    block_on(async {
         StaticSettings { inner: None }.init().await.unwrap();
     });
 
@@ -98,7 +93,8 @@ pub fn get_config_file_path() -> PathBuf {
 
 fn build_config_file_path() -> PathBuf {
     let config_dir = PROJECT_DIRS.config_dir();
-    config_dir.join(Path::new("edgen.conf.yaml"))
+    let filename = FILE_NAME.to_string() + FILE_EXTENSION;
+    config_dir.join(Path::new(&filename))
 }
 
 #[derive(Error, Debug, Serialize)]
@@ -210,6 +206,9 @@ impl SettingsInner {
         let params = if is_new {
             info!("Creating new settings file: {}", path.to_string_lossy());
 
+            tokio::fs::create_dir_all(directory)
+                .await
+                .map_err(move |e| SettingsError::Write(e.to_string()))?;
             tokio::fs::write(&path, "")
                 .await
                 .map_err(move |e| SettingsError::Write(e.to_string()))?;
@@ -433,7 +432,7 @@ impl StaticSettings {
     pub async fn init(&mut self) -> Result<(), SettingsError> {
         if self.inner.is_none() {
             let directory = PROJECT_DIRS.config_dir();
-            let name = "edgen.conf";
+            let name = FILE_NAME;
             self.inner = Some(Settings::load_or_create(directory, name).await?);
             Ok(())
         } else {
