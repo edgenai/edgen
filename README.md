@@ -18,7 +18,7 @@
 </p>
 
 <div align="center">
-    <img src="https://edgen.co/images/demo.gif" alt="⚡Edgen architecture overview">
+    <img src="https://edgen.co/images/demo.gif" alt="EdgenChat, a local chat app powered by ⚡Edgen">
     <p align="center">
         <a href="https://chat.edgen.co">EdgenChat</a>, a local chat app powered by ⚡Edgen
     </p>
