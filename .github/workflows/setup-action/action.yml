@@ -12,6 +12,7 @@ inputs:
 
 runs:
   using: "composite"
+  shell: bash
   steps:
     - name: "Setup actions/checkout"
       uses: actions/checkout@v4
