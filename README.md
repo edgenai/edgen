@@ -24,7 +24,7 @@
     </p>
 </div>
 
-- [x] **OpenAI Compliant API**: ⚡Edgen implements the [same API](https://docs.edgen.co/api-reference) as OpenAI, making it a drop-in replacement.
+- [x] **OpenAI Compliant API**: ⚡Edgen implements an [OpenAI compatible API](https://docs.edgen.co/api-reference), making it a drop-in replacement.
 - [x] **Multi-Endpoint Support**: ⚡Edgen exposes multiple AI endpoints such as chat completions (LLMs) and speech-to-text (Whisper) for audio transcriptions.
 - [x] **Model Agnostic**: LLMs (Llama2, Mistral, Mixtral...), Speech-to-text (whisper) and [many others](https://docs.edgen.co/documentation/models).
 - [x] **Optimized Inference**: You don't need to take a PhD in AI optimization. ⚡Edgen abstracts the complexity of optimizing inference for different hardware, platforms and models.
