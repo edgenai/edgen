@@ -34,7 +34,7 @@ jobs:
       - name: "Setup actions/checkout"
         uses: actions/checkout@v4
 
-      - name: "Setup environment"
+      - name: "Setup-action"
         uses: ./.github/workflows/setup.yml
         with:
           runner: ${{ matrix.runner }}
