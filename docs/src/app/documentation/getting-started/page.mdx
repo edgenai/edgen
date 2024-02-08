@@ -45,39 +45,14 @@ sudo apt install libwebkit2gtk-4.0-dev \
     libssl-dev \
     libgtk-3-dev \
     libayatana-appindicator3-dev \
-    librsvg2-dev
-```
-
-```bash {{ title: 'Fedora' }}
-sudo dnf check-update
-sudo dnf install webkit2gtk4.0-devel \
-    openssl-devel \
-    curl \
-    wget \
-    file \
-    libappindicator-gtk3-devel \
-    librsvg2-devel
-sudo dnf group install "C Development Tools and Libraries"
-```
-
-```bash {{ title: 'Arch' }}
-sudo pacman -Syu
-sudo pacman -S --needed \
-    webkit2gtk \
-    base-devel \
-    curl \
-    wget \
-    file \
-    openssl \
-    appmenu-gtk-module \
-    gtk3 \
-    libappindicator-gtk3 \
-    librsvg \
-    libvips
+    librsvg2-dev \
+    cmake \
+    llvm \
+    clang
 ```
 
 ```bash {{ title: 'NixOS' }}
-# flake.nix
+# with flake.nix
 nix develop
 ```
 
