@@ -11,7 +11,7 @@ use edgen_server::cli;
 use edgen_server::start;
 
 pub fn test_message(msg: &str) {
-    println!("=== Test {} ====================", msg);
+    println!("=== Test {}", msg);
 }
 
 pub fn with_save_env<F>(f: F)
@@ -23,7 +23,15 @@ where
     println!("with save env!");
 
     backup_env().unwrap();
+
+    println!("STARTING TESTS");
+    println!("==============");
+
     let r = panic::catch_unwind(f);
+
+    println!("===========");
+    println!("TESTS READY");
+
     let _ = match restore_env() {
         Ok(_) => (),
         Err(e) => {
@@ -119,6 +127,8 @@ fn backup_env() -> Result<(), BackupError> {
 
     let data = settings::PROJECT_DIRS.data_dir();
     let data_bkp = backup_dir.join("data");
+
+    println!("data   bkp: {:?}", data_bkp);
 
     copy_dir(&data, &data_bkp)?;
 
