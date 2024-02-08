@@ -38,8 +38,7 @@
         "resizable": true,
         "title": "Edgen",
         "width": 800,
-        "height": 600,
-        "visible": false
+        "height": 600
       }
     ],
     "systemTray": {

@@ -26,6 +26,7 @@ fn greet(name: &str) -> String {
 
 pub fn run() {
     // here `"quit".to_string()` defines the menu item id, and the second parameter is the menu item label.
+    let menu_item_show = CustomMenuItem::new("show".to_string(), "Show");
     let menu_item_quit = CustomMenuItem::new("quit".to_string(), "Quit");
     let menu_item_edgen_chat = CustomMenuItem::new("edgenchat".to_string(), "EdgenChat");
     let menu_item_config = CustomMenuItem::new("config".to_string(), "Config");
@@ -37,6 +38,7 @@ pub fn run() {
         .add_item(menu_item_config)
         .add_item(menu_item_reset_config)
         .add_native_item(SystemTrayMenuItem::Separator)
+        .add_item(menu_item_show)
         .add_item(menu_item_quit);
 
     tauri::Builder::default()
