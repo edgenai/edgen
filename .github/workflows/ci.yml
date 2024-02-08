@@ -1,0 +1,19 @@
+name: "CI"
+on:
+  push:
+  pull_request:
+
+jobs:
+  formatting:
+    name: cargo fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: "Setup environment"
+        uses: ./.github/workflows/setup.yml
+        with:
+          runner: ubuntu-20.04
+          target: x86_64-unknown-linux-gnu
+
+      - name: Rustfmt Check
+        uses: actions-rust-lang/rustfmt@v1
