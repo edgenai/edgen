@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: "Setup environment"
-        uses: ./.github/workflows/setup.yml
+        uses: ./.github/workflows/setup-action
         with:
           runner: ubuntu-20.04
           target: x86_64-unknown-linux-gnu
