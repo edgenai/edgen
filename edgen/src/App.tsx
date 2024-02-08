@@ -1,19 +1,26 @@
-
+import { useState } from "react";
+import { invoke } from "@tauri-apps/api/tauri";
 import "./App.css";
 
-import edgenLogo from "./assets/edgen_logo.svg"
-
 function App() {
-
   return (
     <div className="container">
-      <h1>Welcome to Edgen!</h1>
-
       <div>
-        <img src={edgenLogo} className="logo edgen" alt="Edgen logo" />
+        <a href="https://chat.edgen.co" target="_blank">
+          <img
+            src="/EdgenAI_dark_colored.svg"
+            className="logo"
+            alt="EdgenChat"
+          />
+        </a>
       </div>
-
-      <p>GUI coming soon</p>
+      <p>
+        Edgen is now <strong>running</strong>! Start chatting now with
+        EdgenChat.
+      </p>
+      <a className="logo" href="https://chat.edgen.co" target="_blank">
+        <button>EdgenChat</button>
+      </a>
     </div>
   );
 }
