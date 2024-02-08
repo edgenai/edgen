@@ -11,7 +11,7 @@ on:
         type: string
 
 jobs:
-  triage:
+  setup:
     runs-on: inputs.runner
     steps:
       - name: "Setup actions/checkout"

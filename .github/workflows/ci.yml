@@ -4,8 +4,8 @@ on:
   pull_request:
 
 jobs:
-  formatting:
-    name: cargo fmt
+  ci:
+    name: CI
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
