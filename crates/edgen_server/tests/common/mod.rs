@@ -6,9 +6,9 @@ use std::thread;
 
 use copy_dir::copy_dir;
 
-use edgen_server::start;
-use edgen_server::cli;
 use edgen_core::settings;
+use edgen_server::cli;
+use edgen_server::start;
 
 pub fn test_message(msg: &str) {
     println!("=== Test {} ====================", msg);
@@ -22,19 +22,19 @@ where
 {
     println!("with save env!");
 
-     backup_env().unwrap();
-     let r = panic::catch_unwind(f);
-     let _ = match restore_env() {
-         Ok(_) => (),
-         Err(e) => {
-             panic!("Panic! Cannot restore your environment: {:?}", e);
-         }
-     };
+    backup_env().unwrap();
+    let r = panic::catch_unwind(f);
+    let _ = match restore_env() {
+        Ok(_) => (),
+        Err(e) => {
+            panic!("Panic! Cannot restore your environment: {:?}", e);
+        }
+    };
 
-     match r {
-         Err(e) => panic::resume_unwind(e),
-         Ok(_) => (),
-     }
+    match r {
+        Err(e) => panic::resume_unwind(e),
+        Ok(_) => (),
+    }
 }
 
 pub fn with_edgen<F>(f: F)
@@ -45,27 +45,26 @@ where
         let mut args = cli::Serve::default();
         args.nogui = true;
         let cmd = cli::Command::Serve(args);
-        start(&cli::TopLevel{
-             subcommand: Some(cmd),
-        }).unwrap();
+        start(&cli::TopLevel {
+            subcommand: Some(cmd),
+        })
+        .unwrap();
     });
 
     // give the server time to start
     thread::sleep(std::time::Duration::from_secs(1));
 
-
     f();
 
     // give the server time to stop
     thread::sleep(std::time::Duration::from_secs(3));
-
 }
 
 pub fn with_save_edgen<F>(f: F)
 where
     F: FnOnce() + panic::UnwindSafe, // -> TestResult + Send + 'static,
 {
-    with_save_env(||{
+    with_save_env(|| {
         with_edgen(f);
     });
 }
@@ -91,9 +90,7 @@ impl From<Vec<io::Error>> for BackupError {
     }
 }
 
-
-fn backup_env() -> Result<(), BackupError>
-{
+fn backup_env() -> Result<(), BackupError> {
     println!("backing up");
 
     let backup_dir = Path::new(BACKUP_DIR);
@@ -102,7 +99,7 @@ fn backup_env() -> Result<(), BackupError>
             "directory {} exists!
              This means an earlier test run did not finish correctly. \
              Restore your environment manually.",
-             BACKUP_DIR,
+            BACKUP_DIR,
         );
         eprintln!("{}", msg);
         return Err(BackupError::Unfinished);
@@ -131,7 +128,7 @@ fn backup_env() -> Result<(), BackupError>
     Ok(())
 }
 
-fn restore_env() -> Result<(), io::Error>{
+fn restore_env() -> Result<(), io::Error> {
     println!("restoring");
 
     let backup_dir = Path::new(BACKUP_DIR);
@@ -155,7 +152,7 @@ fn restore_env() -> Result<(), io::Error>{
 
     println!("{:?} -> {:?}", data_bkp, data);
     copy_dir(&data_bkp, &data)?;
-    
+
     println!("removing {:?}", backup_dir);
     fs::remove_dir_all(&backup_dir)?;
 

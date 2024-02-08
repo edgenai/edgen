@@ -9,7 +9,6 @@ fn fake_test() {
 
 #[test]
 fn test_battery() {
-
     common::with_save_edgen(|| {
         pass_always();
         connect_to_server_test();
@@ -18,16 +17,18 @@ fn test_battery() {
 
 fn connect_to_server_test() {
     common::test_message("connect to server");
-    assert!(match blocking::get("http://localhost:33322/v1/misc/version") {
-        Err(e) => {
-            eprintln!("cannot connect: {:?}", e);
-            false
-        },
-        Ok(v) => {
-            println!("have: '{}'", v.text().unwrap());
-            true
-        },
-    });
+    assert!(
+        match blocking::get("http://localhost:33322/v1/misc/version") {
+            Err(e) => {
+                eprintln!("cannot connect: {:?}", e);
+                false
+            }
+            Ok(v) => {
+                println!("have: '{}'", v.text().unwrap());
+                true
+            }
+        }
+    );
 }
 
 fn pass_always() {
