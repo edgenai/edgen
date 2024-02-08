@@ -8,7 +8,9 @@ jobs:
     name: CI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: "Setup actions/checkout"
+        uses: actions/checkout@v4
+
       - name: "Setup-action"
         uses: ./.github/workflows/setup-action
         with:
