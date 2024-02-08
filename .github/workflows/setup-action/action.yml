@@ -1,5 +1,5 @@
 name: "Setup"
-description: "Setup environment"
+description: "Setup environment for CI"
 inputs:
   runner:
     description: "The runner for the setup"
@@ -12,17 +12,14 @@ inputs:
 
 runs:
   using: "composite"
-  shell: bash
   steps:
-    - name: "Setup actions/checkout"
-      uses: actions/checkout@v4
-
     # setup ubuntu dependencies
-    - name: Setup Ubuntu dependencies
+    - name: "Setup Ubuntu dependencies"
       if: inputs.runner == 'ubuntu-20.04'
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential curl wget file libssl-dev libgtk-3-dev libwebkit2gtk-4.0-dev libayatana-appindicator3-dev librsvg2-dev  patchelf
+      shell: bash
 
     # install llvm (for llvm-copy) on macos only. For cpp runtimes.
     - name: "Setup MacOS dependencies"
@@ -30,14 +27,15 @@ runs:
       run: |
         brew update
         brew install llvm@17
-        echo "$(brew --prefix llvm@17)/bin" >> $GITHUB_PATH
+        echo "$$(brew --prefix llvm@17)/bin" >> $GITHUB_PATH
+      shell: bash
 
-    - name: Install Node.js
+    - name: "Install Node.js"
       uses: actions/setup-node@v3
       with:
         node-version: 18
 
-    - name: Install pnpm
+    - name: "Install pnpm"
       uses: pnpm/action-setup@v2
       with:
         version: 8
@@ -48,10 +46,12 @@ runs:
       with:
         components: rustfmt
 
-    - name: Add rust target (macOS)
+    - name: "Add rust target (macOS)"
       if: inputs.runner == 'macos-latest'
       run: rustup target add aarch64-apple-darwin
+      shell: bash
 
-    - name: Add rust target (Other)
+    - name: "Add rust target (Other)"
       if: inputs.runner != 'macos-latest'
       run: rustup target add ${{ inputs.target }}
+      shell: bash
