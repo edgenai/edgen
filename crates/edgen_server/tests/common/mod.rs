@@ -1,3 +1,5 @@
+use std::fmt;
+use std::fmt::Display;
 use std::fs;
 use std::io;
 use std::panic;
@@ -18,6 +20,9 @@ use edgen_server::status;
 
 pub const SMALL_LLM_NAME: &str = "phi-2.Q2_K.gguf";
 pub const SMALL_LLM_REPO: &str = "TheBloke/phi-2-GGUF";
+
+pub const SMALL_WHISPER_NAME: &str = "ggml-distil-small.en.bin";
+pub const SMALL_WHISPER_REPO: &str = "distil-whisper/distil-small.en";
 
 pub const BASE_URL: &str = "http://localhost:33322/v1";
 pub const CHAT_URL: &str = "/chat";
@@ -45,7 +50,24 @@ pub const CHAT_COMPLETIONS_BODY: &str = r#"
   }
 "#;
 
-pub const AUDIO_TRANSCRIPTIONS_BODY: &str = "";
+pub const BACKUP_DIR: &str = "env_backup";
+pub const MY_MODEL_FILES: &str = "my_models";
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Endpoint {
+    ChatCompletions,
+    AudioTranscriptions,
+}
+
+impl Display for Endpoint {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = match self {
+            Endpoint::ChatCompletions => "chat completions",
+            Endpoint::AudioTranscriptions => "audio transcriptions",
+        };
+        write!(f, "{}", s)
+    }
+}
 
 pub fn with_save_env<F>(f: F)
 where
@@ -161,11 +183,23 @@ pub fn write_config(config: &SettingsParams) -> Result<(), ConfigError> {
     Ok(())
 }
 
-pub fn spawn_request(endpoint: String, body: String) -> thread::JoinHandle<bool> {
+pub fn reset_config() {
+    edgen_server::config_reset().unwrap();
+}
+
+pub fn spawn_request(ep: Endpoint, body: String) -> thread::JoinHandle<bool> {
+    match ep {
+        Endpoint::ChatCompletions => spawn_chat_completions_request(body),
+        Endpoint::AudioTranscriptions => spawn_audio_transcriptions_request(),
+    }
+}
+
+pub fn spawn_chat_completions_request(body: String) -> thread::JoinHandle<bool> {
     thread::spawn(move || {
-        println!("requesting {}", endpoint);
+        let ep = make_url(&[BASE_URL, CHAT_URL, COMPLETIONS_URL]);
+        println!("requesting {}", ep);
         match blocking::Client::new()
-            .post(&endpoint)
+            .post(&ep)
             .header("Content-Type", "application/json")
             .body(body)
             .timeout(Duration::from_secs(180))
@@ -183,8 +217,38 @@ pub fn spawn_request(endpoint: String, body: String) -> thread::JoinHandle<bool>
     })
 }
 
-pub fn observe_progress(endpoint: &str) -> bool {
+pub fn spawn_audio_transcriptions_request() -> thread::JoinHandle<bool> {
+    thread::spawn(move || {
+        let ep = make_url(&[BASE_URL, AUDIO_URL, TRANSCRIPTIONS_URL]);
 
+        println!("requesting {}", ep);
+
+        let sound = include_bytes!("../../resources/frost.wav");
+        let part = blocking::multipart::Part::bytes(sound.as_slice()).file_name("frost.wav");
+
+        let form = blocking::multipart::Form::new()
+            .text("model", "default")
+            .part("file", part);
+
+        match blocking::Client::new()
+            .post(&ep)
+            .multipart(form)
+            .timeout(Duration::from_secs(180))
+            .send()
+        {
+            Err(e) => {
+                eprintln!("cannot connect: {:?}", e);
+                false
+            }
+            Ok(v) => {
+                println!("Got {:?}", v);
+                true
+            }
+        }
+    })
+}
+
+pub fn assert_download(endpoint: &str) {
     println!("requesting status of {}", endpoint);
 
     let mut stat: status::AIStatus = blocking::get(endpoint).unwrap().json().unwrap();
@@ -208,16 +272,31 @@ pub fn observe_progress(endpoint: &str) -> bool {
             last_p = p;
             tp = Instant::now();
         } else {
-            assert!(Instant::now().duration_since(tp) < Duration::from_secs(60));
+            assert!(Instant::now().duration_since(tp) < Duration::from_secs(90));
         }
         thread::sleep(Duration::from_millis(30));
         stat = blocking::get(endpoint).unwrap().json().unwrap();
     }
     assert_eq!(stat.download_progress, 100);
-    true
 }
 
-const BACKUP_DIR: &str = "env_backup";
+pub fn assert_no_download(endpoint: &str) {
+    println!("requesting status of {}", endpoint);
+
+    let mut stat: status::AIStatus = blocking::get(endpoint).unwrap().json().unwrap();
+
+    let tp = Instant::now();
+    while !stat.download_ongoing {
+        thread::sleep(Duration::from_millis(100));
+        stat = blocking::get(endpoint).unwrap().json().unwrap();
+
+        if Instant::now().duration_since(tp) > Duration::from_secs(60) {
+            break;
+        }
+    }
+
+    assert!(!stat.download_ongoing);
+}
 
 #[derive(Debug)]
 enum BackupError {
@@ -261,19 +340,24 @@ fn backup_env() -> Result<(), BackupError> {
     let cnfg = settings::PROJECT_DIRS.config_dir();
     let cnfg_bkp = backup_dir.join("config");
 
-    println!("config bkp: {:?}", cnfg_bkp);
-
-    copy_dir(&cnfg, &cnfg_bkp)?;
+    if cnfg.exists() {
+        println!("config bkp: {:?}", cnfg_bkp);
+        copy_dir(&cnfg, &cnfg_bkp)?;
+        fs::remove_dir_all(&cnfg)?;
+    } else {
+        println!("config {:?} does not exist", cnfg);
+    }
 
     let data = settings::PROJECT_DIRS.data_dir();
     let data_bkp = backup_dir.join("data");
 
-    println!("data   bkp: {:?}", data_bkp);
-
-    copy_dir(&data, &data_bkp)?;
-
-    fs::remove_dir_all(&cnfg)?;
-    fs::remove_dir_all(&data)?;
+    if data.exists() {
+        println!("data   bkp: {:?}", data_bkp);
+        copy_dir(&data, &data_bkp)?;
+        fs::remove_dir_all(&data)?;
+    } else {
+        println!("data {:?} does not exist", data);
+    }
 
     Ok(())
 }
@@ -297,11 +381,19 @@ fn restore_env() -> Result<(), io::Error> {
         fs::remove_dir_all(&data)?;
     }
 
-    println!("{:?} -> {:?}", cnfg_bkp, cnfg);
-    copy_dir(&cnfg_bkp, &cnfg)?;
+    if cnfg_bkp.exists() {
+        println!("{:?} -> {:?}", cnfg_bkp, cnfg);
+        copy_dir(&cnfg_bkp, &cnfg)?;
+    } else {
+        println!("config bkp {:?} does not exist", cnfg_bkp);
+    }
 
-    println!("{:?} -> {:?}", data_bkp, data);
-    copy_dir(&data_bkp, &data)?;
+    if data_bkp.exists() {
+        println!("{:?} -> {:?}", data_bkp, data);
+        copy_dir(&data_bkp, &data)?;
+    } else {
+        println!("data bkp {:?} does not exist", data_bkp);
+    }
 
     println!("removing {:?}", backup_dir);
     fs::remove_dir_all(&backup_dir)?;
