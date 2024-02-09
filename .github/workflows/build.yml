@@ -49,11 +49,6 @@ jobs:
           brew install llvm@17
           echo "$(brew --prefix llvm@17)/bin" >> $GITHUB_PATH
 
-      - name: Install Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 18
-
       - name: "Setup rust"
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
@@ -64,6 +59,11 @@ jobs:
       - name: Add rust target (Other)
         if: ${{ matrix.runner != 'macos-latest' }}
         run: rustup target add ${{ matrix.target }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
 
       - name: Install pnpm
         uses: pnpm/action-setup@v2
