@@ -1,0 +1,42 @@
+name: "CI"
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-20.04
+    steps:
+      - name: "Setup actions/checkout"
+        uses: actions/checkout@v4
+
+      # setup ubuntu dependencies
+      - name: "Setup Ubuntu dependencies"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl wget file libssl-dev libgtk-3-dev libwebkit2gtk-4.0-dev libayatana-appindicator3-dev librsvg2-dev  patchelf
+
+      - name: "Install Node.js"
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: "Install pnpm"
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+          run_install: false
+
+      - name: "Setup rust"
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt
+
+      - name: "Add rust target"
+        run: rustup target add x86_64-unknown-linux-gnu
+
+      - name: Rustfmt Check
+        uses: actions-rust-lang/rustfmt@v1
