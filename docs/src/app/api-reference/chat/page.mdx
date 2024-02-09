@@ -125,7 +125,35 @@ Generate text from text. {{ className: 'lead' }}
 
 <Row>
   <Col>
+
     Shows the current status of the chat completions endpoint (e.g. downloads).
+
+    ### Response attributes
+
+    <Properties>
+      <Property name="active_model" type="string">
+          The model that is currently active for this endpoint.
+      </Property>
+    </Properties>
+
+    <Properties>
+      <Property name="donwload_ongoing" type="bool">
+        The model for this endpoint is currently being downloaded.
+      </Property>
+    </Properties>
+
+    <Properties>
+      <Property name="donwload_progress" type="number">
+        The progress of the ongoing model download in percent.
+      </Property>
+    </Properties>
+
+    <Properties>
+      <Property name="last_errors" type="string[]">
+        Errors that occurred recently on this endpoint.
+      </Property>
+    </Properties>
+
   </Col>
   <Col sticky>
 
@@ -163,7 +191,7 @@ Generate text from text. {{ className: 'lead' }}
     </CodeGroup>
 
     ```json {{ title: 'Response' }}
-    {"active_model":"neural-chat-7b-v3-3.Q4_K_M.gguf","last_activity":"download","last_activity_result":"success","completions_ongoing":false,"download_ongoing":false,"download_progress":100,"last_errors":["Custom { kind: PermissionDenied, error: \"verboten\" }]}
+    {"active_model":"neural-chat-7b-v3-3.Q4_K_M.gguf","download_ongoing":false,"download_progress":100,"last_errors":["Custom { kind: PermissionDenied, error: \"verboten\" }]}
     ```
 
   </Col>
