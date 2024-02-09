@@ -22,15 +22,18 @@ runs:
       shell: bash
 
     # install llvm (for llvm-copy) on macos only. For cpp runtimes.
-    - name: "Setup MacOS dependencies"
-      if: inputs.runner == 'macos-latest'
-      run: |
-        brew update
-        brew install binutils
-        export GITHUB_PATH="$$(brew --prefix binutils)/bin:$GITHUB_PATH"
-        brew install llvm@17
-        export GITHUB_PATH="$$(brew --prefix llvm@17)/bin:$GITHUB_PATH"
-      shell: bash
+    # - name: "Setup MacOS dependencies"
+    #   if: inputs.runner == 'macos-latest'
+    #   run: |
+    #     brew update
+    #     brew install llvm@17
+    #     echo "$$(brew --prefix llvm@17)/bin" >> $GITHUB_PATH
+    #   shell: bash
+
+    - name: Install LLVM and Clang
+      uses: KyleMayes/install-llvm-action@v1
+      with:
+        version: "17.0"
 
     - name: "Install Node.js"
       uses: actions/setup-node@v3
