@@ -31,14 +31,39 @@ jobs:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     steps:
-      - name: "Setup actions/checkout"
-        uses: actions/checkout@v4
+      # setup ubuntu dependencies
+      - name: "Setup Ubuntu dependencies"
+        if: matrix.runner == 'ubuntu-20.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl wget file libssl-dev libgtk-3-dev libwebkit2gtk-4.0-dev libayatana-appindicator3-dev librsvg2-dev  patchelf
 
-      - name: "Setup-action"
-        uses: ./.github/workflows/setup-action
+      # install llvm (for llvm-copy) on macos only. For cpp runtimes.
+      - name: "Setup MacOS dependencies"
+        if: matrix.runner == 'macos-latest'
+        run: |
+          brew update
+          brew install llvm@17
+          echo "$$(brew --prefix llvm@17)/bin" >> $GITHUB_PATH
+
+      - name: "Install Node.js"
+        uses: actions/setup-node@v3
         with:
-          runner: ${{ matrix.runner }}
-          target: ${{ matrix.target }}
+          node-version: 18
+
+      - name: "Install pnpm"
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+          run_install: false
+
+      - name: "Setup rust"
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt
+
+      - name: "Add rust target"
+        run: rustup target add ${{ matrix.target }}
 
       - name: Install GUI frontend dependencies
         run: cd edgen && pnpm install # change this to npm or pnpm depending on which one you use
