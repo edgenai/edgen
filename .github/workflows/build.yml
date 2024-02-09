@@ -62,7 +62,12 @@ jobs:
         with:
           components: rustfmt
 
-      - name: "Add rust target"
+      - name: "Add rust target (macOS)"
+        if: matrix.runner == 'macos-latest'
+        run: rustup target add aarch64-apple-darwin
+
+      - name: "Add rust target (Other)"
+        if: matrix.runner != 'macos-latest'
         run: rustup target add ${{ matrix.target }}
 
       - name: Install GUI frontend dependencies
