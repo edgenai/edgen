@@ -27,6 +27,7 @@ runs:
       run: |
         brew update
         brew install binutils
+        echo "$$(brew --prefix binutils)/bin" >> $GITHUB_PATH
         brew install llvm@17
         echo "$$(brew --prefix llvm@17)/bin" >> $GITHUB_PATH
       shell: bash
