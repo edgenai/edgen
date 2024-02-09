@@ -26,6 +26,7 @@ runs:
       if: inputs.runner == 'macos-latest'
       run: |
         brew update
+        brew install binutils
         brew install llvm@17
         echo "$$(brew --prefix llvm@17)/bin" >> $GITHUB_PATH
       shell: bash

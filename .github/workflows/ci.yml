@@ -1,12 +1,14 @@
 name: "CI"
 on:
   push:
+    branches: ["main"]
   pull_request:
+    branches: ["main"]
 
 jobs:
   ci:
     name: CI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - name: "Setup actions/checkout"
         uses: actions/checkout@v4
