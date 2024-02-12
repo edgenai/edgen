@@ -78,10 +78,10 @@ pub async fn create_project_dirs() -> Result<(), std::io::Error> {
 }
 
 /// Create the default config file if it does not exist
-pub fn create_default_config_file() -> Result<(), std::io::Error> {
+pub fn create_default_config_file() -> Result<(), SettingsError> {
     block_on(async {
-        StaticSettings { inner: None }.init().await.unwrap();
-    });
+        StaticSettings { inner: None }.init().await
+    })?;
 
     Ok(())
 }
