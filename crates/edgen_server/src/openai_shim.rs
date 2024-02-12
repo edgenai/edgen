@@ -601,10 +601,16 @@ pub async fn chat_completions(
         .trim()
         .to_string();
 
-    // invalid
     if model_name.is_empty() {
-        return Err(ChatCompletionError::NoSuchModel {
+        return Err(ChatCompletionError::ProhibitedName {
             model_name: model_name,
+            reason: Cow::Borrowed("Empty model name in config"),
+        });
+    }
+    if dir.is_empty() {
+        return Err(ChatCompletionError::ProhibitedName {
+            model_name: dir,
+            reason: Cow::Borrowed("Empty model directory in config"),
         });
     }
 
@@ -664,7 +670,7 @@ pub async fn chat_completions(
             created: OffsetDateTime::now_utc().unix_timestamp(),
             model: Cow::Borrowed("main"),
             object: Cow::Borrowed("text_completion"),
-            system_fingerprint: Cow::Owned(fp), // use macro for version
+            system_fingerprint: Cow::Owned(fp),
             usage: ChatCompletionUsage {
                 completion_tokens: 0,
                 prompt_tokens: 0,
@@ -769,7 +775,13 @@ pub async fn create_transcription(
     if model_name.is_empty() {
         return Err(TranscriptionError::ProhibitedName {
             model_name,
-            reason: Cow::Borrowed("Empty name"),
+            reason: Cow::Borrowed("Empty model name in config"),
+        });
+    }
+    if dir.is_empty() {
+        return Err(TranscriptionError::ProhibitedName {
+            model_name: dir,
+            reason: Cow::Borrowed("Empty model directory in config"),
         });
     }
 

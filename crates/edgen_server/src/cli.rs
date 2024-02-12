@@ -53,7 +53,8 @@ pub enum Command {
 #[argh(subcommand, name = "serve")]
 pub struct Serve {
     /// if present, one or more URIs/hosts to bind the server to. `unix://` (on Linux), `http://`,
-    /// and `ws://` are supported.
+    /// and `ws://` are supported, e.g.:
+    /// `edgen -b http://127.0.0.1:3000 -b http://192.168.1.1:3000`.
     /// For use in scripts, it is recommended to explicitly add this option
     /// to make your scripts future-proof.
     #[argh(option, short = 'b')]

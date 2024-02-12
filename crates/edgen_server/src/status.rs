@@ -17,7 +17,6 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -221,12 +220,6 @@ impl Default for AIStates {
             ],
         }
     }
-}
-
-#[allow(dead_code)]
-fn internal_server_error(msg: &str) -> Response {
-    eprintln!("[ERROR] {}", msg);
-    StatusCode::INTERNAL_SERVER_ERROR.into_response()
 }
 
 // helper function to observe download progress.
