@@ -15,17 +15,44 @@ fn fake_test() {
 }
 
 #[test]
+// Be aware that this test is long-running and downloads several GiB from huggingface.
+// Since it tests the edgen environment (config and model directories),
+// a backup of the user environment is created before the tests start
+// and restored when the tests have passed (or failed).
+// Should backup or restore fail, parts of your environment may have moved away.
+// You find them in 'crates/edgen_server/env_backup' and may want to restore them manually.
+// Run with
+// cargo test --test settings_tests -- --show-output --nocapture
+// (without --nocapture the output is shown only after finishing)
+//
+// Currently five scenarios are exercised (please update if you add new test scenarios):
+// - SCENARIO 1:
+//   + Start edgen server without files, they shall exist afterwards
+//   + Endpoints shall be reachable
+// - SCENARIO 2:
+//   + Edit configuration: change should be reflected in server.
+//   + AI Endpoints shall be reachable
+//   + Model files shall be downloaded
+//   + Once downloaded, no download is preformed again
+// - SCENARIO 3:
+//   + Change model directories: make sure now directories are created
+//   + Model files shall be downloaded
+//   + Once downloaded, no download is preformed again
+// - SCENARIO 4:
+//   + Remove model directories: make sure they are created again
+//   + Model files shall be downloaded
+//   + Once downloaded, no download is preformed again
+// - SCENARIO 5:
+//   + Reset configuration
+//   + Model files shall not be downloaded
 fn test_battery() {
     common::with_save_edgen(|| {
-
-        // some simple tests to warm up
+        // make sure everything is right
         pass_always();
 
         // ================================
         common::test_message("SCENARIO 1");
         // ================================
-        // no files exist before start
-        // make sure they exist now
         config_exists();
         data_exists();
 
@@ -38,7 +65,6 @@ fn test_battery() {
         // ================================
         common::test_message("SCENARIO 2");
         // ================================
-        // config edit
         // set small models, so we don't need to download too much
         set_model(
             common::Endpoint::ChatCompletions,
@@ -55,38 +81,39 @@ fn test_battery() {
         test_ai_endpoint_with_download(common::Endpoint::ChatCompletions);
         test_ai_endpoint_with_download(common::Endpoint::AudioTranscriptions);
 
+        // we have downloaded, we should not download again
         test_ai_endpoint_no_download(common::Endpoint::ChatCompletions);
         test_ai_endpoint_no_download(common::Endpoint::AudioTranscriptions);
 
         // ================================
         common::test_message("SCENARIO 3");
         // ================================
-        // change config
-        // change model directory
-        let my_models_dir = format!("{}{}{}",
+        let my_models_dir = format!(
+            "{}{}{}",
             common::BACKUP_DIR,
             path::MAIN_SEPARATOR,
             common::MY_MODEL_FILES,
         );
 
-        let new_chat_completions_dir = my_models_dir.clone() + &format!("{}{}{}{}",
-            path::MAIN_SEPARATOR,
-            "chat",
-            path::MAIN_SEPARATOR,
-            "completions",
-        );
+        let new_chat_completions_dir = my_models_dir.clone()
+            + &format!(
+                "{}{}{}{}",
+                path::MAIN_SEPARATOR,
+                "chat",
+                path::MAIN_SEPARATOR,
+                "completions",
+            );
 
-        let new_audio_transcriptions_dir = my_models_dir.clone() + &format!("{}{}{}{}",
-            path::MAIN_SEPARATOR,
-            "audio",
-            path::MAIN_SEPARATOR,
-            "transcriptions",
-        );
+        let new_audio_transcriptions_dir = my_models_dir.clone()
+            + &format!(
+                "{}{}{}{}",
+                path::MAIN_SEPARATOR,
+                "audio",
+                path::MAIN_SEPARATOR,
+                "transcriptions",
+            );
 
-        set_model_dir(
-            common::Endpoint::ChatCompletions,
-            &new_chat_completions_dir,
-        );
+        set_model_dir(common::Endpoint::ChatCompletions, &new_chat_completions_dir);
 
         set_model_dir(
             common::Endpoint::AudioTranscriptions,
@@ -104,7 +131,6 @@ fn test_battery() {
         // ================================
         common::test_message("SCENARIO 4");
         // ================================
-        // remove models directories
         remove_dir_all(&my_models_dir).unwrap();
         assert!(!path::Path::new(&my_models_dir).exists());
 
@@ -119,7 +145,6 @@ fn test_battery() {
         // ================================
         common::test_message("SCENARIO 5");
         // ================================
-        // reset config
         test_config_reset();
 
         set_model(
@@ -142,6 +167,12 @@ fn test_battery() {
     })
 }
 
+fn pass_always() {
+    common::test_message("pass always");
+    assert!(true);
+}
+
+// exercise the edgen version endpoint to make sure the server is reachable.
 fn connect_to_server_test() {
     common::test_message("connect to server");
     assert!(match blocking::get(common::make_url(&[
@@ -158,11 +189,6 @@ fn connect_to_server_test() {
             true
         }
     });
-}
-
-fn pass_always() {
-    common::test_message("pass always");
-    assert!(true);
 }
 
 fn config_exists() {
@@ -236,6 +262,7 @@ fn audio_transcriptions_status_reachable() {
     });
 }
 
+// edit the config file: set another model name and repo for the indicated endpoint.
 fn set_model(ep: common::Endpoint, model_name: &str, model_repo: &str) {
     common::test_message(&format!("set {} model to {}", ep, model_name,));
 
@@ -253,7 +280,7 @@ fn set_model(ep: common::Endpoint, model_name: &str, model_repo: &str) {
     }
     common::write_config(&config).unwrap();
 
-    println!("pausing for 4 secs");
+    println!("pausing for 4 secs to make sure the config file has been updated");
     std::thread::sleep(std::time::Duration::from_secs(4));
     let url = match ep {
         common::Endpoint::ChatCompletions => common::make_url(&[
@@ -273,6 +300,7 @@ fn set_model(ep: common::Endpoint, model_name: &str, model_repo: &str) {
     assert_eq!(stat.active_model, model_name);
 }
 
+// edit the config file: set another model dir for the indicated endpoint.
 fn set_model_dir(ep: common::Endpoint, model_dir: &str) {
     common::test_message(&format!("set {} model directory to {}", ep, model_dir,));
 
@@ -288,7 +316,7 @@ fn set_model_dir(ep: common::Endpoint, model_dir: &str) {
     }
     common::write_config(&config).unwrap();
 
-    println!("pausing for 4 secs");
+    println!("pausing for 4 secs to make sure the config file has been updated");
     std::thread::sleep(std::time::Duration::from_secs(4));
 }
 
@@ -296,7 +324,7 @@ fn test_config_reset() {
     common::test_message("test resetting config");
     common::reset_config();
 
-    println!("pausing for 4 secs");
+    println!("pausing for 4 secs to make sure the config file has been updated");
     std::thread::sleep(std::time::Duration::from_secs(4));
 }
 
@@ -312,7 +340,8 @@ fn test_ai_endpoint(endpoint: common::Endpoint, download: bool) {
     let (statep, body) = match endpoint {
         common::Endpoint::ChatCompletions => {
             common::test_message(&format!(
-                "chat completions endpoint with download: {}", download
+                "chat completions endpoint with download: {}",
+                download
             ));
             (
                 common::make_url(&[
@@ -326,7 +355,8 @@ fn test_ai_endpoint(endpoint: common::Endpoint, download: bool) {
         }
         common::Endpoint::AudioTranscriptions => {
             common::test_message(&format!(
-                "audio transcriptions endpoint with download: {}", download
+                "audio transcriptions endpoint with download: {}",
+                download
             ));
             (
                 common::make_url(&[

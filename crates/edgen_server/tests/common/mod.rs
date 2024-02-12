@@ -47,7 +47,7 @@ pub const CHAT_COMPLETIONS_BODY: &str = r#"
           }
         ],
         "stream": true
-  }
+    }
 "#;
 
 pub const BACKUP_DIR: &str = "env_backup";
@@ -69,11 +69,11 @@ impl Display for Endpoint {
     }
 }
 
+// Backup environment (config and model directories) before running 'f';
+// restore environment, even if 'f' panicks.
 pub fn with_save_env<F>(f: F)
 where
     F: FnOnce() + panic::UnwindSafe,
-    // T: Send + 'static,
-    // E: std::error::Error,
 {
     println!("with save env!");
 
@@ -102,9 +102,10 @@ where
     }
 }
 
+// Start edgen before running 'f'
 pub fn with_edgen<F>(f: F)
 where
-    F: FnOnce() + panic::UnwindSafe, // -> TestResult + Send + 'static,
+    F: FnOnce() + panic::UnwindSafe,
 {
     let _ = thread::spawn(|| {
         let mut args = cli::Serve::default();
@@ -122,9 +123,12 @@ where
     f();
 }
 
+// Backup environment (config and model directories)
+// and start edgen before running 'f';
+// restore environment, even if 'f' or edgen panick.
 pub fn with_save_edgen<F>(f: F)
 where
-    F: FnOnce() + panic::UnwindSafe, // -> TestResult + Send + 'static,
+    F: FnOnce() + panic::UnwindSafe,
 {
     with_save_env(|| {
         with_edgen(f);
@@ -187,6 +191,8 @@ pub fn reset_config() {
     edgen_server::config_reset().unwrap();
 }
 
+// spawn a thread to send a request to the indicated endpoint.
+// This allows the caller to perform another task in the caller thread.
 pub fn spawn_request(ep: Endpoint, body: String) -> thread::JoinHandle<bool> {
     match ep {
         Endpoint::ChatCompletions => spawn_chat_completions_request(body),
@@ -211,6 +217,7 @@ pub fn spawn_chat_completions_request(body: String) -> thread::JoinHandle<bool> 
             }
             Ok(v) => {
                 println!("Got {:?}", v);
+                assert!(v.status().is_success());
                 true
             }
         }
@@ -218,13 +225,14 @@ pub fn spawn_chat_completions_request(body: String) -> thread::JoinHandle<bool> 
 }
 
 pub fn spawn_audio_transcriptions_request() -> thread::JoinHandle<bool> {
+    let frost = Path::new("resources").join("frost.wav");
     thread::spawn(move || {
         let ep = make_url(&[BASE_URL, AUDIO_URL, TRANSCRIPTIONS_URL]);
 
         println!("requesting {}", ep);
 
-        let sound = include_bytes!("../../resources/frost.wav");
-        let part = blocking::multipart::Part::bytes(sound.as_slice()).file_name("frost.wav");
+        let sound = fs::read(frost).unwrap();
+        let part = blocking::multipart::Part::bytes(sound).file_name("frost.wav");
 
         let form = blocking::multipart::Form::new()
             .text("model", "default")
@@ -242,12 +250,14 @@ pub fn spawn_audio_transcriptions_request() -> thread::JoinHandle<bool> {
             }
             Ok(v) => {
                 println!("Got {:?}", v);
+                assert!(v.status().is_success());
                 true
             }
         }
     })
 }
 
+// Assert that a download is ongoing and download progress is reported.
 pub fn assert_download(endpoint: &str) {
     println!("requesting status of {}", endpoint);
 
@@ -280,6 +290,7 @@ pub fn assert_download(endpoint: &str) {
     assert_eq!(stat.download_progress, 100);
 }
 
+// Assert that *no* download is ongoing.
 pub fn assert_no_download(endpoint: &str) {
     println!("requesting status of {}", endpoint);
 
