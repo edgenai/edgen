@@ -1,5 +1,6 @@
 $RECYCLE.BIN/
 **/*.rs.bk
+**/env_backup
 *-prefix/
 *.a
 *.app

@@ -46,10 +46,14 @@ pub async fn audio_transcriptions_status() -> Response {
 /// Current Endpoint status.
 #[derive(ToSchema, Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct AIStatus {
-    active_model: String,
-    download_ongoing: bool,
-    download_progress: u64,
-    last_errors: VecDeque<String>,
+    /// currently active model for this endpoint
+    pub active_model: String,
+    /// service is currently downloading its model
+    pub download_ongoing: bool,
+    /// download progress (percentage)
+    pub download_progress: u64,
+    /// last errors that occurred for this endpoint
+    pub last_errors: VecDeque<String>,
 }
 
 impl Default for AIStatus {
