@@ -10,6 +10,7 @@
  * limitations under the License.
  */
 
+use crate::BoxedFuture;
 use core::future::Future;
 use core::time::Duration;
 use futures::Stream;
@@ -53,7 +54,7 @@ pub trait LLMEndpoint {
         &'a self,
         model_path: impl AsRef<Path> + Send + 'a,
         args: CompletionArgs,
-    ) -> Box<dyn Future<Output = Result<String, LLMEndpointError>> + Send + Unpin + 'a>;
+    ) -> BoxedFuture<Result<String, LLMEndpointError>>;
 
     /// Given a prompt with several arguments, return a [`Box`]ed [`Future`] which may eventually
     /// contain a [`Stream`] of [`String`] chunks of the prompt completion, acquired as they get
@@ -62,12 +63,7 @@ pub trait LLMEndpoint {
         &'a self,
         model_path: impl AsRef<Path> + Send + 'a,
         args: CompletionArgs,
-    ) -> Box<
-        dyn Future<Output = Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError>>
-            + Send
-            + Unpin
-            + 'a,
-    >;
+    ) -> BoxedFuture<Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError>>;
 
     /// Unloads everything from memory.
     fn reset(&self);

@@ -13,6 +13,7 @@
 use std::path::Path;
 use std::time::Duration;
 
+use crate::BoxedFuture;
 use rubato::Resampler;
 use serde::Serialize;
 use smol::future::Future;
@@ -30,7 +31,9 @@ pub enum WhisperEndpointError {
     #[error("failed to load the model: {0}")]
     Load(String),
     #[error("failed to create a session: {0}")]
-    Session(String),
+    SessionCreationFailed(String),
+    #[error("no matching session found")]
+    SessionNotFound,
     #[error("failed to parse audio file data: {0}")]
     Audio(#[from] AudioError),
 }
@@ -40,6 +43,7 @@ pub struct TranscriptionArgs {
     pub language: Option<String>,
     pub prompt: Option<String>,
     pub temperature: Option<f32>,
+    pub create_session: bool,
     pub session: Option<Uuid>,
 }
 
@@ -50,7 +54,7 @@ pub trait WhisperEndpoint {
         &'a self,
         model_path: impl AsRef<Path> + Send + 'a,
         args: TranscriptionArgs,
-    ) -> Box<dyn Future<Output = Result<String, WhisperEndpointError>> + Send + Unpin + 'a>;
+    ) -> BoxedFuture<Result<(String, Option<Uuid>), WhisperEndpointError>>;
 
     /// Unloads everything from memory.
     fn reset(&self);

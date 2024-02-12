@@ -10,11 +10,6 @@
  * limitations under the License.
  */
 
-#![cfg_attr(
-    not(feature = "enable-windows-terminal"),
-    windows_subsystem = "windows"
-)]
-
 #[cfg(not(feature = "no_gui"))]
 mod gui;
 

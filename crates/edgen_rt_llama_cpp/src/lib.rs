@@ -28,13 +28,13 @@ use tokio::time::{interval, MissedTickBehavior};
 use tokio::{select, spawn};
 use tracing::{error, info};
 
-use edgen_core::cleanup_interval;
 use edgen_core::llm::{
     inactive_llm_session_ttl, inactive_llm_ttl, CompletionArgs, LLMEndpoint, LLMEndpointError,
     ASSISTANT_TAG, SYSTEM_TAG, TOOL_TAG, USER_TAG,
 };
 use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, PerishableWriteGuard};
 use edgen_core::settings::SETTINGS;
+use edgen_core::{cleanup_interval, BoxedFuture};
 
 // TODO this should be in settings
 const SINGLE_MESSAGE_LIMIT: usize = 4096;
@@ -96,7 +96,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
         &'a self,
         model_path: impl AsRef<Path> + Send + 'a,
         args: CompletionArgs,
-    ) -> Box<dyn Future<Output = Result<String, LLMEndpointError>> + Send + Unpin + 'a> {
+    ) -> BoxedFuture<Result<String, LLMEndpointError>> {
         let pinned = Box::pin(self.async_chat_completions(model_path, args));
         Box::new(pinned)
     }
@@ -105,12 +105,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
         &'a self,
         model_path: impl AsRef<Path> + Send + 'a,
         args: CompletionArgs,
-    ) -> Box<
-        dyn Future<Output = Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError>>
-            + Send
-            + Unpin
-            + 'a,
-    > {
+    ) -> BoxedFuture<Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError>> {
         let pinned = Box::pin(self.async_stream_chat_completions(model_path, args));
         Box::new(pinned)
     }
@@ -297,6 +292,7 @@ async fn get_or_init_model(
     let path = path.as_ref().to_path_buf();
     model
         .get_or_try_init(move || async move {
+            info!("Loading {} into memory", path.to_string_lossy());
             LlamaModel::load_from_file_async(path, Default::default())
                 .await
                 .map_err(move |e| LLMEndpointError::Load(e.to_string()))
@@ -312,6 +308,7 @@ async fn get_or_init_session(
 ) -> (ActiveSignal, PerishableWriteGuard<LlamaSession>) {
     session
         .get_or_init_mut(move || async move {
+            info!("Allocating new LLM session");
             let mut params = SessionParams::default();
             let threads = SETTINGS.read().await.read().await.auto_threads(false);
 

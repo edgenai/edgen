@@ -76,6 +76,7 @@ mod whisper;
         openai_shim::AssistantFunctionStub,
         openai_shim::AssistantToolCall,
         openai_shim::CreateTranscriptionRequest,
+        openai_shim::TranscriptionResponse,
         openai_shim::TranscriptionError,
         model::ModelError,
         model::ModelKind,
