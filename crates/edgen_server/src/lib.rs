@@ -303,7 +303,7 @@ async fn run_server(args: &cli::Serve) -> Result<bool, error::EdgenError> {
             _ = graceful_shutdown::global_shutdown_ends() => {
                 error!("Global shutdown grace period has ended; exiting abnormally");
 
-                exit(1) // no alternative
+                exit(1) // last resort
             }
             _ = all_listeners.join_next() => {
                 info!("Thread has exited");

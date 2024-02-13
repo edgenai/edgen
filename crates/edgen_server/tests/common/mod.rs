@@ -18,8 +18,8 @@ use edgen_server::cli;
 use edgen_server::start;
 use edgen_server::status;
 
-pub const SMALL_LLM_NAME: &str = "phi-2.Q2_K.gguf";
-pub const SMALL_LLM_REPO: &str = "TheBloke/phi-2-GGUF";
+pub const SMALL_LLM_NAME: &str = "tinyllama-1.1b-chat-v1.0.Q2_K.gguf";
+pub const SMALL_LLM_REPO: &str = "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF";
 
 pub const SMALL_WHISPER_NAME: &str = "ggml-distil-small.en.bin";
 pub const SMALL_WHISPER_REPO: &str = "distil-whisper/distil-small.en";

@@ -383,7 +383,7 @@ impl EventHandler for UpdateHandler {
 
             let yaml = read_with_retry(path);
 
-            // a user may have deleted the config by accident,
+            // a user may have deleted the config file by accident,
             // ignore it until it is readable again.
             if yaml.is_err() {
                 return;
@@ -394,7 +394,7 @@ impl EventHandler for UpdateHandler {
             // ignore it until it is readable again.
             let params: Result<SettingsParams, serde_yaml::Error> = from_slice(&yaml);
             if params.is_err() {
-                warn!("cannot parse config: {:?}", params);
+                warn!("cannot parse config: {:?}", params.unwrap_err());
                 return;
             }
             let params = params.unwrap();
