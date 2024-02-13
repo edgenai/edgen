@@ -166,6 +166,8 @@ mod test {
     }
 
     #[tokio::test]
+    // this test includes the three above,
+    // but those show nicely what stopping stream is supposed to do.
     async fn stopping_stream_all() {
         let stream = concat!("apple\n", "banana\n", "coconut\n", "dill\n", "eggplant\n");
 
