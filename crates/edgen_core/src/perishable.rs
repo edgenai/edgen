@@ -166,8 +166,7 @@ where
                 let check_date = if accessed + ttl > Instant::now() {
                     accessed + ttl
                 } else {
-                    // TODO when something "perishes", the CPU gets hogged by this task, probably
-                    accessed + Duration::from_secs(5)
+                    Instant::now() + Duration::from_secs(5)
                 };
 
                 select! {

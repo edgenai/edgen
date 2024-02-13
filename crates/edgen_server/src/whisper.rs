@@ -11,6 +11,7 @@
  */
 
 use once_cell::sync::Lazy;
+use uuid::Uuid;
 
 use edgen_core::whisper::{TranscriptionArgs, WhisperEndpoint, WhisperEndpointError};
 use edgen_rt_whisper_cpp::WhisperCppEndpoint;
@@ -25,13 +26,16 @@ pub async fn create_transcription(
     language: Option<&str>,
     prompt: Option<&str>,
     temperature: Option<f32>,
-) -> Result<String, WhisperEndpointError> {
+    create_session: bool,
+    session: Option<Uuid>,
+) -> Result<(String, Option<Uuid>), WhisperEndpointError> {
     let args = TranscriptionArgs {
         file: file.to_vec(),
         language: language.map(move |s| s.to_string()),
         prompt: prompt.map(move |s| s.to_string()),
         temperature,
-        session: None,
+        create_session,
+        session,
     };
 
     ENDPOINT

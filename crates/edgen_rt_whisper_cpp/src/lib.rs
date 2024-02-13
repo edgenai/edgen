@@ -10,27 +10,25 @@
  * limitations under the License.
  */
 
-use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use dashmap::DashMap;
 use futures::executor::block_on;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::spawn;
 use tokio::task::JoinHandle;
 use tokio::time::{interval, MissedTickBehavior};
-use tokio::{select, spawn};
-use tracing::{error, info};
+use tracing::info;
 use uuid::Uuid;
 use whisper_cpp::{WhisperModel, WhisperParams, WhisperSampling, WhisperSession};
 
-use edgen_core::cleanup_interval;
 use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, PerishableWriteGuard};
 use edgen_core::settings::SETTINGS;
 use edgen_core::whisper::{
-    inactive_whisper_session_ttl, inactive_whisper_ttl, parse_pcm, TranscriptionArgs,
-    WhisperEndpoint, WhisperEndpointError,
+    inactive_whisper_session_ttl, inactive_whisper_ttl, parse, TranscriptionArgs, WhisperEndpoint,
+    WhisperEndpointError,
 };
+use edgen_core::{cleanup_interval, BoxedFuture};
 
 /// A large language model endpoint, implementing [`WhisperEndpoint`] using a [`whisper_cpp`] backend.
 pub struct WhisperCppEndpoint {
@@ -66,10 +64,12 @@ impl WhisperCppEndpoint {
         &self,
         model_path: impl AsRef<Path>,
         args: TranscriptionArgs,
-    ) -> Result<String, WhisperEndpointError> {
-        let pcm = parse_pcm(&args.file)?;
+    ) -> Result<(String, Option<Uuid>), WhisperEndpointError> {
+        let pcm = parse::pcm(&args.file)?;
         let model = self.get(model_path).await;
-        model.transcription(args.session, pcm).await
+        model
+            .transcription(args.create_session, args.session, pcm)
+            .await
     }
 }
 
@@ -78,7 +78,7 @@ impl WhisperEndpoint for WhisperCppEndpoint {
         &'a self,
         model_path: impl AsRef<Path> + Send + 'a,
         args: TranscriptionArgs,
-    ) -> Box<dyn Future<Output = Result<String, WhisperEndpointError>> + Send + Unpin + 'a> {
+    ) -> BoxedFuture<Result<(String, Option<Uuid>), WhisperEndpointError>> {
         let pinned = Box::pin(self.async_transcription(model_path, args));
         Box::new(pinned)
     }
@@ -122,7 +122,6 @@ struct UnloadingModel {
     path: PathBuf,
     sessions: Arc<DashMap<Uuid, Perishable<WhisperSession>>>,
     maintenance_thread: JoinHandle<()>,
-    finished_tx: UnboundedSender<(Uuid, Perishable<WhisperSession>)>,
 }
 
 impl UnloadingModel {
@@ -132,7 +131,6 @@ impl UnloadingModel {
     /// order to be loaded.
     async fn new(model_path: impl AsRef<Path>) -> Self {
         let sessions: Arc<DashMap<Uuid, Perishable<WhisperSession>>> = Default::default();
-        let (tx, mut rx) = unbounded_channel();
 
         let sessions_clone = sessions.clone();
         let maintenance_thread = spawn(async move {
@@ -140,14 +138,8 @@ impl UnloadingModel {
             interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
             loop {
-                select! {
-                    _ = interval.tick() => sessions_clone.retain(move |_, session| block_on(session.is_alive())),
-                    item = rx.recv() => {
-                        if let Some((id, session)) = item {
-                            sessions_clone.insert(id, session);
-                        }
-                    }
-                }
+                interval.tick().await;
+                sessions_clone.retain(move |_, session| block_on(session.is_alive()));
             }
         });
 
@@ -156,7 +148,6 @@ impl UnloadingModel {
             path: model_path.as_ref().to_path_buf(),
             sessions,
             maintenance_thread,
-            finished_tx: tx,
         }
     }
 
@@ -165,26 +156,13 @@ impl UnloadingModel {
         self.model.is_alive().await
     }
 
-    /// Either takes an existing chat [`WhisperSession`] matching the provided [`Uuid`], or creates
-    /// a new one.
-    async fn take_session(&self, uuid: Uuid) -> Perishable<WhisperSession> {
-        let session_perishable = if let Some((_, session)) = self.sessions.remove(&uuid) {
-            info!("Matching session found, continuing");
-            session
-        } else {
-            info!("No matching session found, creating new one");
-            Perishable::with_ttl(inactive_whisper_session_ttl())
-        };
-
-        session_perishable
-    }
-
     /// Computes the full transcription for the provided *PCM*;
     async fn transcription(
         &self,
+        create_session: bool,
         uuid: Option<Uuid>,
         pcm: Vec<f32>,
-    ) -> Result<String, WhisperEndpointError> {
+    ) -> Result<(String, Option<Uuid>), WhisperEndpointError> {
         let (_model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
 
         let mut params = WhisperParams::new(WhisperSampling::default_greedy());
@@ -192,44 +170,53 @@ impl UnloadingModel {
 
         params.thread_count = threads;
 
-        if let Some(uuid) = uuid {
-            let session = self.take_session(uuid).await;
-
-            let res = {
-                let (_session_signal, mut session_guard) = {
-                    let (session_signal, session_guard) =
-                        get_or_init_session(&session, model_guard.clone()).await?;
-
-                    (session_signal, session_guard)
-                };
-
-                session_guard
-                    .full(params, &pcm)
-                    .await
-                    .map_err(move |e| WhisperEndpointError::Advance(e.to_string()))?;
-
-                let mut res = "".to_string();
-                for i in 0..session_guard.segment_count() {
-                    res += &*session_guard
-                        .segment_text(i)
-                        .map_err(move |e| WhisperEndpointError::Decode(e.to_string()))?;
-                }
-
-                res
-            };
-
-            self.finished_tx
-                .send((uuid, session))
-                .unwrap_or_else(move |e| {
-                    error!("Failed to send session to maintenance thread: {e}")
-                });
-
-            Ok(res)
+        let uuid = if let Some(uuid) = uuid {
+            Some(uuid)
         } else {
+            if create_session {
+                let uuid = Uuid::new_v4();
+                self.sessions
+                    .insert(uuid, Perishable::with_ttl(inactive_whisper_session_ttl()));
+                Some(uuid)
+            } else {
+                None
+            }
+        };
+
+        if let Some(uuid) = uuid {
+            let session = self
+                .sessions
+                .get(&uuid)
+                .ok_or(WhisperEndpointError::SessionNotFound)?;
+
+            let (_session_signal, mut session_guard) =
+                get_or_init_session(session.value(), model_guard.clone()).await?;
+            // Perishable uses a tokio RwLock internally, which guarantees fair access, so we
+            // shouldn't have to worry about thread ordering
+
+            session_guard
+                .full(params, &pcm)
+                .await
+                .map_err(move |e| WhisperEndpointError::Advance(e.to_string()))?;
+
+            let mut res = "".to_string();
+            for i in 0..session_guard.segment_count() {
+                res += &*session_guard
+                    .segment_text(i)
+                    .map_err(move |e| WhisperEndpointError::Decode(e.to_string()))?;
+            }
+
+            if create_session {
+                Ok((res, Some(uuid)))
+            } else {
+                Ok((res, None))
+            }
+        } else {
+            info!("Allocating oneshot whisper session");
             let mut session = model_guard
                 .new_session()
                 .await
-                .map_err(move |e| WhisperEndpointError::Session(e.to_string()))?;
+                .map_err(move |e| WhisperEndpointError::SessionCreationFailed(e.to_string()))?;
 
             session
                 .full(params, &pcm)
@@ -243,7 +230,7 @@ impl UnloadingModel {
                     .map_err(move |e| WhisperEndpointError::Decode(e.to_string()))?;
             }
 
-            Ok(res)
+            Ok((res, None))
         }
     }
 }
@@ -263,6 +250,7 @@ async fn get_or_init_model(
     let path = path.as_ref().to_path_buf();
     model
         .get_or_try_init(move || async move {
+            info!("Loading {} into memory", path.to_string_lossy());
             WhisperModel::new_from_file(path, false)
                 .map_err(move |e| WhisperEndpointError::Load(e.to_string()))
         })
@@ -277,10 +265,11 @@ async fn get_or_init_session(
 ) -> Result<(ActiveSignal, PerishableWriteGuard<WhisperSession>), WhisperEndpointError> {
     session
         .get_or_try_init_mut(move || async move {
+            info!("Allocating new whisper session");
             model
                 .new_session()
                 .await
-                .map_err(move |e| WhisperEndpointError::Session(e.to_string()))
+                .map_err(move |e| WhisperEndpointError::SessionCreationFailed(e.to_string()))
         })
         .await
 }

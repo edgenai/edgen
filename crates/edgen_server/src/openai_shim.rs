@@ -689,7 +689,9 @@ pub async fn chat_completions(
 ///
 /// An `axum` handler, [`create_transcription`][create_transcription], is provided to handle this request.
 ///
-/// See [the documentation for creating transcriptions][openai] for more details.
+/// See [the documentation for creating transcriptions][openai] for more details. This request has
+/// two additional optional parameters, which are **not normative** with OpenAI's specification,
+/// `create_session` and `session` to deal with functionality specific to **Edgen**.
 ///
 /// [create_transcription]: fn.create_transcription.html
 /// [openai]: https://platform.openai.com/docs/api-reference/audio/createTranscription
@@ -723,6 +725,30 @@ pub struct CreateTranscriptionRequest {
     /// the model will use log probability to automatically increase the temperature until certain
     /// thresholds are hit.
     pub temperature: Option<f32>,
+
+    /// Should a new session be created from this request. This may be useful for things like live
+    /// transcriptions where continuous audio is submitted across several requests.
+    ///
+    /// If `true`, the response will contain a session [`Uuid`].
+    ///
+    /// The value of this member is ignored if `session` has some value.
+    pub create_session: Option<bool>,
+
+    /// The [`Uuid`] of an existing audio session.
+    pub session: Option<Uuid>,
+}
+
+/// The return type of [`create_transcription`].
+#[derive(Serialize, Deserialize, ToSchema)]
+pub struct TranscriptionResponse {
+    /// The transcribed text of the audio.
+    pub text: String,
+
+    /// The [`Uuid`] of a newly created session, present only if `create_session` in
+    /// [`CreateTranscriptionRequest`] is set to `true`. This additional member is **not normative**
+    /// with OpenAI's specification, as it is intended for **Edgen** specific functinality.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<Uuid>,
 }
 
 /// POST `/v1/audio/transcriptions`: transcribes audio into text.
@@ -738,7 +764,7 @@ post,
 path = "/audio/transcriptions",
 request_body = CreateTranscriptionRequest,
 responses(
-(status = 200, description = "OK", body = String),
+(status = 200, description = "OK", body = TranscriptionResponse),
 (status = 500, description = "unexpected internal server error", body = TranscriptionError)
 ),
 )]
@@ -789,16 +815,18 @@ pub async fn create_transcription(
 
     model.preload().await?;
 
-    let res = crate::whisper::create_transcription(
+    let (text, session) = crate::whisper::create_transcription(
         &req.file.contents,
         model,
         req.language.as_deref(),
         req.prompt.as_deref(),
         req.temperature,
+        req.create_session.unwrap_or(false),
+        req.session,
     )
     .await?;
 
-    Ok(res.into_boxed_str())
+    Ok(Json(TranscriptionResponse { text, session }))
 }
 
 /// An error condition raised by the audio transcription API.
