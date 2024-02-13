@@ -11,7 +11,6 @@
  */
 
 use crate::BoxedFuture;
-use core::future::Future;
 use core::time::Duration;
 use futures::Stream;
 use serde::Serialize;

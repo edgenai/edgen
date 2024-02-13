@@ -10,23 +10,20 @@
  * limitations under the License.
  */
 
-use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use dashmap::DashMap;
 use futures::executor::block_on;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::spawn;
 use tokio::task::JoinHandle;
 use tokio::time::{interval, MissedTickBehavior};
-use tokio::{select, spawn};
-use tracing::{error, info};
+use tracing::info;
 use uuid::Uuid;
 use whisper_cpp::{WhisperModel, WhisperParams, WhisperSampling, WhisperSession};
 
 use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, PerishableWriteGuard};
 use edgen_core::settings::SETTINGS;
-use edgen_core::whisper::WhisperEndpointError::SessionNotFound;
 use edgen_core::whisper::{
     inactive_whisper_session_ttl, inactive_whisper_ttl, parse, TranscriptionArgs, WhisperEndpoint,
     WhisperEndpointError,
@@ -187,7 +184,10 @@ impl UnloadingModel {
         };
 
         if let Some(uuid) = uuid {
-            let session = self.sessions.get(&uuid).ok_or(SessionNotFound)?;
+            let session = self
+                .sessions
+                .get(&uuid)
+                .ok_or(WhisperEndpointError::SessionNotFound)?;
 
             let (_session_signal, mut session_guard) =
                 get_or_init_session(session.value(), model_guard.clone()).await?;
