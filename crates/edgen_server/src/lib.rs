@@ -39,6 +39,7 @@ use openai_shim as audio;
 pub mod misc;
 
 pub mod cli;
+pub mod error;
 pub mod graceful_shutdown;
 mod llm;
 mod model;
@@ -84,7 +85,7 @@ mod whisper;
 struct ApiDoc;
 
 /// Result for main functions
-pub type EdgenResult = Result<(), String>;
+pub type EdgenResult = Result<(), error::EdgenError>;
 
 /// Main entry point for the server process
 pub fn start(command: &cli::TopLevel) -> EdgenResult {
@@ -119,13 +120,11 @@ pub fn config_reset() -> EdgenResult {
     let path = settings::get_config_file_path();
 
     if path.is_file() {
-        std::fs::remove_file(&path).unwrap();
+        std::fs::remove_file(&path)?;
     }
 
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async {
-        settings::create_default_config_file().unwrap();
-    });
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async { settings::create_default_config_file() })?;
 
     Ok(())
 }
@@ -161,14 +160,14 @@ async fn start_server(args: &cli::Serve) -> EdgenResult {
 
     settings::create_project_dirs().await.unwrap();
 
-    while run_server(args).await {
+    while run_server(args).await? {
         info!("Settings have been updated, resetting environment")
     }
 
     Ok(())
 }
 
-async fn run_server(args: &cli::Serve) -> bool {
+async fn run_server(args: &cli::Serve) -> Result<bool, error::EdgenError> {
     status::set_chat_completions_active_model(
         &SETTINGS
             .read()
@@ -229,39 +228,22 @@ async fn run_server(args: &cli::Serve) -> bool {
 
     for uri in &uri_vector {
         let listener = match uri {
-            uri if uri.starts_with("unix://") => {
-                error!("unix:// URIs are not yet supported");
-
-                exit(1)
-            }
+            uri if uri.starts_with("unix://") => Err(error::EdgenError::GenericError(
+                "unix:// URIs are not supported".to_string(),
+            )),
             uri if uri.starts_with("http://") => {
                 let addr = uri.strip_prefix("http://").unwrap();
-
-                tokio::net::TcpListener::bind(addr)
-                    .await
-                    .unwrap_or_else(|err| {
-                        error!("Could not bind to TCP socket at {addr}: {err}");
-
-                        exit(1)
-                    })
+                Ok(tokio::net::TcpListener::bind(addr).await?)
             }
             uri if uri.starts_with("ws://") => {
                 let addr = uri.strip_prefix("ws://").unwrap();
 
-                tokio::net::TcpListener::bind(addr)
-                    .await
-                    .unwrap_or_else(|err| {
-                        error!("Could not bind to TCP socket at {addr}: {err}");
-
-                        exit(1)
-                    })
+                Ok(tokio::net::TcpListener::bind(addr).await?)
             }
-            _ => {
-                error!("Unsupported URI schema: {uri}. unix://, http://, and ws:// are supported.");
-
-                exit(1)
-            }
-        };
+            _ => Err(error::EdgenError::GenericError(format!(
+                "Unsupported URI schema: {uri}. unix://, http://, and ws:// are supported."
+            ))),
+        }?;
 
         info!("Listening in on: {uri}");
 
@@ -276,8 +258,6 @@ async fn run_server(args: &cli::Serve) -> bool {
                     bind_res
                         .unwrap_or_else(|err| {
                             error!("Could not bind HTTP server: {err}");
-
-                            exit(1)
                         });
                     },
                 _ = &mut reset_rx => {}
@@ -323,7 +303,7 @@ async fn run_server(args: &cli::Serve) -> bool {
             _ = graceful_shutdown::global_shutdown_ends() => {
                 error!("Global shutdown grace period has ended; exiting abnormally");
 
-                exit(1)
+                exit(1) // last resort
             }
             _ = all_listeners.join_next() => {
                 info!("Thread has exited");
@@ -337,7 +317,7 @@ async fn run_server(args: &cli::Serve) -> bool {
         }
     }
 
-    reset_flag.load(Ordering::SeqCst)
+    Ok(reset_flag.load(Ordering::SeqCst))
 }
 
 #[cfg(test)]

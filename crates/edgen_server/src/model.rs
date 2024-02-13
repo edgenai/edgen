@@ -14,6 +14,7 @@ use std::path::PathBuf;
 
 use serde_derive::Serialize;
 use thiserror::Error;
+use tracing::warn;
 use utoipa::ToSchema;
 
 use crate::status;
@@ -26,6 +27,9 @@ pub enum ModelError {
     UnknownModel(ModelKind),
     #[error("error checking remote repository: ({0})")]
     API(String),
+    /// error resulting from tokio::JoinError
+    #[error("model could not be preloaded because of an internal error (JoinError)")]
+    JoinError(String),
     #[error("model was not preloaded before use")]
     NotPreloaded,
 }
@@ -130,8 +134,12 @@ impl Model {
             return path;
         });
 
-        let _ = progress_handle.await.unwrap();
-        let path = download_handle.await.unwrap();
+        let _ = progress_handle
+            .await
+            .map_err(|e| ModelError::JoinError(e.to_string()))?;
+        let path = download_handle
+            .await
+            .map_err(|e| ModelError::JoinError(e.to_string()))?;
 
         self.path = path?;
         self.preloaded = true;
@@ -141,14 +149,19 @@ impl Model {
 
     // get size of the remote file when we download.
     async fn get_size(&self, api: &hf_hub::api::sync::ApiRepo) -> Option<u64> {
-        let metadata = reqwest::Client::new()
+        match reqwest::Client::new()
             .get(api.url(&self.name))
             .header("Content-Range", "bytes 0-0")
             .header("Range", "bytes 0-0")
             .send()
             .await
-            .unwrap();
-        return metadata.content_length();
+        {
+            Ok(metadata) => metadata.content_length(),
+            Err(e) => {
+                warn!("no metadata for model {}: {:?}", self.name, e);
+                None
+            }
+        }
     }
 
     /// Returns a [`PathBuf`] pointing to the local model file.

@@ -15,6 +15,7 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use serde::{Deserialize, Serialize};
+use tracing::error;
 use utoipa::ToSchema;
 
 /// Reads the version defined in Cargo.toml at compile time in the format
@@ -56,7 +57,7 @@ pub async fn edgen_version() -> Response {
 }
 
 fn internal_server_error(msg: &str) -> Response {
-    eprintln!("[ERROR] {}", msg);
+    error!("[ERROR] {}", msg);
     StatusCode::INTERNAL_SERVER_ERROR.into_response()
 }
 

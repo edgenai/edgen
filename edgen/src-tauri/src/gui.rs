@@ -74,21 +74,21 @@ pub fn run() {
                     window.show().unwrap();
                 }
                 "quit" => {
-                    std::process::exit(0);
+                    app.exit(0);
                 }
                 "edgenchat" => {
                     if let Err(err) = opener::open("https://chat.edgen.co") {
-                        eprintln!("Error opening website: {}", err);
+                        eprintln!("Error opening website: {:?}", err);
                     }
                 }
                 "config" => {
                     if let Err(err) = opener::open(settings::get_config_file_path()) {
-                        eprintln!("Error opening config file: {}", err);
+                        eprintln!("Error opening config file: {:?}", err);
                     }
                 }
                 "reset_config" => {
                     if let Err(err) = edgen_server::config_reset() {
-                        eprintln!("Error resetting config: {}", err);
+                        eprintln!("Error resetting config: {:?}", err);
                     }
                 }
                 _ => {}

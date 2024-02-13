@@ -44,15 +44,17 @@ fn main() -> EdgenResult {
 
 #[cfg(not(feature = "no_gui"))]
 fn serve(command: &'static cli::TopLevel, start_gui: bool) -> EdgenResult {
-    let handle = std::thread::spawn(|| {
-        start(command).unwrap();
+    let handle = std::thread::spawn(|| match start(command) {
+        Ok(()) => std::process::exit(0),
+        Err(e) => {
+            eprintln!("{:?}", e);
+            std::process::exit(1);
+        }
     });
 
     if start_gui {
         gui::run();
     }
 
-    handle.join().expect("cannot join background task");
-
-    Ok(())
+    handle.join()?
 }

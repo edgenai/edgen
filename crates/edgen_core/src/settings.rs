@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::{from_slice, to_string};
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 /// The file extension of a YAML file, which is the format used to store settings.
@@ -78,10 +78,8 @@ pub async fn create_project_dirs() -> Result<(), std::io::Error> {
 }
 
 /// Create the default config file if it does not exist
-pub fn create_default_config_file() -> Result<(), std::io::Error> {
-    block_on(async {
-        StaticSettings { inner: None }.init().await.unwrap();
-    });
+pub fn create_default_config_file() -> Result<(), SettingsError> {
+    block_on(async { StaticSettings { inner: None }.init().await })?;
 
     Ok(())
 }
@@ -361,7 +359,7 @@ fn read_with_retry(path: &PathBuf) -> Result<Vec<u8>, ()> {
             Ok(yaml) => return Ok(yaml),
             Err(e) => {
                 if i == 9 {
-                    error!("cannot read config: {}", e);
+                    warn!("cannot read config: {}", e);
                     break;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(10));
@@ -383,9 +381,24 @@ impl EventHandler for UpdateHandler {
             assert_eq!(paths.len(), 1, "There should be 1 and only 1 path");
             let path = &paths[0];
 
-            let yaml = read_with_retry(path).unwrap();
+            let yaml = read_with_retry(path);
 
-            let params: SettingsParams = from_slice(&yaml).expect("Failed to parse YAML");
+            // a user may have deleted the config file by accident,
+            // ignore it until it is readable again.
+            if yaml.is_err() {
+                return;
+            }
+            let yaml = yaml.unwrap();
+
+            // likewise, a user may have invalidated the config by accident,
+            // ignore it until it is readable again.
+            let params: Result<SettingsParams, serde_yaml::Error> = from_slice(&yaml);
+            if params.is_err() {
+                warn!("cannot parse config: {:?}", params.unwrap_err());
+                return;
+            }
+            let params = params.unwrap();
+
             {
                 let mut locked = self.settings.blocking_write();
                 locked.params = params.clone();
