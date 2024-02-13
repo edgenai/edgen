@@ -113,15 +113,8 @@ where
 mod test {
     use super::*;
 
-    // I (toschoo) introduced two changes that make the test pass.
-    // Since I am not sure about the intentions of the original code,
-    // (perhaps the stopping_stream implementation is broken?)
-    // here my changes:
-    // - I replaced the original raw string with the concat macro
-    // - the right element of the assert was a vector containing one string
-    //   namely "apple\nbanana".
     #[tokio::test]
-    async fn stopping_stream() {
+    async fn stopping_stream_middle() {
         let stream_content = concat!("apple\n", "banana\n", "coconut\n", "dill\n", "eggplant\n",);
 
         let content_stream =
@@ -136,5 +129,62 @@ mod test {
             stopping_stream.collect::<Vec<_>>().await,
             vec!["apple", "banana"]
         );
+    }
+
+    #[tokio::test]
+    async fn stopping_stream_start() {
+        let stream_content = concat!("apple\n", "banana\n", "coconut\n", "dill\n", "eggplant\n",);
+
+        let content_stream =
+            futures::stream::iter(stream_content.lines().map(|line| line.to_string()));
+
+        let stopping_stream = StoppingStream::wrap_with_stop_words(
+            content_stream,
+            vec!["apple".to_string(), "eggplant".to_string()],
+        );
+
+        assert_eq!(
+            stopping_stream.collect::<Vec<_>>().await,
+            vec![] as Vec<String>,
+        );
+    }
+
+    #[tokio::test]
+    async fn stopping_stream_end() {
+        let stream_content = concat!("apple\n", "banana\n", "coconut\n", "dill\n", "eggplant\n",);
+
+        let content_stream =
+            futures::stream::iter(stream_content.lines().map(|line| line.to_string()));
+
+        let stopping_stream =
+            StoppingStream::wrap_with_stop_words(content_stream, vec!["eggplant".to_string()]);
+
+        assert_eq!(
+            stopping_stream.collect::<Vec<_>>().await,
+            vec!["apple", "banana", "coconut", "dill"],
+        );
+    }
+
+    #[tokio::test]
+    async fn stopping_stream_all() {
+        let stream = concat!("apple\n", "banana\n", "coconut\n", "dill\n", "eggplant\n");
+
+        for i in 0..5 {
+            let stream_content = stream.lines().map(|line| line.to_string());
+            let v: Vec<String> = stream_content.clone().collect();
+            let mut expected: Vec<String> = Vec::with_capacity(i);
+            for y in 0..i {
+                expected.push(v[y].to_string());
+            }
+
+            let content_stream = futures::stream::iter(stream_content);
+
+            let stopping_stream =
+                StoppingStream::wrap_with_stop_words(content_stream, vec![v[i].to_string()]);
+
+            println!("expected for {}: {:?}", v[i], expected);
+
+            assert_eq!(stopping_stream.collect::<Vec<_>>().await, expected,);
+        }
     }
 }
