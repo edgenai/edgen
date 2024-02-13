@@ -28,7 +28,7 @@ pub mod settings;
 
 pub mod perishable;
 
-/// A generic [`Box`]ed future, used to emulate `async` functions in traits.
+/// A generic [`Box`]ed [`Future`], used to emulate `async` functions in traits.
 pub type BoxedFuture<'a, T> = Box<dyn Future<Output = T> + Send + Unpin + 'a>;
 
 /// Return the [`Duration`] that cleanup threads should wait before looking for and freeing unused

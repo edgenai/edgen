@@ -28,8 +28,8 @@ use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, Peri
 use edgen_core::settings::SETTINGS;
 use edgen_core::whisper::WhisperEndpointError::SessionNotFound;
 use edgen_core::whisper::{
-    inactive_whisper_session_ttl, inactive_whisper_ttl, parse_pcm, TranscriptionArgs,
-    WhisperEndpoint, WhisperEndpointError,
+    inactive_whisper_session_ttl, inactive_whisper_ttl, parse, TranscriptionArgs, WhisperEndpoint,
+    WhisperEndpointError,
 };
 use edgen_core::{cleanup_interval, BoxedFuture};
 
@@ -68,7 +68,7 @@ impl WhisperCppEndpoint {
         model_path: impl AsRef<Path>,
         args: TranscriptionArgs,
     ) -> Result<(String, Option<Uuid>), WhisperEndpointError> {
-        let pcm = parse_pcm(&args.file)?;
+        let pcm = parse::pcm(&args.file)?;
         let model = self.get(model_path).await;
         model
             .transcription(args.create_session, args.session, pcm)
