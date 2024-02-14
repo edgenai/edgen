@@ -47,3 +47,67 @@ pub async fn create_transcription(
 pub async fn reset_environment() {
     ENDPOINT.reset()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Model, ModelKind};
+    use edgen_core::settings::SETTINGS;
+    use levenshtein;
+    use std::path::PathBuf;
+
+    async fn init_settings_for_test() {
+        SETTINGS
+            .write()
+            .await
+            .init()
+            .await
+            .expect("Failed to initialise settings");
+    }
+
+    fn frost() -> String {
+        " The woods are lovely, dark and deep, \
+         but I have promises to keep \
+         and miles to go before I sleep, \
+         and miles to go before I sleep."
+            .to_string()
+    }
+
+    #[tokio::test]
+    #[ignore] // this test hangs sometimes
+    async fn test_audio_transcriptions() {
+        init_settings_for_test().await;
+        let model_name = "ggml-distil-small.en.bin".to_string();
+        let repo = "distil-whisper/distil-small.en".to_string();
+        let dir = SETTINGS
+            .read()
+            .await
+            .read()
+            .await
+            .audio_transcriptions_models_dir
+            .to_string();
+        let mut model = Model::new(ModelKind::Whisper, &model_name, &repo, &PathBuf::from(&dir));
+        assert!(model.preload().await.is_ok());
+
+        let sound = include_bytes!("../resources/frost.wav");
+        let response = create_transcription(sound, model, None, None, None).await;
+
+        assert!(response.is_ok(), "cannot create transcription");
+
+        let expected_text = frost();
+        let actual_text = response.unwrap();
+
+        // Calculate Levenshtein distance
+        let distance = levenshtein::levenshtein(&expected_text, &actual_text);
+
+        // Calculate similarity percentage
+        let similarity_percentage =
+            100.0 - ((distance as f64 / expected_text.len() as f64) * 100.0);
+
+        // Assert that the similarity is at least 90%
+        assert!(
+            similarity_percentage >= 90.0,
+            "Text similarity is less than 90%"
+        );
+    }
+}
