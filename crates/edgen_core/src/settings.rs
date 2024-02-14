@@ -478,8 +478,8 @@ impl DerefMut for StaticSettings {
 
 #[cfg(test)]
 mod tests {
-    // use std::sync::atomic::{AtomicBool, Ordering};
-    // use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
 
     use crate::settings::*;
 
@@ -523,6 +523,8 @@ mod tests {
                 "Settings do not match default parameters"
             );
 
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
             settings.write().await.threads = 1000000;
 
             assert_eq!(
@@ -531,15 +533,13 @@ mod tests {
                 "Settings were changed without getting applied"
             );
 
-            /* With the PollWatcher this is not working.
-             * We need to find a better test method.
-
             let flag = Arc::new(AtomicBool::new(false));
             let cloned_flag = flag.clone();
 
-            let _unused =
-                settings.add_change_callback(move || cloned_flag.store(true, Ordering::SeqCst));
-            */
+            let _unused = settings.add_change_callback(move || {
+                println!("settings callback running");
+                cloned_flag.store(true, Ordering::SeqCst)
+            });
 
             settings
                 .write()
@@ -549,7 +549,7 @@ mod tests {
                 .expect("Failed to apply settings");
 
             // The watcher must read the file to update the settings, so we must give it some time
-            // tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(4)).await;
 
             assert_eq!(
                 1000000,
@@ -558,7 +558,7 @@ mod tests {
             );
 
             // If this fails with "File not found", should try increasing the sleep duration
-            // assert!(flag.load(Ordering::SeqCst), "Callback was not called")
+            assert!(flag.load(Ordering::SeqCst), "Callback was not called")
         }
         {
             let (settings, _) = SettingsInner::load_or_create(tmp.path(), TEST_FILE)
