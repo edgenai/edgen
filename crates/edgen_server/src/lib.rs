@@ -324,6 +324,7 @@ async fn run_server(args: &cli::Serve) -> Result<bool, error::EdgenError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::openai_shim::TranscriptionResponse;
     use axum::routing::post;
     use axum::Router;
     use axum_test::multipart;
@@ -502,7 +503,7 @@ mod tests {
         resp.assert_status_ok();
 
         let expected_text = frost();
-        let actual_text = resp.text();
+        let actual_text = resp.json::<TranscriptionResponse>().text;
 
         // Calculate Levenshtein distance
         let distance = levenshtein::levenshtein(&expected_text, &actual_text);
@@ -512,6 +513,8 @@ mod tests {
             100.0 - ((distance as f64 / expected_text.len() as f64) * 100.0);
 
         // Assert that the similarity is at least 90%
+        println!("test      : '{}'", actual_text);
+        println!("similarity: {}", similarity_percentage);
         assert!(
             similarity_percentage >= 90.0,
             "Text similarity is less than 90%"
