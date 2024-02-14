@@ -198,3 +198,20 @@ pub fn parse_pcm(audio_file: &[u8]) -> Result<Vec<f32>, AudioError> {
 
     Ok(samples)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_audio_succeeds() {
+        let sound = include_bytes!("../../edgen_server/resources/frost.wav");
+        assert!(parse_pcm(sound).is_ok(), "cannot parse audio file");
+    }
+
+    #[test]
+    fn parse_audio_fails() {
+        let sound: Vec<u8> = vec![0, 1, 2, 3];
+        assert!(parse_pcm(&sound).is_err(), "can parse non-audio file");
+    }
+}
