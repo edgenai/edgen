@@ -19,7 +19,7 @@ use utoipa::ToSchema;
 
 use crate::status;
 
-#[derive(Serialize, Error, ToSchema, Debug)]
+#[derive(Serialize, Error, ToSchema, Debug, PartialEq)]
 pub enum ModelError {
     #[error("the provided model file name does does not exist, or isn't a file: ({0})")]
     FileNotFound(String),
@@ -40,11 +40,13 @@ pub enum ModelKind {
     Whisper,
 }
 
+#[derive(Debug, PartialEq)]
 enum ModelQuantization {
     Default,
 }
 
 #[allow(dead_code)]
+#[derive(Debug, PartialEq)]
 pub struct Model {
     kind: ModelKind,
     quantization: ModelQuantization,
@@ -171,5 +173,109 @@ impl Model {
         }
 
         Err(ModelError::NotPreloaded)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use std::path::PathBuf;
+
+    use hf_hub;
+
+    #[test]
+    fn llm_new() {
+        let model = "model";
+        let repo = "repo";
+        let dir = PathBuf::from("dir");
+        let m = Model::new(ModelKind::LLM, model, repo, &dir);
+        assert_eq!(
+            m,
+            Model {
+                kind: ModelKind::LLM,
+                quantization: ModelQuantization::Default,
+                name: model.to_string(),
+                repo: repo.to_string(),
+                dir: dir.clone(),
+                path: dir.join(model),
+                preloaded: false,
+            }
+        );
+        assert_eq!(m.file_path(), Err(ModelError::NotPreloaded));
+    }
+
+    #[test]
+    fn whisper_new() {
+        let model = "model";
+        let repo = "repo";
+        let dir = PathBuf::from("dir");
+        let m = Model::new(ModelKind::Whisper, model, repo, &dir);
+        assert_eq!(
+            m,
+            Model {
+                kind: ModelKind::Whisper,
+                quantization: ModelQuantization::Default,
+                name: model.to_string(),
+                repo: repo.to_string(),
+                dir: dir.clone(),
+                path: dir.join(model),
+                preloaded: false,
+            }
+        );
+        assert_eq!(m.file_path(), Err(ModelError::NotPreloaded));
+    }
+
+    #[tokio::test]
+    async fn preload() {
+        let model = "dummy.gguf";
+        let repo = "dummy";
+        let dir = PathBuf::from("resources");
+        let mut m = Model::new(ModelKind::LLM, model, repo, &dir);
+        m.preload().await.expect("model preload failed");
+        assert_eq!(
+            m,
+            Model {
+                kind: ModelKind::LLM,
+                quantization: ModelQuantization::Default,
+                name: model.to_string(),
+                repo: repo.to_string(),
+                dir: dir.clone(),
+                path: dir.join(model),
+                preloaded: true,
+            }
+        );
+        assert_eq!(m.file_path(), Ok(m.path));
+    }
+
+    #[tokio::test]
+    #[ignore]
+    // This test tries to connect to huggingface
+    // Therefore, we usually ignore it
+    async fn get_size() {
+        let model = "tinyllama-1.1b-chat-v1.0.Q2_K.gguf";
+        let repo = "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF";
+        let dir = PathBuf::from("dir");
+        let m = Model::new(ModelKind::LLM, model, repo, &dir);
+        assert_eq!(
+            m,
+            Model {
+                kind: ModelKind::LLM,
+                quantization: ModelQuantization::Default,
+                name: model.to_string(),
+                repo: repo.to_string(),
+                dir: dir.clone(),
+                path: dir.join(model),
+                preloaded: false,
+            }
+        );
+        let api = hf_hub::api::sync::ApiBuilder::new()
+            .with_cache_dir(dir.clone())
+            .build()
+            .expect("ApiBuilder::new() failed");
+        let api = api.model(repo.to_string());
+        let sz = m.get_size(&api).await;
+        assert!(sz.is_some());
+        assert_eq!(sz, Some(483116416u64));
     }
 }

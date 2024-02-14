@@ -115,3 +115,202 @@ pub struct Oasgen {
     #[argh(switch, short = 'j')]
     pub json: bool,
 }
+
+#[cfg(test)]
+#[rustfmt::skip]
+mod test {
+    use super::*;
+    use argh::FromArgs;
+
+    #[test]
+    fn version() {
+        assert_eq!(
+            TopLevel::from_args(&["edgen"], &["version"]).expect("from_args failed"),
+            TopLevel {
+                subcommand: Some(Command::Version(Version{}))
+            }
+        );
+    }
+
+    #[test]
+    fn config_reset() {
+        assert_eq!(
+            TopLevel::from_args(&["edgen"], &["config", "reset"]).expect("from_args failed"),
+            TopLevel {
+                subcommand: Some(Command::Config(Config {
+                    subcommand: ConfigCommand::Reset(Reset {})
+                }))
+            }
+        );
+    }
+
+    #[test]
+    fn oasgen_only() {
+        assert_eq!(
+            TopLevel::from_args(&["edgen"], &["oasgen"]).expect("from_args failed"),
+            TopLevel {
+                subcommand: Some(Command::Oasgen(Oasgen{
+                    yaml: false,
+                    json: false,
+                }))
+            }
+        );
+    }
+
+    #[test]
+    fn oasgen_yaml_short() {
+        assert_eq!(
+            TopLevel::from_args(&["edgen"], &["oasgen", "-y"]).expect("from_args failed"),
+            TopLevel {
+                subcommand: Some(Command::Oasgen(Oasgen{
+                    yaml: true,
+                    json: false,
+                }))
+            }
+        );
+    }
+
+    #[test]
+    fn oasgen_yaml_long() {
+        assert_eq!(
+            TopLevel::from_args(&["edgen"], &["oasgen", "--yaml"]).expect("from_args failed"),
+            TopLevel {
+                subcommand: Some(Command::Oasgen(Oasgen{
+                    yaml: true,
+                    json: false,
+                }))
+            }
+        );
+    }
+
+    #[test]
+    fn oasgen_json_short() {
+        assert_eq!(
+            TopLevel::from_args(&["edgen"], &["oasgen", "-j"]).expect("from_args failed"),
+            TopLevel {
+                subcommand: Some(Command::Oasgen(Oasgen{
+                    yaml: false,
+                    json: true,
+                }))
+            }
+        );
+    }
+
+    #[test]
+    fn oasgen_json_long() {
+        assert_eq!(
+            TopLevel::from_args(&["edgen"], &["oasgen", "--json"]).expect("from_args failed"),
+            TopLevel {
+                subcommand: Some(Command::Oasgen(Oasgen{
+                    yaml: false,
+                    json: true,
+                }))
+            }
+        );
+    }
+
+    #[test]
+    fn serve_only() {
+        assert_eq!(
+            TopLevel::from_args(&["edgen"], &["serve"]).expect("from_args failed"),
+            TopLevel {
+                subcommand: Some(Command::Serve(Serve {
+                    uri: [].to_vec(),
+                    nogui: false,
+                }))
+            }
+        );
+    }
+
+    #[test]
+    fn serve_nogui() {
+        assert_eq!(
+            TopLevel::from_args(&["edgen"], &["serve", "--nogui"]).expect("from_args failed"),
+            TopLevel {
+                subcommand: Some(Command::Serve(Serve {
+                    uri: [].to_vec(),
+                    nogui: true,
+                }))
+            }
+        );
+    }
+
+    #[test]
+    fn serve_one_uri() {
+        assert_eq!(
+            TopLevel::from_args(&["edgen"], &["serve", "--uri", "http://localhost"])
+                .expect("from_args failed"),
+            TopLevel {
+                subcommand: Some(Command::Serve(Serve {
+                    uri: ["http://localhost".to_string()].to_vec(),
+                    nogui: false,
+                }))
+            }
+        );
+    }
+
+    #[test]
+    fn serve_many_uris() {
+        assert_eq!(
+            TopLevel::from_args(
+                &["edgen"],
+                &[
+                    "serve",
+                    "--uri", "http://localhost",
+                    "-b", "http://remotehost",
+                    "-b", "http://anotherhost",
+                    "-b", "http://172.0.0.1:3000",
+                    "-b", "http://192.168.5.10",
+                ]
+            )
+            .expect("from_args failed"),
+            TopLevel {
+                subcommand: Some(Command::Serve(Serve {
+                    uri: [
+                        "http://localhost",
+                        "http://remotehost",
+                        "http://anotherhost",
+                        "http://172.0.0.1:3000",
+                        "http://192.168.5.10",
+                    ]
+                    .map(|x| x.to_string())
+                    .to_vec(),
+                    nogui: false,
+                }))
+            }
+        );
+    }
+
+    #[test]
+    fn serve_many_uris_nogui() {
+        assert_eq!(
+            TopLevel::from_args(
+                &["edgen"],
+                &[
+                    "serve",
+                    "--nogui",
+                    "--uri", "http://localhost",
+                    "-b", "http://remotehost",
+                    "-b", "http://anotherhost",
+                    "-b", "http://172.0.0.1:3000",
+                    "-b", "http://192.168.5.10",
+                ]
+            )
+            .expect("from_args failed"),
+            TopLevel {
+                subcommand: Some(Command::Serve(Serve {
+                    uri: [
+                        "http://localhost",
+                        "http://remotehost",
+                        "http://anotherhost",
+                        "http://172.0.0.1:3000",
+                        "http://192.168.5.10",
+                    ]
+                    .map(|x| x.to_string())
+                    .to_vec(),
+                    nogui: true,
+                }))
+            }
+        );
+    }
+}
