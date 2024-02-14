@@ -35,6 +35,8 @@ pub enum LLMEndpointError {
     Advance(String),
     #[error("failed to load the model: {0}")]
     Load(String),
+    #[error("failed to create a new session: {0}")]
+    SessionCreationFailed(String),
 }
 
 #[derive(Debug, Clone)]

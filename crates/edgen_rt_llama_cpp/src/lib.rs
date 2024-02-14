@@ -23,6 +23,7 @@ use llama_cpp::standard_sampler::StandardSampler;
 use llama_cpp::{CompletionHandle, LlamaModel, LlamaSession, SessionParams, Token};
 use smol::future::FutureExt;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{interval, MissedTickBehavior};
 use tokio::{select, spawn};
@@ -218,9 +219,9 @@ impl UnloadingModel {
         let (session, mut id, new_context) = self.take_chat_session(&args.prompt).await;
         let (_model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
 
-        let (_session_signal, handle) = {
+        let (_session_signal, mut handle) = {
             let (session_signal, mut session_guard) =
-                get_or_init_session(&session, model_guard.clone()).await;
+                get_or_init_session(&session, model_guard.clone()).await?;
 
             session_guard
                 .advance_context_async(new_context)
@@ -305,9 +306,9 @@ async fn get_or_init_model(
 async fn get_or_init_session(
     session: &Perishable<LlamaSession>,
     model: LlamaModel,
-) -> (ActiveSignal, PerishableWriteGuard<LlamaSession>) {
+) -> Result<(ActiveSignal, PerishableWriteGuard<LlamaSession>), LLMEndpointError> {
     session
-        .get_or_init_mut(move || async move {
+        .get_or_try_init_mut(move || async move {
             info!("Allocating new LLM session");
             let mut params = SessionParams::default();
             let threads = SETTINGS.read().await.read().await.auto_threads(false);
@@ -318,7 +319,9 @@ async fn get_or_init_session(
             params.n_threads_batch = threads;
             params.n_ctx = CONTEXT_SIZE;
 
-            model.create_session(params)
+            model
+                .create_session(params)
+                .map_err(move |e| LLMEndpointError::SessionCreationFailed(e.to_string()))
         })
         .await
 }
@@ -443,9 +446,10 @@ struct CompletionStream {
     /// The [`LlamaModel`] used to call [`LlamaModel::token_to_piece`].
     model: LlamaModel,
 
+    // TODO look better into this implementation, could try sending this across channels instead
     /// Handle to the model completions, needs to be an [`Arc`] so it can be cloned in
     /// [`Stream::poll_next`], or else it would be referencing a vanishing `self`.
-    handle: Arc<CompletionHandle>,
+    handle: Arc<Mutex<CompletionHandle>>,
 
     //TODO i dont know if it is possible to do this without a box
     /// An [`Option`] potentially containing the result of a [`CompletionHandle::next_token_async`] call.
@@ -495,7 +499,7 @@ impl CompletionStream {
         let end_token = model.eos();
 
         let (session_signal, handle) = {
-            let (session_signal, mut session_guard) = get_or_init_session(&session, model).await;
+            let (session_signal, mut session_guard) = get_or_init_session(&session, model).await?;
 
             session_guard
                 .advance_context_async(new_context)
@@ -511,7 +515,7 @@ impl CompletionStream {
 
         Ok(Self {
             model: model_clone,
-            handle: Arc::new(handle),
+            handle: Arc::new(Mutex::new(handle)),
             next: None,
             end_token,
             session: Some(session),
@@ -524,8 +528,8 @@ impl CompletionStream {
 
     /// Helper function that captures the provided [`CompletionHandle`] handle [`Arc`] clone and
     /// calls [`CompletionHandle::next_token_async`].
-    async fn get_next(handle: Arc<CompletionHandle>) -> Option<Token> {
-        handle.next_token_async().await
+    async fn get_next(handle: Arc<Mutex<CompletionHandle>>) -> Option<Token> {
+        handle.lock().await.next_token_async().await
     }
 
     /// Small helper function that takes in an acquired [`Poll::Ready`] value and returns the [`String`]

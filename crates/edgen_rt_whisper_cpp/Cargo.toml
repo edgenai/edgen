@@ -15,5 +15,5 @@ tokio = { workspace = true, features = ["sync"] }
 once_cell = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
-whisper_cpp = { workspace = true, features = ["native"] }
+whisper_cpp = { git = "https://github.com/edgenai/whisper_cpp-rs", branch = "main", features = ["native"] }
 
