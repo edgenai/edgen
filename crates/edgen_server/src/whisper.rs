@@ -79,7 +79,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore] // this test hangs sometimes
-    async fn test_audio_transcriptions() {
+    async fn test_create_transcription() {
         init_settings_for_test().await;
         let model_name = "ggml-distil-small.en.bin".to_string();
         let repo = "distil-whisper/distil-small.en".to_string();
@@ -94,12 +94,14 @@ mod tests {
         assert!(model.preload().await.is_ok());
 
         let sound = include_bytes!("../resources/frost.wav");
-        let response = create_transcription(sound, model, None, None, None).await;
+        let response = create_transcription(sound, model, None, None, None, true, None).await;
 
         assert!(response.is_ok(), "cannot create transcription");
 
         let expected_text = frost();
-        let actual_text = response.unwrap();
+        let (actual_text, session) = response.unwrap();
+
+        println!("{:?}", session);
 
         // Calculate Levenshtein distance
         let distance = levenshtein::levenshtein(&expected_text, &actual_text);
