@@ -20,7 +20,7 @@ use dashmap::DashMap;
 use futures::executor::block_on;
 use futures::{Future, Stream};
 use llama_cpp::standard_sampler::StandardSampler;
-use llama_cpp::{CompletionHandle, LlamaModel, LlamaSession, SessionParams, Token};
+use llama_cpp::{CompletionHandle, LlamaModel, LlamaParams, LlamaSession, SessionParams, Token};
 use smol::future::FutureExt;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::Mutex;
@@ -34,7 +34,7 @@ use edgen_core::llm::{
     ASSISTANT_TAG, SYSTEM_TAG, TOOL_TAG, USER_TAG,
 };
 use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, PerishableWriteGuard};
-use edgen_core::settings::SETTINGS;
+use edgen_core::settings::{DevicePolicy, SETTINGS};
 use edgen_core::{cleanup_interval, BoxedFuture};
 
 // TODO this should be in settings
@@ -294,7 +294,21 @@ async fn get_or_init_model(
     model
         .get_or_try_init(move || async move {
             info!("Loading {} into memory", path.to_string_lossy());
-            LlamaModel::load_from_file_async(path, Default::default())
+            let mut args = LlamaParams::default();
+
+            match SETTINGS.read().await.read().await.gpu_policy {
+                DevicePolicy::AlwaysCpu { .. } => {
+                    args.n_gpu_layers = 0;
+                }
+                DevicePolicy::AlwaysDevice { .. } => {
+                    args.n_gpu_layers = u32::MAX;
+                }
+                _ => {
+                    unimplemented!()
+                }
+            }
+
+            LlamaModel::load_from_file_async(path, args)
                 .await
                 .map_err(move |e| LLMEndpointError::Load(e.to_string()))
         })
@@ -348,7 +362,7 @@ impl SessionId {
     ///
     /// # Note
     ///
-    /// The new [`SessionId`] returned by this function be advanced using the returned new context,
+    /// The new [`SessionId`] returned by this function must be advanced using the returned new context,
     /// before being advanced with inference content. The reason it isn't already advance with the
     /// new context, is for the purpose of finding matching [`SessionId`]s in the endpoint.
     fn chat(prompt: &str) -> (Self, &str) {

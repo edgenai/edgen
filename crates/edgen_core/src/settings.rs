@@ -36,7 +36,7 @@ pub static SETTINGS: Lazy<RwLock<StaticSettings>> = Lazy::new(Default::default);
 /// The configuration, and data directories for Edgen.
 pub static PROJECT_DIRS: Lazy<ProjectDirs> =
     Lazy::new(|| ProjectDirs::from("com", "EdgenAI", "Edgen").unwrap());
-pub static CONFIG_FILE: Lazy<PathBuf> = Lazy::new(|| build_config_file_path());
+pub static CONFIG_FILE: Lazy<PathBuf> = Lazy::new(build_config_file_path);
 
 /// Create project dirs if they don't exist
 pub async fn create_project_dirs() -> Result<(), std::io::Error> {
@@ -63,7 +63,7 @@ pub async fn create_project_dirs() -> Result<(), std::io::Error> {
     let audio_transcriptions_dir = PathBuf::from(&audio_transcriptions_str);
 
     if !config_dir.is_dir() {
-        std::fs::create_dir_all(&config_dir)?;
+        std::fs::create_dir_all(config_dir)?;
     }
 
     if !chat_completions_dir.is_dir() {
@@ -115,6 +115,26 @@ pub enum SettingsError {
     AlreadyInitialised,
 }
 
+/// A device allocation/execution policy.
+#[non_exhaustive]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DevicePolicy {
+    /// Always allocate and run on the system CPU.
+    AlwaysCpu {
+        /// Upon reaching the host memory limit, allocate and execute on a device if possible
+        overflow_to_device: bool,
+    },
+
+    /// Always allocated and run on acceleration hardware.
+    AlwaysDevice {
+        /// Upon reaching the device memory limit, allocate on system memory and execute on the CPU
+        /// if possible
+        overflow_to_cpu: bool,
+    },
+    // TODO add other policies like: modelthreshold, devicememorythreshold, requestbased, etc
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsParams {
     // TODO make a different thread settings for each endpoint
@@ -138,6 +158,10 @@ pub struct SettingsParams {
     pub audio_transcriptions_model_name: String,
     /// The audio transcription repo that Edgen will use for downloads
     pub audio_transcriptions_model_repo: String,
+
+    /// The policy used to decided if models/session should be allocated and run on acceleration
+    /// hardware
+    pub gpu_policy: DevicePolicy,
 }
 
 impl SettingsParams {
@@ -182,6 +206,10 @@ impl Default for SettingsParams {
             audio_transcriptions_model_repo: "distil-whisper/distil-small.en".to_string(),
             chat_completions_models_dir: chat_completions_str,
             audio_transcriptions_models_dir: audio_transcriptions_str,
+            // TODO detect if the system has acceleration hardware to decide the default
+            gpu_policy: DevicePolicy::AlwaysDevice {
+                overflow_to_cpu: true,
+            },
         }
     }
 }
