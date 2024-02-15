@@ -27,11 +27,13 @@ def test_transcriptions():
     print(transcription)
     print(expected)
 
-    assert(type(transcription) is str)
+    have = transcription.text
 
-    d = Levenshtein.distance(transcription, expected)
+    assert(type(have) is str)
+
+    d = Levenshtein.distance(have, expected)
     similarity = 100 - ((d / len(expected)) * 100)
-    print(f"distance: {d} of '{transcription}', similarity: {similarity}")
+    print(f"distance: {d} of '{have}', similarity: {similarity}")
 
     assert(similarity > 90.0)
 
