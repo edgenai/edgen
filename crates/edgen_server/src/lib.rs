@@ -42,6 +42,7 @@ pub mod error;
 pub mod graceful_shutdown;
 mod llm;
 mod model;
+mod model_man;
 pub mod openai_shim;
 mod routes;
 pub mod status;
