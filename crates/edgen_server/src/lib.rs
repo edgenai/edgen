@@ -20,7 +20,6 @@ use std::process::exit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use axum::Router;
 use tower_http::cors::CorsLayer;
 
 use futures::executor::block_on;
@@ -44,6 +43,7 @@ pub mod graceful_shutdown;
 mod llm;
 mod model;
 pub mod openai_shim;
+mod routes;
 pub mod status;
 pub mod util;
 mod whisper;
@@ -189,32 +189,7 @@ async fn run_server(args: &cli::Serve) -> Result<bool, error::EdgenError> {
     )
     .await;
 
-    let http_app = Router::new()
-        // -- AI endpoints -----------------------------------------------------
-        // ---- Chat -----------------------------------------------------------
-        .route(
-            "/v1/chat/completions",
-            axum::routing::post(openai_shim::chat_completions),
-        )
-        // ---- Audio ----------------------------------------------------------
-        .route(
-            "/v1/audio/transcriptions",
-            axum::routing::post(openai_shim::create_transcription),
-        )
-        // -- AI status endpoints ----------------------------------------------
-        // ---- Chat -----------------------------------------------------------
-        .route(
-            "/v1/chat/completions/status",
-            axum::routing::get(status::chat_completions_status),
-        )
-        // ---- Audio ----------------------------------------------------------
-        .route(
-            "/v1/audio/transcriptions/status",
-            axum::routing::get(status::audio_transcriptions_status),
-        )
-        // -- Miscellaneous services -------------------------------------------
-        .route("/v1/misc/version", axum::routing::get(misc::edgen_version))
-        .layer(CorsLayer::permissive());
+    let http_app = routes::routes().layer(CorsLayer::permissive());
 
     let uri_vector = if !args.uri.is_empty() {
         info!("Overriding default URI");
