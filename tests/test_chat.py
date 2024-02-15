@@ -50,5 +50,16 @@ def test_completions():
     assert(type(content) is str)
     assert("3" in content)
 
+def test_completions_status():
+    try:
+        status = client.chat.completions.status.create()
+    except APIConnectionError:
+        pytest.fail("No connection. Is edgen running?")
+
+    model = status.active_model
+    assert(type(model) is str)
+    print(model)
+
 if __name__ == "__main__":
    test_completions_streaming()
+   test_completions()

@@ -37,5 +37,16 @@ def test_transcriptions():
 
     assert(similarity > 90.0)
 
+def test_transcriptions_status():
+    try:
+        status = client.audio.transcriptions.status.create()
+    except APIConnectionError:
+        pytest.fail("No connection. Is edgen running?")
+    
+    model = status.active_model
+    assert(type(model) is str)
+    print(model)
+    
 if __name__ == "__main__":
    test_transcriptions()
+   test_transcriptions_status()
