@@ -171,3 +171,4 @@ yarn-error.log*
 
 # direnv
 .direnv/
+.envrc
