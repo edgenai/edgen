@@ -23,7 +23,7 @@ use uuid::Uuid;
 use whisper_cpp::{WhisperModel, WhisperParams, WhisperSampling, WhisperSession};
 
 use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, PerishableWriteGuard};
-use edgen_core::settings::SETTINGS;
+use edgen_core::settings::{DevicePolicy, SETTINGS};
 use edgen_core::whisper::{
     inactive_whisper_session_ttl, inactive_whisper_ttl, parse, TranscriptionArgs, WhisperEndpoint,
     WhisperEndpointError,
@@ -194,17 +194,14 @@ impl UnloadingModel {
             // Perishable uses a tokio RwLock internally, which guarantees fair access, so we
             // shouldn't have to worry about thread ordering
 
+            params.no_context = false;
             session_guard
-                .full(params, &pcm)
+                .advance(params, &pcm)
                 .await
                 .map_err(move |e| WhisperEndpointError::Advance(e.to_string()))?;
-
-            let mut res = "".to_string();
-            for i in 0..session_guard.segment_count() {
-                res += &*session_guard
-                    .segment_text(i)
-                    .map_err(move |e| WhisperEndpointError::Decode(e.to_string()))?;
-            }
+            let res = session_guard
+                .new_context()
+                .map_err(move |e| WhisperEndpointError::Advance(e.to_string()))?;
 
             if create_session {
                 Ok((res, Some(uuid)))
@@ -218,17 +215,14 @@ impl UnloadingModel {
                 .await
                 .map_err(move |e| WhisperEndpointError::SessionCreationFailed(e.to_string()))?;
 
+            params.no_context = true;
             session
-                .full(params, &pcm)
+                .advance(params, &pcm)
                 .await
                 .map_err(move |e| WhisperEndpointError::Advance(e.to_string()))?;
-
-            let mut res = "".to_string();
-            for i in 0..session.segment_count() {
-                res += &*session
-                    .segment_text(i)
-                    .map_err(move |e| WhisperEndpointError::Decode(e.to_string()))?;
-            }
+            let res = session
+                .new_context()
+                .map_err(move |e| WhisperEndpointError::Advance(e.to_string()))?;
 
             Ok((res, None))
         }
@@ -251,7 +245,16 @@ async fn get_or_init_model(
     model
         .get_or_try_init(move || async move {
             info!("Loading {} into memory", path.to_string_lossy());
-            WhisperModel::new_from_file(path, false)
+
+            let device = match SETTINGS.read().await.read().await.gpu_policy {
+                DevicePolicy::AlwaysCpu { .. } => None,
+                DevicePolicy::AlwaysDevice { .. } => Some(0),
+                _ => {
+                    unimplemented!()
+                }
+            };
+
+            WhisperModel::new_from_file(path, device)
                 .map_err(move |e| WhisperEndpointError::Load(e.to_string()))
         })
         .await
