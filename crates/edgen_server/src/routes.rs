@@ -48,11 +48,11 @@ pub fn routes() -> Router {
         // -- Model Manager ----------------------------------------------------
         .route("/v1/models", axum::routing::get(model_man::list_models))
         .route(
-            "/v1/models/{model}",
+            "/v1/models/:model",
             axum::routing::get(model_man::retrieve_model),
         )
         .route(
-            "/v1/models/{model}",
+            "/v1/models/:model",
             axum::routing::delete(model_man::delete_model),
         )
 }
