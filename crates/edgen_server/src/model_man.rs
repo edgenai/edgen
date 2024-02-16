@@ -15,14 +15,20 @@ use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, SystemTimeError};
 
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use serde::{Deserialize, Serialize};
 use thiserror;
 use tracing::{error, info, warn};
 use utoipa::ToSchema;
 
+use edgen_core::settings;
+
 pub async fn list_models() -> Response {
-    Json(true).into_response()
+    match list_all_models().await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => internal_server_error(&format!("model manager: cannot list models: {:?}", e)),
+    }
 }
 
 pub async fn retrieve_model() -> Response {
@@ -31,6 +37,11 @@ pub async fn retrieve_model() -> Response {
 
 pub async fn delete_model() -> Response {
     Json(true).into_response()
+}
+
+fn internal_server_error(msg: &str) -> Response {
+    warn!("[ERROR] {}", msg);
+    StatusCode::INTERNAL_SERVER_ERROR.into_response()
 }
 
 #[derive(ToSchema, Deserialize, Serialize, Debug, PartialEq, Eq)]
@@ -55,8 +66,32 @@ impl Display for PathError {
     }
 }
 
-async fn list_models_in_dir(path: &Path) -> Result<Vec<ModelDesc>, PathError> {
+async fn list_all_models() -> Result<Vec<ModelDesc>, PathError> {
+    let completions_dir = settings::SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .chat_completions_models_dir
+        .trim()
+        .to_string();
+
+    let transcriptions_dir = settings::SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .chat_completions_models_dir
+        .trim()
+        .to_string();
+
     let mut v = vec![];
+    list_models_in_dir(Path::new(&completions_dir), &mut v).await?;
+    list_models_in_dir(Path::new(&transcriptions_dir), &mut v).await?;
+    Ok(v)
+}
+
+async fn list_models_in_dir(path: &Path, v: &mut Vec<ModelDesc>) -> Result<(), PathError> {
     let es = tokio::fs::read_dir(path).await;
     if es.is_err() {
         warn!("model manager: cannot read directory {:?} ({:?})", path, es);
@@ -84,7 +119,7 @@ async fn list_models_in_dir(path: &Path) -> Result<Vec<ModelDesc>, PathError> {
             }
         }
     }
-    Ok(v)
+    Ok(())
 }
 
 async fn path_to_model_desc(path: &Path) -> Result<ModelDesc, PathError> {
@@ -424,14 +459,16 @@ mod test {
         std::fs::create_dir(temp.path().join(&f5)).expect(&format!("cannot create dir {:?}", f5));
         std::fs::create_dir(temp.path().join(&f6)).expect(&format!("cannot create dir {:?}", f6));
 
-        let result = list_models_in_dir(temp.path())
+        let mut v = vec![];
+
+        let _ = list_models_in_dir(temp.path(), &mut v)
             .await
             .expect("cannot list directory");
 
-        assert_eq!(result.len(), 3);
+        assert_eq!(v.len(), 3);
 
         println!("recent is {}", recent);
-        for m in result {
+        for m in v {
             assert_eq!(m.object, "model");
             if m.owned_by != the {
                 assert_eq!(m.owned_by, bloke);
