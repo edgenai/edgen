@@ -55,6 +55,38 @@ impl Display for PathError {
     }
 }
 
+async fn list_models_in_dir(path: &Path) -> Result<Vec<ModelDesc>, PathError> {
+    let mut v = vec![];
+    let es = tokio::fs::read_dir(path).await;
+    if es.is_err() {
+        warn!("model manager: cannot read directory {:?} ({:?})", path, es);
+        return Err(PathError::IOError(es.unwrap_err()));
+    };
+    let mut es = es.unwrap();
+    loop {
+        let e = es.next_entry().await;
+        if e.is_err() {
+            warn!("model manager: cannot get entry: {:?}", e);
+            continue;
+        }
+        let tmp = e.unwrap();
+        if tmp.is_none() {
+            break;
+        }
+        let tmp = tmp.unwrap();
+        match path_to_model_desc(tmp.path().as_path()).await {
+            Ok(m) => v.push(m),
+            Err(e) => {
+                warn!(
+                    "model manager: invalid entry in directory {:?}: {:?}",
+                    path, e
+                );
+            }
+        }
+    }
+    Ok(v)
+}
+
 async fn path_to_model_desc(path: &Path) -> Result<ModelDesc, PathError> {
     let f = path
         .file_name()
@@ -165,6 +197,9 @@ mod test {
     use super::*;
     use std::ffi::OsStr;
     use std::path::Path;
+    use std::time::SystemTime;
+
+    use tempfile;
 
     // --- Parse Model Id -------------------------------------------------------------------------
     #[test]
@@ -360,4 +395,54 @@ mod test {
     }
 
     // --- path to desc ---------------------------------------------------------------------------
+    #[tokio::test]
+    async fn test_list_models_in_dir() {
+        let bloke = "TheBloke";
+        let the = "The";
+        let r1 = "TinyLlama-1.1B-Chat-v1.0-GGUF";
+        let r2 = "Bloke--TinyLlama-1.1B-Chat-v1.0-GGUF";
+        let r3 = "TinyLlama--1.1B--Chat--v1.0--GGUF";
+        let f1 = format!("models--{}--{}", bloke, r1);
+        let f2 = format!("models--{}--{}", the, r2);
+        let f3 = format!("models--{}--{}", bloke, r3);
+        let f4 = "invisible".to_string();
+        let f5 = "models--TheBlokeInvisible".to_string();
+        let f6 = "tmp".to_string();
+
+        let temp = tempfile::tempdir().expect("cannot create tempfile");
+
+        let recent = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            - 2; // careful with leap seconds
+
+        std::fs::create_dir(temp.path().join(&f1)).expect(&format!("cannot create dir {:?}", f1));
+        std::fs::create_dir(temp.path().join(&f2)).expect(&format!("cannot create dir {:?}", f2));
+        std::fs::create_dir(temp.path().join(&f3)).expect(&format!("cannot create dir {:?}", f3));
+        std::fs::create_dir(temp.path().join(&f4)).expect(&format!("cannot create dir {:?}", f4));
+        std::fs::create_dir(temp.path().join(&f5)).expect(&format!("cannot create dir {:?}", f5));
+        std::fs::create_dir(temp.path().join(&f6)).expect(&format!("cannot create dir {:?}", f6));
+
+        let result = list_models_in_dir(temp.path())
+            .await
+            .expect("cannot list directory");
+
+        assert_eq!(result.len(), 3);
+
+        println!("recent is {}", recent);
+        for m in result {
+            assert_eq!(m.object, "model");
+            if m.owned_by != the {
+                assert_eq!(m.owned_by, bloke);
+            }
+            if m.id != format!("{}/{}", bloke, r1) && m.id != format!("{}/{}", bloke, r3) {
+                assert_eq!(m.id, format!("{}/{}", the, r2));
+            }
+            println!("{:?}", m);
+
+            let d = m.created.checked_sub(recent).unwrap();
+            assert!(d <= 3);
+        }
+    }
 }
