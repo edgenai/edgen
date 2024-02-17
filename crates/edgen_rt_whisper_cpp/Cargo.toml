@@ -17,3 +17,5 @@ tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 whisper_cpp = { git = "https://github.com/edgenai/whisper_cpp-rs", branch = "feat/cuda", features = ["native"] }
 
+[features]
+cuda = ["whisper_cpp/cuda"]
