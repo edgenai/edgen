@@ -142,7 +142,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f28243a43d821d11341ab73c80bed182dc015c514b951616cf79bd4af39af0c3"
 dependencies = [
  "concurrent-queue 2.4.0",
- "event-listener 5.0.0",
+ "event-listener 5.1.0",
  "event-listener-strategy 0.5.0",
  "futures-core",
  "pin-project-lite",
@@ -225,9 +225,9 @@ dependencies = [
 
 [[package]]
 name = "async-process"
-version = "2.0.1"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15c1cd5d253ecac3d3cf15e390fd96bd92a13b1d14497d81abf077304794fb04"
+checksum = "451e3cf68011bd56771c79db04a9e333095ab6349f7e47592b788e9b98720cc8"
 dependencies = [
  "async-channel",
  "async-io",
@@ -235,7 +235,7 @@ dependencies = [
  "async-signal",
  "blocking",
  "cfg-if",
- "event-listener 4.0.3",
+ "event-listener 5.1.0",
  "futures-lite 2.2.0",
  "rustix",
  "windows-sys 0.52.0",
@@ -1557,9 +1557,9 @@ dependencies = [
 
 [[package]]
 name = "event-listener"
-version = "5.0.0"
+version = "5.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b72557800024fabbaa2449dd4bf24e37b93702d457a4d4f2b0dd1f0f039f20c1"
+checksum = "b7ad6fd685ce13acd6d9541a30f6db6567a7a24c9ffd4ba2955d29e3f22c8b27"
 dependencies = [
  "concurrent-queue 2.4.0",
  "parking",
@@ -1582,7 +1582,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "feedafcaa9b749175d5ac357452a9d41ea2911da598fde46ce1fe02c37751291"
 dependencies = [
- "event-listener 5.0.0",
+ "event-listener 5.1.0",
  "pin-project-lite",
 ]
 
@@ -2891,7 +2891,7 @@ checksum = "01cda141df6706de531b6c46c3a33ecca755538219bd484262fa09410c13539c"
 [[package]]
 name = "llama_cpp"
 version = "0.3.0"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#2bae89423d61bee7cab0ae346d390b21f07e1b0b"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#847d4f5d104c23b87a925618027942313badec2c"
 dependencies = [
  "derive_more",
  "futures",
@@ -2905,7 +2905,7 @@ dependencies = [
 [[package]]
 name = "llama_cpp_sys"
 version = "0.3.0"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#2bae89423d61bee7cab0ae346d390b21f07e1b0b"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#847d4f5d104c23b87a925618027942313badec2c"
 dependencies = [
  "ash",
  "bindgen",
@@ -3710,9 +3710,9 @@ dependencies = [
 
 [[package]]
 name = "polling"
-version = "3.4.0"
+version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30054e72317ab98eddd8561db0f6524df3367636884b7b21b703e4b280a84a14"
+checksum = "24f040dee2588b4963afb4e420540439d126f73fdacf4a9c486a96d840bac3c9"
 dependencies = [
  "cfg-if",
  "concurrent-queue 2.4.0",
@@ -4113,16 +4113,17 @@ dependencies = [
 
 [[package]]
 name = "ring"
-version = "0.17.7"
+version = "0.17.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "688c63d65483050968b2a8937f7995f443e27041a0f7700aa59b0822aedebb74"
+checksum = "c17fa4cb658e3583423e915b9f3acc01cceaee1860e33d59ebae66adc3a2dc0d"
 dependencies = [
  "cc",
+ "cfg-if",
  "getrandom 0.2.12",
  "libc",
  "spin",
  "untrusted",
- "windows-sys 0.48.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6120,7 +6121,7 @@ dependencies = [
 [[package]]
 name = "whisper_cpp"
 version = "0.2.1"
-source = "git+https://github.com/edgenai/whisper_cpp-rs?branch=feat/cuda#83d1525b1cd35757de35f9a23d51144849881335"
+source = "git+https://github.com/edgenai/whisper_cpp-rs?branch=main#5833e4e94383a6659b03db9f3d1b601d53dba6ce"
 dependencies = [
  "derive_more",
  "thiserror",
@@ -6132,7 +6133,7 @@ dependencies = [
 [[package]]
 name = "whisper_cpp_sys"
 version = "0.2.1"
-source = "git+https://github.com/edgenai/whisper_cpp-rs?branch=feat/cuda#83d1525b1cd35757de35f9a23d51144849881335"
+source = "git+https://github.com/edgenai/whisper_cpp-rs?branch=main#5833e4e94383a6659b03db9f3d1b601d53dba6ce"
 dependencies = [
  "bindgen",
  "cmake",
