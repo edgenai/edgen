@@ -14,13 +14,11 @@ mod common;
 #[test]
 fn test_modelmanager() {
     common::with_save_config_edgen(|| {
-        pass_always();
+        common::pass_always();
 
-        // ================================
-        config_exists();
+        common::config_exists();
 
-        // endpoints reachable
-        connect_to_server_test();
+        common::connect_to_server_test();
 
         let my_models_dir = format!(
             "{}{}{}",
@@ -47,9 +45,9 @@ fn test_modelmanager() {
                 "transcriptions",
             );
 
-        set_model_dir(common::Endpoint::ChatCompletions, &new_chat_completions_dir);
+        common::set_model_dir(common::Endpoint::ChatCompletions, &new_chat_completions_dir);
 
-        set_model_dir(
+        common::set_model_dir(
             common::Endpoint::AudioTranscriptions,
             &new_audio_transcriptions_dir,
         );
@@ -59,56 +57,6 @@ fn test_modelmanager() {
         test_list_models();
         test_delete_model();
     })
-}
-
-fn pass_always() {
-    common::test_message("pass always");
-    assert!(true);
-}
-
-fn config_exists() {
-    common::test_message("config exists");
-    assert!(settings::PROJECT_DIRS.config_dir().exists());
-    assert!(settings::CONFIG_FILE.exists());
-}
-
-// exercise the edgen version endpoint to make sure the server is reachable.
-fn connect_to_server_test() {
-    common::test_message("connect to server");
-    assert!(match blocking::get(common::make_url(&[
-        common::BASE_URL,
-        common::MISC_URL,
-        common::VERSION_URL
-    ])) {
-        Err(e) => {
-            eprintln!("cannot connect: {:?}", e);
-            false
-        }
-        Ok(v) => {
-            println!("have: '{}'", v.text().unwrap());
-            true
-        }
-    });
-}
-
-// edit the config file: set another model dir for the indicated endpoint.
-fn set_model_dir(ep: common::Endpoint, model_dir: &str) {
-    common::test_message(&format!("set {} model directory to {}", ep, model_dir,));
-
-    let mut config = common::get_config().unwrap();
-
-    match &ep {
-        common::Endpoint::ChatCompletions => {
-            config.chat_completions_models_dir = model_dir.to_string();
-        }
-        common::Endpoint::AudioTranscriptions => {
-            config.audio_transcriptions_models_dir = model_dir.to_string();
-        }
-    }
-    common::write_config(&config).unwrap();
-
-    println!("pausing for 4 secs to make sure the config file has been updated");
-    std::thread::sleep(std::time::Duration::from_secs(4));
 }
 
 // actually create the model dirs before using them

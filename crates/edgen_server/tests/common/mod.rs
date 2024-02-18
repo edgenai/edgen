@@ -238,6 +238,111 @@ pub fn reset_config() {
     edgen_server::config_reset().unwrap();
 }
 
+pub fn pass_always() {
+    test_message("pass always");
+    assert!(true);
+}
+
+pub fn config_exists() {
+    test_message("config exists");
+    assert!(settings::PROJECT_DIRS.config_dir().exists());
+    assert!(settings::CONFIG_FILE.exists());
+}
+
+pub fn data_exists() {
+    test_message("data exists");
+    let data = settings::PROJECT_DIRS.data_dir();
+    println!("exists: {:?}", data);
+    assert!(data.exists());
+
+    let models = data.join("models");
+    println!("exists: {:?}", models);
+    assert!(models.exists());
+
+    let chat = models.join("chat");
+    println!("exists: {:?}", chat);
+    assert!(models.exists());
+
+    let completions = chat.join("completions");
+    println!("exists: {:?}", completions);
+    assert!(completions.exists());
+
+    let audio = models.join("audio");
+    println!("exists: {:?}", audio);
+    assert!(audio.exists());
+
+    let transcriptions = audio.join("transcriptions");
+    println!("exists: {:?}", transcriptions);
+    assert!(transcriptions.exists());
+}
+
+// edit the config file: set another model dir for the indicated endpoint.
+pub fn set_model_dir(ep: Endpoint, model_dir: &str) {
+    test_message(&format!("set {} model directory to {}", ep, model_dir,));
+
+    let mut config = get_config().unwrap();
+
+    match &ep {
+        Endpoint::ChatCompletions => {
+            config.chat_completions_models_dir = model_dir.to_string();
+        }
+        Endpoint::AudioTranscriptions => {
+            config.audio_transcriptions_models_dir = model_dir.to_string();
+        }
+    }
+    write_config(&config).unwrap();
+
+    println!("pausing for 4 secs to make sure the config file has been updated");
+    std::thread::sleep(std::time::Duration::from_secs(4));
+}
+
+// edit the config file: set another model name and repo for the indicated endpoint.
+pub fn set_model(ep: Endpoint, model_name: &str, model_repo: &str) {
+    test_message(&format!("set {} model to {}", ep, model_name,));
+
+    let mut config = get_config().unwrap();
+
+    match &ep {
+        Endpoint::ChatCompletions => {
+            config.chat_completions_model_name = model_name.to_string();
+            config.chat_completions_model_repo = model_repo.to_string();
+        }
+        Endpoint::AudioTranscriptions => {
+            config.audio_transcriptions_model_name = model_name.to_string();
+            config.audio_transcriptions_model_repo = model_repo.to_string();
+        }
+    }
+    write_config(&config).unwrap();
+
+    println!("pausing for 4 secs to make sure the config file has been updated");
+    std::thread::sleep(std::time::Duration::from_secs(4));
+    let url = match ep {
+        Endpoint::ChatCompletions => make_url(&[BASE_URL, CHAT_URL, COMPLETIONS_URL, STATUS_URL]),
+        Endpoint::AudioTranscriptions => {
+            make_url(&[BASE_URL, AUDIO_URL, TRANSCRIPTIONS_URL, STATUS_URL])
+        }
+    };
+    let stat: status::AIStatus = blocking::get(url).unwrap().json().unwrap();
+    assert_eq!(stat.active_model, model_name);
+}
+
+// exercise the edgen version endpoint to make sure the server is reachable.
+pub fn connect_to_server_test() {
+    test_message("connect to server");
+    assert!(
+        match blocking::get(make_url(&[BASE_URL, MISC_URL, VERSION_URL])) {
+            Err(e) => {
+                eprintln!("cannot connect: {:?}", e);
+                false
+            }
+            Ok(v) => {
+                println!("have: '{}'", v.text().unwrap());
+                true
+            }
+        }
+    );
+}
+
 // spawn a thread to send a request to the indicated endpoint.
 // This allows the caller to perform another task in the caller thread.
 pub fn spawn_request(ep: Endpoint, body: String) -> thread::JoinHandle<bool> {
