@@ -38,12 +38,13 @@
 ### Features
 
 - [x] Session Caching: ⚡Edgen maintains top performance with big contexts (big chat histories), by caching sessions. Sessions are auto-detected in function of the chat history.
-- [ ] GPU support: [#16](https://github.com/edgenai/edgen/issues/16)
+- [ ] GPU support: CUDA [#54](https://github.com/edgenai/edgen/issues/54), Vulkan [#16](https://github.com/edgenai/edgen/issues/16)
 
 ### Endpoints
 
 - [x] \[Chat\] [Completions](https://docs.edgen.co/api-reference/chat)
 - [x] \[Audio\] [Transcriptions](https://docs.edgen.co/api-reference/audio)
+- [ ] \[Embeddings\] Embeddings [#41](https://github.com/edgenai/edgen/issues/41)
 - [ ] \[Image\] Generation
 - [ ] \[Chat\] Multimodal chat completions
 - [ ] \[Audio\] Speech

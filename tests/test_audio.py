@@ -27,13 +27,26 @@ def test_transcriptions():
     print(transcription)
     print(expected)
 
-    assert(type(transcription) is str)
+    have = transcription.text
 
-    d = Levenshtein.distance(transcription, expected)
+    assert(type(have) is str)
+
+    d = Levenshtein.distance(have, expected)
     similarity = 100 - ((d / len(expected)) * 100)
-    print(f"distance: {d} of '{transcription}', similarity: {similarity}")
+    print(f"distance: {d} of '{have}', similarity: {similarity}")
 
     assert(similarity > 90.0)
 
+def test_transcriptions_status():
+    try:
+        status = client.audio.transcriptions.status.create()
+    except APIConnectionError:
+        pytest.fail("No connection. Is edgen running?")
+    
+    model = status.active_model
+    assert(type(model) is str)
+    print(model)
+    
 if __name__ == "__main__":
    test_transcriptions()
+   test_transcriptions_status()
