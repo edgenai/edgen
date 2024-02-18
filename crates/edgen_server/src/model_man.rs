@@ -10,6 +10,8 @@
  * limitations under the License.
  */
 
+//! Model Manager Endpoints
+
 use std::fmt;
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
@@ -25,6 +27,9 @@ use utoipa::ToSchema;
 
 use edgen_core::settings;
 
+/// GET `/v1/models`: returns a list of model descriptors for all models in all model directories.
+///
+/// For any error, the endpoint returns "internal server error".
 pub async fn list_models() -> Response {
     match list_all_models().await {
         Ok(v) => Json(v).into_response(),
@@ -32,6 +37,9 @@ pub async fn list_models() -> Response {
     }
 }
 
+/// GET `/v1/models{:id}`: returns the model descriptor for the model indicated by 'id'.
+///
+/// For any error, the endpoint returns "internal server error".
 pub async fn retrieve_model(extract::Path(id): extract::Path<String>) -> Response {
     match model_id_to_desc(&id).await {
         Ok(d) => Json(d).into_response(),
@@ -41,6 +49,10 @@ pub async fn retrieve_model(extract::Path(id): extract::Path<String>) -> Respons
     }
 }
 
+/// DELETE `/v1/models{:id}`: deletes the model indicated by 'id'.
+///
+/// Returns 204 (NO CONTENT) on success.
+/// For any error, the endpoint returns "internal server error".
 pub async fn delete_model(extract::Path(id): extract::Path<String>) -> Response {
     match remove_model(&id).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
@@ -56,12 +68,17 @@ fn internal_server_error(msg: &str) -> Response {
     StatusCode::INTERNAL_SERVER_ERROR.into_response()
 }
 
+/// Model Descriptor
 #[derive(ToSchema, Deserialize, Serialize, Debug, PartialEq, Eq)]
 pub struct ModelDesc {
-    id: String,
-    created: u64,
-    object: String,
-    owned_by: String,
+    /// model Id
+    pub id: String,
+    /// when the file was created
+    pub created: u64,
+    /// object type, always 'model'
+    pub object: String,
+    /// repo owner
+    pub owned_by: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -80,36 +97,14 @@ impl Display for PathError {
 }
 
 async fn list_all_models() -> Result<Vec<ModelDesc>, PathError> {
-    let completions_dir = chat_completions_dir().await;
-    let transcriptions_dir = audio_transcriptions_dir().await;
+    let completions_dir = settings::chat_completions_dir().await;
+    let transcriptions_dir = settings::audio_transcriptions_dir().await;
 
     let mut v = vec![];
 
     list_models_in_dir(Path::new(&completions_dir), &mut v).await?;
     list_models_in_dir(Path::new(&transcriptions_dir), &mut v).await?;
     Ok(v)
-}
-
-async fn chat_completions_dir() -> String {
-    settings::SETTINGS
-        .read()
-        .await
-        .read()
-        .await
-        .chat_completions_models_dir
-        .trim()
-        .to_string()
-}
-
-async fn audio_transcriptions_dir() -> String {
-    settings::SETTINGS
-        .read()
-        .await
-        .read()
-        .await
-        .audio_transcriptions_models_dir
-        .trim()
-        .to_string()
 }
 
 async fn list_models_in_dir(path: &Path, v: &mut Vec<ModelDesc>) -> Result<(), PathError> {
@@ -123,7 +118,7 @@ async fn list_models_in_dir(path: &Path, v: &mut Vec<ModelDesc>) -> Result<(), P
         let e = es.next_entry().await;
         if e.is_err() {
             warn!("model manager: cannot get entry: {:?}", e);
-            continue;
+            break;
         }
         let tmp = e.unwrap();
         if tmp.is_none() {
@@ -150,12 +145,12 @@ async fn model_id_to_desc(id: &str) -> Result<ModelDesc, PathError> {
 
 async fn search_model(id: &str) -> Result<PathBuf, PathError> {
     let model = model_id_to_path(id)?;
-    let dir = chat_completions_dir().await;
+    let dir = settings::chat_completions_dir().await;
     let path = Path::new(&dir).join(&model);
     if path.is_dir() {
         return Ok(path);
     }
-    let dir = audio_transcriptions_dir().await;
+    let dir = settings::audio_transcriptions_dir().await;
     let path = Path::new(&dir).join(&model);
     if path.is_dir() {
         return Ok(path);
@@ -256,7 +251,7 @@ fn parse_path(model_string: &str) -> Result<(String, String), ParseError> {
 
     // the owner is always the second
     // if the original owner contained double dashes
-    // we won't found him
+    // we won't find him
     let owner = vs[1].to_string();
     if owner.is_empty() {
         return Err(ParseError::NoOwner);
@@ -277,19 +272,9 @@ fn parse_path(model_string: &str) -> Result<(String, String), ParseError> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::path::Path;
     use std::time::SystemTime;
 
     use tempfile;
-
-    async fn init_settings_for_test() {
-        settings::SETTINGS
-            .write()
-            .await
-            .init()
-            .await
-            .expect("Failed to initialise settings");
-    }
 
     // --- Parse Model Id -------------------------------------------------------------------------
     #[test]
@@ -536,43 +521,5 @@ mod test {
             let d = m.created.checked_sub(recent).unwrap();
             assert!(d <= 3);
         }
-    }
-
-    #[tokio::test]
-    // this test should go to integration tests!
-    async fn test_delete_model() {
-        let owner = "TheFaker";
-        let repo = "my-faked-model-v1-GGUF";
-        let model = format!("models--{}--{}", owner, repo);
-        let id = format!("{}/{}", owner, repo);
-
-        init_settings_for_test().await;
-
-        let dir = chat_completions_dir().await;
-
-        // let temp = tempfile::tempdir().expect("cannot create tempfile");
-
-        let recent = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-            - 2; // careful with leap seconds
-
-        let dir = Path::new(&dir).join(&model);
-        std::fs::create_dir(&dir).expect(&format!("cannot create model {:?}", dir));
-
-        let m = model_id_to_desc(&id).await;
-        assert!(m.is_ok(), "cannot get model");
-        let m = m.unwrap();
-
-        assert_eq!(m.object, "model");
-        assert_eq!(m.owned_by, owner);
-        assert_eq!(m.id, id);
-        let d = m.created.checked_sub(recent).unwrap();
-        assert!(d <= 3);
-
-        let result = remove_model(&id).await;
-        assert!(result.is_ok());
-        assert!(!dir.exists());
     }
 }

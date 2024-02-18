@@ -6,6 +6,7 @@ use reqwest::blocking;
 use edgen_core::settings;
 use edgen_server::status;
 
+#[allow(dead_code)]
 mod common;
 
 #[test]

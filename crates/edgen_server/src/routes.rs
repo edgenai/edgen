@@ -43,8 +43,6 @@ pub fn routes() -> Router {
             "/v1/audio/transcriptions/status",
             axum::routing::get(status::audio_transcriptions_status),
         )
-        // -- Miscellaneous services -------------------------------------------
-        .route("/v1/misc/version", axum::routing::get(misc::edgen_version))
         // -- Model Manager ----------------------------------------------------
         .route("/v1/models", axum::routing::get(model_man::list_models))
         .route(
@@ -55,4 +53,6 @@ pub fn routes() -> Router {
             "/v1/models/:model",
             axum::routing::delete(model_man::delete_model),
         )
+        // -- Miscellaneous services -------------------------------------------
+        .route("/v1/misc/version", axum::routing::get(misc::edgen_version))
 }

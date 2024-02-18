@@ -95,6 +95,30 @@ fn build_config_file_path() -> PathBuf {
     config_dir.join(Path::new(&filename))
 }
 
+/// Helper to get the chat completions model directory.
+pub async fn chat_completions_dir() -> String {
+    SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .chat_completions_models_dir
+        .trim()
+        .to_string()
+}
+
+/// Helper to get the audio transcriptions model directory.
+pub async fn audio_transcriptions_dir() -> String {
+    SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .audio_transcriptions_models_dir
+        .trim()
+        .to_string()
+}
+
 #[derive(Error, Debug, Serialize)]
 pub enum SettingsError {
     #[error("failed to read the settings file: {0}")]

@@ -32,6 +32,7 @@ pub const TRANSCRIPTIONS_URL: &str = "/transcriptions";
 pub const STATUS_URL: &str = "/status";
 pub const MISC_URL: &str = "/misc";
 pub const VERSION_URL: &str = "/version";
+pub const MODELS_URL: &str = "/models";
 
 pub const CHAT_COMPLETIONS_BODY: &str = r#"
     {
@@ -51,6 +52,7 @@ pub const CHAT_COMPLETIONS_BODY: &str = r#"
 "#;
 
 pub const BACKUP_DIR: &str = "env_backup";
+pub const CONFIG_BACKUP_DIR: &str = "config_backup";
 pub const MY_MODEL_FILES: &str = "my_models";
 
 #[derive(Debug, PartialEq, Eq)]
@@ -102,6 +104,39 @@ where
     }
 }
 
+// Backup config only before running 'f';
+// restore config, even if 'f' panicks.
+pub fn with_save_config<F>(f: F)
+where
+    F: FnOnce() + panic::UnwindSafe,
+{
+    println!("with save config!");
+
+    backup_config().unwrap();
+
+    println!("==============");
+    println!("STARTING TESTS");
+    println!("==============");
+
+    let r = panic::catch_unwind(f);
+
+    println!("===========");
+    println!("TESTS READY");
+    println!("===========");
+
+    let _ = match restore_config() {
+        Ok(_) => (),
+        Err(e) => {
+            panic!("Panic! Cannot restore your config: {:?}", e);
+        }
+    };
+
+    match r {
+        Err(e) => panic::resume_unwind(e),
+        Ok(_) => (),
+    }
+}
+
 // Start edgen before running 'f'
 pub fn with_edgen<F>(f: F)
 where
@@ -131,6 +166,18 @@ where
     F: FnOnce() + panic::UnwindSafe,
 {
     with_save_env(|| {
+        with_edgen(f);
+    });
+}
+
+// Backup config directories)
+// and start edgen before running 'f';
+// restore config, even if 'f' or edgen panick.
+pub fn with_save_config_edgen<F>(f: F)
+where
+    F: FnOnce() + panic::UnwindSafe,
+{
+    with_save_config(|| {
         with_edgen(f);
     });
 }
@@ -404,6 +451,64 @@ fn restore_env() -> Result<(), io::Error> {
         copy_dir(&data_bkp, &data)?;
     } else {
         println!("data bkp {:?} does not exist", data_bkp);
+    }
+
+    println!("removing {:?}", backup_dir);
+    fs::remove_dir_all(&backup_dir)?;
+
+    Ok(())
+}
+
+fn backup_config() -> Result<(), BackupError> {
+    println!("backing up");
+
+    let backup_dir = Path::new(CONFIG_BACKUP_DIR);
+    if backup_dir.exists() {
+        let msg = format!(
+            "directory {} exists!
+             This means an earlier test run did not finish correctly. \
+             Restore your environment manually.",
+            CONFIG_BACKUP_DIR,
+        );
+        eprintln!("{}", msg);
+        return Err(BackupError::Unfinished);
+    }
+
+    println!("config dir: {:?}", settings::PROJECT_DIRS.config_dir());
+
+    fs::create_dir(&backup_dir)?;
+
+    let cnfg = settings::PROJECT_DIRS.config_dir();
+    let cnfg_bkp = backup_dir.join("config");
+
+    if cnfg.exists() {
+        println!("config bkp: {:?}", cnfg_bkp);
+        copy_dir(&cnfg, &cnfg_bkp)?;
+        fs::remove_dir_all(&cnfg)?;
+    } else {
+        println!("config {:?} does not exist", cnfg);
+    }
+
+    Ok(())
+}
+
+fn restore_config() -> Result<(), io::Error> {
+    println!("restoring");
+
+    let backup_dir = Path::new(CONFIG_BACKUP_DIR);
+
+    let cnfg = settings::PROJECT_DIRS.config_dir();
+    let cnfg_bkp = backup_dir.join("config");
+
+    if cnfg.exists() {
+        fs::remove_dir_all(&cnfg)?;
+    }
+
+    if cnfg_bkp.exists() {
+        println!("{:?} -> {:?}", cnfg_bkp, cnfg);
+        copy_dir(&cnfg_bkp, &cnfg)?;
+    } else {
+        println!("config bkp {:?} does not exist", cnfg_bkp);
     }
 
     println!("removing {:?}", backup_dir);
