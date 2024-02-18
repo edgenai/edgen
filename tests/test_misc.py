@@ -20,7 +20,7 @@ def test_version():
     assert(format_version(version) == expected)
 
 def edgen_version():
-    finished = subprocess.run(["cargo", "run", "version"], capture_output=True, text=True)
+    finished = subprocess.run(["target/release/edgen", "version"], capture_output=True, text=True)
     version = ''.join(f"{finished.stdout}".splitlines())
     return version
 

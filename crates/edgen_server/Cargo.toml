@@ -46,3 +46,5 @@ levenshtein = "1.0.5"
 
 [features]
 llama_vulkan = ["edgen_rt_llama_cpp/vulkan"]
+llama_cuda = ["edgen_rt_llama_cpp/cuda"]
+whisper_cuda = ["edgen_rt_whisper_cpp/cuda"]

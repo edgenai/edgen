@@ -38,12 +38,13 @@
 ### Features
 
 - [x] Session Caching: ⚡Edgen maintains top performance with big contexts (big chat histories), by caching sessions. Sessions are auto-detected in function of the chat history.
-- [ ] GPU support: [#16](https://github.com/edgenai/edgen/issues/16)
+- [ ] GPU support: CUDA [#54](https://github.com/edgenai/edgen/issues/54), Vulkan [#16](https://github.com/edgenai/edgen/issues/16)
 
 ### Endpoints
 
 - [x] \[Chat\] [Completions](https://docs.edgen.co/api-reference/chat)
 - [x] \[Audio\] [Transcriptions](https://docs.edgen.co/api-reference/audio)
+- [ ] \[Embeddings\] Embeddings [#41](https://github.com/edgenai/edgen/issues/41)
 - [ ] \[Image\] Generation
 - [ ] \[Chat\] Multimodal chat completions
 - [ ] \[Audio\] Speech
@@ -111,6 +112,16 @@ Options:
                     behavior is to start the GUI.
   --help            display usage information
 ```
+
+## GPU Support
+
+⚡Edgen also supports compilation and execution on a GPU, through Vulkan and CUDA.
+The following cargo features enable the GPU:
+ - `llama_vulkan` - execute LLM models using Vulkan. Requires a Vulkan SDK to be installed.
+ - `llama_cuda` - execute LLM models using CUDA. Requires a CUDA Toolkit to be installed.
+ - `whisper_cuda` - execute Whisper models using CUDA. Requires a CUDA Toolkit to be installed.
+
+Note that, at the moment, `llama_vulkan` and `llama_cuda` cannot be enabled at the same time.
 
 ## Architecture Overview
 
