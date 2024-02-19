@@ -71,8 +71,8 @@ impl Display for Endpoint {
     }
 }
 
-// Backup environment (config and model directories) before running 'f';
-// restore environment, even if 'f' panicks.
+/// Backup environment (config and model directories) before running 'f';
+/// restore environment, even if 'f' panicks.
 pub fn with_save_env<F>(f: F)
 where
     F: FnOnce() + panic::UnwindSafe,
@@ -104,8 +104,8 @@ where
     }
 }
 
-// Backup config only before running 'f';
-// restore config, even if 'f' panicks.
+/// Backup config only before running 'f';
+/// restore config, even if 'f' panicks.
 pub fn with_save_config<F>(f: F)
 where
     F: FnOnce() + panic::UnwindSafe,
@@ -137,7 +137,7 @@ where
     }
 }
 
-// Start edgen before running 'f'
+/// Start edgen before running 'f'
 pub fn with_edgen<F>(f: F)
 where
     F: FnOnce() + panic::UnwindSafe,
@@ -158,9 +158,9 @@ where
     f();
 }
 
-// Backup environment (config and model directories)
-// and start edgen before running 'f';
-// restore environment, even if 'f' or edgen panick.
+/// Backup environment (config and model directories)
+/// and start edgen before running 'f';
+/// restore environment, even if 'f' or edgen panick.
 pub fn with_save_edgen<F>(f: F)
 where
     F: FnOnce() + panic::UnwindSafe,
@@ -170,9 +170,9 @@ where
     });
 }
 
-// Backup config directories)
-// and start edgen before running 'f';
-// restore config, even if 'f' or edgen panick.
+/// Backup config directory
+/// and start edgen before running 'f';
+/// restore config, even if 'f' or edgen panick.
 pub fn with_save_config_edgen<F>(f: F)
 where
     F: FnOnce() + panic::UnwindSafe,
@@ -184,6 +184,11 @@ where
 
 pub fn test_message(msg: &str) {
     println!("=== Test {}", msg);
+}
+
+pub fn pass_always() {
+    test_message("pass always");
+    assert!(true);
 }
 
 pub fn make_url(v: &[&str]) -> String {
@@ -238,11 +243,6 @@ pub fn reset_config() {
     edgen_server::config_reset().unwrap();
 }
 
-pub fn pass_always() {
-    test_message("pass always");
-    assert!(true);
-}
-
 pub fn config_exists() {
     test_message("config exists");
     assert!(settings::PROJECT_DIRS.config_dir().exists());
@@ -276,7 +276,7 @@ pub fn data_exists() {
     assert!(transcriptions.exists());
 }
 
-// edit the config file: set another model dir for the indicated endpoint.
+/// Edit the config file: set another model dir for the indicated endpoint.
 pub fn set_model_dir(ep: Endpoint, model_dir: &str) {
     test_message(&format!("set {} model directory to {}", ep, model_dir,));
 
@@ -296,7 +296,8 @@ pub fn set_model_dir(ep: Endpoint, model_dir: &str) {
     std::thread::sleep(std::time::Duration::from_secs(4));
 }
 
-// edit the config file: set another model name and repo for the indicated endpoint.
+/// Edit the config file: set another model name and repo for the indicated endpoint.
+/// Use the status endpoint to check whether the model was updated.
 pub fn set_model(ep: Endpoint, model_name: &str, model_repo: &str) {
     test_message(&format!("set {} model to {}", ep, model_name,));
 
@@ -316,6 +317,7 @@ pub fn set_model(ep: Endpoint, model_name: &str, model_repo: &str) {
 
     println!("pausing for 4 secs to make sure the config file has been updated");
     std::thread::sleep(std::time::Duration::from_secs(4));
+
     let url = match ep {
         Endpoint::ChatCompletions => make_url(&[BASE_URL, CHAT_URL, COMPLETIONS_URL, STATUS_URL]),
         Endpoint::AudioTranscriptions => {
@@ -326,7 +328,7 @@ pub fn set_model(ep: Endpoint, model_name: &str, model_repo: &str) {
     assert_eq!(stat.active_model, model_name);
 }
 
-// exercise the edgen version endpoint to make sure the server is reachable.
+/// Exercise the edgen version endpoint to make sure the server is reachable.
 pub fn connect_to_server_test() {
     test_message("connect to server");
     assert!(
@@ -336,6 +338,7 @@ pub fn connect_to_server_test() {
                 false
             }
             Ok(v) => {
+                assert!(v.status().is_success());
                 println!("have: '{}'", v.text().unwrap());
                 true
             }
@@ -343,8 +346,8 @@ pub fn connect_to_server_test() {
     );
 }
 
-// spawn a thread to send a request to the indicated endpoint.
-// This allows the caller to perform another task in the caller thread.
+/// Spawn a thread to send a request to the indicated endpoint.
+/// This allows the caller to perform another task in the caller thread.
 pub fn spawn_request(ep: Endpoint, body: String) -> thread::JoinHandle<bool> {
     match ep {
         Endpoint::ChatCompletions => spawn_chat_completions_request(body),
@@ -409,7 +412,7 @@ pub fn spawn_audio_transcriptions_request() -> thread::JoinHandle<bool> {
     })
 }
 
-// Assert that a download is ongoing and download progress is reported.
+/// Assert that a download is ongoing and download progress is reported.
 pub fn assert_download(endpoint: &str) {
     println!("requesting status of {}", endpoint);
 
@@ -442,7 +445,7 @@ pub fn assert_download(endpoint: &str) {
     assert_eq!(stat.download_progress, 100);
 }
 
-// Assert that *no* download is ongoing.
+/// Assert that *no* download is ongoing.
 pub fn assert_no_download(endpoint: &str) {
     println!("requesting status of {}", endpoint);
 
@@ -480,6 +483,7 @@ impl From<Vec<io::Error>> for BackupError {
     }
 }
 
+// backup environment: config and data
 fn backup_env() -> Result<(), BackupError> {
     println!("backing up");
 
@@ -525,6 +529,7 @@ fn backup_env() -> Result<(), BackupError> {
     Ok(())
 }
 
+// restore environment: config and data
 fn restore_env() -> Result<(), io::Error> {
     println!("restoring");
 

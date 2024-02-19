@@ -178,6 +178,7 @@ fn chat_completions_status_reachable() {
             false
         }
         Ok(v) => {
+            assert!(v.status().is_success());
             println!("have: '{}'", v.text().unwrap());
             true
         }
@@ -197,6 +198,7 @@ fn audio_transcriptions_status_reachable() {
             false
         }
         Ok(v) => {
+            assert!(v.status().is_success());
             println!("have: '{}'", v.text().unwrap());
             true
         }
