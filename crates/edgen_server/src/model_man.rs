@@ -91,6 +91,20 @@ pub struct ModelDeletionStatus {
     pub deleted: bool,
 }
 
+/// Model List expected by OpenAI clients.
+/// We always return all results in one page.
+#[derive(ToSchema, Deserialize, Serialize, Debug, PartialEq, Eq)]
+pub struct ModelList {
+    /// always 'list'
+    pub object: String,
+    /// the data
+    pub data: Vec<ModelDesc>,
+    /// current page number
+    pub page: usize,
+    /// items per page
+    pub per_page: usize,
+}
+
 #[derive(Debug, thiserror::Error)]
 enum PathError {
     Generic(String),
@@ -106,7 +120,7 @@ impl Display for PathError {
     }
 }
 
-async fn list_all_models() -> Result<Vec<ModelDesc>, PathError> {
+async fn list_all_models() -> Result<ModelList, PathError> {
     let completions_dir = settings::chat_completions_dir().await;
     let transcriptions_dir = settings::audio_transcriptions_dir().await;
 
@@ -114,7 +128,13 @@ async fn list_all_models() -> Result<Vec<ModelDesc>, PathError> {
 
     list_models_in_dir(Path::new(&completions_dir), &mut v).await?;
     list_models_in_dir(Path::new(&transcriptions_dir), &mut v).await?;
-    Ok(v)
+    let perpage = v.len();
+    Ok(ModelList {
+        object: "list".to_string(),
+        data: v,
+        page: 1,
+        per_page: perpage,
+    })
 }
 
 async fn list_models_in_dir(path: &Path, v: &mut Vec<ModelDesc>) -> Result<(), PathError> {

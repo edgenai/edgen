@@ -6,7 +6,7 @@ use futures::executor::block_on;
 use reqwest::blocking;
 
 use edgen_core::settings;
-use edgen_server::model_man::{ModelDeletionStatus, ModelDesc};
+use edgen_server::model_man::{ModelDeletionStatus, ModelDesc, ModelList};
 
 #[allow(dead_code)]
 mod common;
@@ -110,7 +110,11 @@ fn test_list_models() {
     let res = blocking::get(common::make_url(&[common::BASE_URL, common::MODELS_URL]))
         .expect("models get endpoint failed");
     assert!(res.status().is_success(), "models failed");
-    let v: Vec<ModelDesc> = res.json().expect("cannot convert to model descs");
+
+    let v = res
+        .json::<ModelList>()
+        .expect("cannot converto to model list")
+        .data;
 
     assert_eq!(v.len(), 3);
 
