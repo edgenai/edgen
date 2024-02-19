@@ -32,6 +32,7 @@ pub const TRANSCRIPTIONS_URL: &str = "/transcriptions";
 pub const STATUS_URL: &str = "/status";
 pub const MISC_URL: &str = "/misc";
 pub const VERSION_URL: &str = "/version";
+pub const MODELS_URL: &str = "/models";
 
 pub const CHAT_COMPLETIONS_BODY: &str = r#"
     {
@@ -51,6 +52,7 @@ pub const CHAT_COMPLETIONS_BODY: &str = r#"
 "#;
 
 pub const BACKUP_DIR: &str = "env_backup";
+pub const CONFIG_BACKUP_DIR: &str = "config_backup";
 pub const MY_MODEL_FILES: &str = "my_models";
 
 #[derive(Debug, PartialEq, Eq)]
@@ -69,8 +71,8 @@ impl Display for Endpoint {
     }
 }
 
-// Backup environment (config and model directories) before running 'f';
-// restore environment, even if 'f' panicks.
+/// Backup environment (config and model directories) before running 'f';
+/// restore environment, even if 'f' panicks.
 pub fn with_save_env<F>(f: F)
 where
     F: FnOnce() + panic::UnwindSafe,
@@ -102,7 +104,40 @@ where
     }
 }
 
-// Start edgen before running 'f'
+/// Backup config only before running 'f';
+/// restore config, even if 'f' panicks.
+pub fn with_save_config<F>(f: F)
+where
+    F: FnOnce() + panic::UnwindSafe,
+{
+    println!("with save config!");
+
+    backup_config().unwrap();
+
+    println!("==============");
+    println!("STARTING TESTS");
+    println!("==============");
+
+    let r = panic::catch_unwind(f);
+
+    println!("===========");
+    println!("TESTS READY");
+    println!("===========");
+
+    let _ = match restore_config() {
+        Ok(_) => (),
+        Err(e) => {
+            panic!("Panic! Cannot restore your config: {:?}", e);
+        }
+    };
+
+    match r {
+        Err(e) => panic::resume_unwind(e),
+        Ok(_) => (),
+    }
+}
+
+/// Start edgen before running 'f'
 pub fn with_edgen<F>(f: F)
 where
     F: FnOnce() + panic::UnwindSafe,
@@ -123,9 +158,9 @@ where
     f();
 }
 
-// Backup environment (config and model directories)
-// and start edgen before running 'f';
-// restore environment, even if 'f' or edgen panick.
+/// Backup environment (config and model directories)
+/// and start edgen before running 'f';
+/// restore environment, even if 'f' or edgen panick.
 pub fn with_save_edgen<F>(f: F)
 where
     F: FnOnce() + panic::UnwindSafe,
@@ -135,8 +170,25 @@ where
     });
 }
 
+/// Backup config directory
+/// and start edgen before running 'f';
+/// restore config, even if 'f' or edgen panick.
+pub fn with_save_config_edgen<F>(f: F)
+where
+    F: FnOnce() + panic::UnwindSafe,
+{
+    with_save_config(|| {
+        with_edgen(f);
+    });
+}
+
 pub fn test_message(msg: &str) {
     println!("=== Test {}", msg);
+}
+
+pub fn pass_always() {
+    test_message("pass always");
+    assert!(true);
 }
 
 pub fn make_url(v: &[&str]) -> String {
@@ -191,8 +243,111 @@ pub fn reset_config() {
     edgen_server::config_reset().unwrap();
 }
 
-// spawn a thread to send a request to the indicated endpoint.
-// This allows the caller to perform another task in the caller thread.
+pub fn config_exists() {
+    test_message("config exists");
+    assert!(settings::PROJECT_DIRS.config_dir().exists());
+    assert!(settings::CONFIG_FILE.exists());
+}
+
+pub fn data_exists() {
+    test_message("data exists");
+    let data = settings::PROJECT_DIRS.data_dir();
+    println!("exists: {:?}", data);
+    assert!(data.exists());
+
+    let models = data.join("models");
+    println!("exists: {:?}", models);
+    assert!(models.exists());
+
+    let chat = models.join("chat");
+    println!("exists: {:?}", chat);
+    assert!(models.exists());
+
+    let completions = chat.join("completions");
+    println!("exists: {:?}", completions);
+    assert!(completions.exists());
+
+    let audio = models.join("audio");
+    println!("exists: {:?}", audio);
+    assert!(audio.exists());
+
+    let transcriptions = audio.join("transcriptions");
+    println!("exists: {:?}", transcriptions);
+    assert!(transcriptions.exists());
+}
+
+/// Edit the config file: set another model dir for the indicated endpoint.
+pub fn set_model_dir(ep: Endpoint, model_dir: &str) {
+    test_message(&format!("set {} model directory to {}", ep, model_dir,));
+
+    let mut config = get_config().unwrap();
+
+    match &ep {
+        Endpoint::ChatCompletions => {
+            config.chat_completions_models_dir = model_dir.to_string();
+        }
+        Endpoint::AudioTranscriptions => {
+            config.audio_transcriptions_models_dir = model_dir.to_string();
+        }
+    }
+    write_config(&config).unwrap();
+
+    println!("pausing for 4 secs to make sure the config file has been updated");
+    std::thread::sleep(std::time::Duration::from_secs(4));
+}
+
+/// Edit the config file: set another model name and repo for the indicated endpoint.
+/// Use the status endpoint to check whether the model was updated.
+pub fn set_model(ep: Endpoint, model_name: &str, model_repo: &str) {
+    test_message(&format!("set {} model to {}", ep, model_name,));
+
+    let mut config = get_config().unwrap();
+
+    match &ep {
+        Endpoint::ChatCompletions => {
+            config.chat_completions_model_name = model_name.to_string();
+            config.chat_completions_model_repo = model_repo.to_string();
+        }
+        Endpoint::AudioTranscriptions => {
+            config.audio_transcriptions_model_name = model_name.to_string();
+            config.audio_transcriptions_model_repo = model_repo.to_string();
+        }
+    }
+    write_config(&config).unwrap();
+
+    println!("pausing for 4 secs to make sure the config file has been updated");
+    std::thread::sleep(std::time::Duration::from_secs(4));
+
+    let url = match ep {
+        Endpoint::ChatCompletions => make_url(&[BASE_URL, CHAT_URL, COMPLETIONS_URL, STATUS_URL]),
+        Endpoint::AudioTranscriptions => {
+            make_url(&[BASE_URL, AUDIO_URL, TRANSCRIPTIONS_URL, STATUS_URL])
+        }
+    };
+    let stat: status::AIStatus = blocking::get(url).unwrap().json().unwrap();
+    assert_eq!(stat.active_model, model_name);
+}
+
+/// Exercise the edgen version endpoint to make sure the server is reachable.
+pub fn connect_to_server_test() {
+    test_message("connect to server");
+    assert!(
+        match blocking::get(make_url(&[BASE_URL, MISC_URL, VERSION_URL])) {
+            Err(e) => {
+                eprintln!("cannot connect: {:?}", e);
+                false
+            }
+            Ok(v) => {
+                assert!(v.status().is_success());
+                println!("have: '{}'", v.text().unwrap());
+                true
+            }
+        }
+    );
+}
+
+/// Spawn a thread to send a request to the indicated endpoint.
+/// This allows the caller to perform another task in the caller thread.
 pub fn spawn_request(ep: Endpoint, body: String) -> thread::JoinHandle<bool> {
     match ep {
         Endpoint::ChatCompletions => spawn_chat_completions_request(body),
@@ -257,7 +412,7 @@ pub fn spawn_audio_transcriptions_request() -> thread::JoinHandle<bool> {
     })
 }
 
-// Assert that a download is ongoing and download progress is reported.
+/// Assert that a download is ongoing and download progress is reported.
 pub fn assert_download(endpoint: &str) {
     println!("requesting status of {}", endpoint);
 
@@ -290,7 +445,7 @@ pub fn assert_download(endpoint: &str) {
     assert_eq!(stat.download_progress, 100);
 }
 
-// Assert that *no* download is ongoing.
+/// Assert that *no* download is ongoing.
 pub fn assert_no_download(endpoint: &str) {
     println!("requesting status of {}", endpoint);
 
@@ -328,6 +483,7 @@ impl From<Vec<io::Error>> for BackupError {
     }
 }
 
+// backup environment: config and data
 fn backup_env() -> Result<(), BackupError> {
     println!("backing up");
 
@@ -373,6 +529,7 @@ fn backup_env() -> Result<(), BackupError> {
     Ok(())
 }
 
+// restore environment: config and data
 fn restore_env() -> Result<(), io::Error> {
     println!("restoring");
 
@@ -404,6 +561,64 @@ fn restore_env() -> Result<(), io::Error> {
         copy_dir(&data_bkp, &data)?;
     } else {
         println!("data bkp {:?} does not exist", data_bkp);
+    }
+
+    println!("removing {:?}", backup_dir);
+    fs::remove_dir_all(&backup_dir)?;
+
+    Ok(())
+}
+
+fn backup_config() -> Result<(), BackupError> {
+    println!("backing up");
+
+    let backup_dir = Path::new(CONFIG_BACKUP_DIR);
+    if backup_dir.exists() {
+        let msg = format!(
+            "directory {} exists!
+             This means an earlier test run did not finish correctly. \
+             Restore your environment manually.",
+            CONFIG_BACKUP_DIR,
+        );
+        eprintln!("{}", msg);
+        return Err(BackupError::Unfinished);
+    }
+
+    println!("config dir: {:?}", settings::PROJECT_DIRS.config_dir());
+
+    fs::create_dir(&backup_dir)?;
+
+    let cnfg = settings::PROJECT_DIRS.config_dir();
+    let cnfg_bkp = backup_dir.join("config");
+
+    if cnfg.exists() {
+        println!("config bkp: {:?}", cnfg_bkp);
+        copy_dir(&cnfg, &cnfg_bkp)?;
+        fs::remove_dir_all(&cnfg)?;
+    } else {
+        println!("config {:?} does not exist", cnfg);
+    }
+
+    Ok(())
+}
+
+fn restore_config() -> Result<(), io::Error> {
+    println!("restoring");
+
+    let backup_dir = Path::new(CONFIG_BACKUP_DIR);
+
+    let cnfg = settings::PROJECT_DIRS.config_dir();
+    let cnfg_bkp = backup_dir.join("config");
+
+    if cnfg.exists() {
+        fs::remove_dir_all(&cnfg)?;
+    }
+
+    if cnfg_bkp.exists() {
+        println!("{:?} -> {:?}", cnfg_bkp, cnfg);
+        copy_dir(&cnfg_bkp, &cnfg)?;
+    } else {
+        println!("config bkp {:?} does not exist", cnfg_bkp);
     }
 
     println!("removing {:?}", backup_dir);

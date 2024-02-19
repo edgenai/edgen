@@ -36,7 +36,7 @@ pub struct Version {
     build: String,
 }
 
-/// GET `/v1/version`: returns the current version of edgend.
+/// GET `/v1/misc/version`: returns the current version of edgend.
 ///
 /// The version is returned as json value with major, minor and patch as integer
 /// and build as string (which may be empty).
