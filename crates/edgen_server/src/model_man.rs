@@ -51,11 +51,10 @@ pub async fn retrieve_model(extract::Path(id): extract::Path<String>) -> Respons
 
 /// DELETE `/v1/models{:id}`: deletes the model indicated by 'id'.
 ///
-/// Returns 204 (NO CONTENT) on success.
 /// For any error, the endpoint returns "internal server error".
 pub async fn delete_model(extract::Path(id): extract::Path<String>) -> Response {
     match remove_model(&id).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(d) => Json(d).into_response(),
         Err(e) => internal_server_error(&format!(
             "model manager: cannot delete model {}: {:?}",
             id, e
@@ -79,6 +78,17 @@ pub struct ModelDesc {
     pub object: String,
     /// repo owner
     pub owned_by: String,
+}
+
+/// Model Deletion Status
+#[derive(ToSchema, Deserialize, Serialize, Debug, PartialEq, Eq)]
+pub struct ModelDeletionStatus {
+    /// model Id
+    pub id: String,
+    /// object type, always 'model'
+    pub object: String,
+    /// repo owner
+    pub deleted: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -158,10 +168,14 @@ async fn search_model(id: &str) -> Result<PathBuf, PathError> {
     Err(PathError::ModelNotFound)
 }
 
-async fn remove_model(id: &str) -> Result<(), PathError> {
+async fn remove_model(id: &str) -> Result<ModelDeletionStatus, PathError> {
     let model = search_model(id).await?;
     let _ = tokio::fs::remove_dir_all(model).await?;
-    Ok(())
+    Ok(ModelDeletionStatus {
+        id: id.to_string(),
+        object: "model".to_string(),
+        deleted: true,
+    })
 }
 
 async fn path_to_model_desc(path: &Path) -> Result<ModelDesc, PathError> {

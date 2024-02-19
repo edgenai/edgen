@@ -3,10 +3,10 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use futures::executor::block_on;
-use reqwest::{blocking, StatusCode};
+use reqwest::blocking;
 
 use edgen_core::settings;
-use edgen_server::model_man::ModelDesc;
+use edgen_server::model_man::{ModelDeletionStatus, ModelDesc};
 
 #[allow(dead_code)]
 mod common;
@@ -181,6 +181,9 @@ fn test_delete_model() {
         .send()
         .expect("models delete endpoint failed");
 
-    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+    assert!(res.status().is_success());
+    let m: ModelDeletionStatus = res.json().expect("cannot convert to model deletion status");
+    assert!(m.deleted);
+    assert_eq!(m.id, id);
     assert!(!dir.exists());
 }
