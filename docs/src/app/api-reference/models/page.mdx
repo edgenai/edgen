@@ -1,0 +1,235 @@
+export const metadata = {
+  title: 'Models',
+  description: 'Model Management (e.g. list models, retrieve model information, remove models) API requests.',
+}
+
+# Models
+
+Discover how to manage your local models. OpenAI compliant. {{ className: 'lead' }}
+
+---
+
+## list models {{ tag: 'GET', label: 'http://localhost:33322/v1/models ' }}
+
+<Row>
+  <Col>
+
+    Lists all local models.
+
+    ### Response attributes
+
+    <Properties>
+      <Property name="object" type="string">
+          The type of this object, always "list".
+      </Property>
+      <Property name="page" type="integer">
+          Current page.
+      </Property>
+      <Property name="per_page" type="integer">
+          Number of model descriptors per page.
+      </Property>
+      <Property name="data" type="ModelDesc[]">
+          The model descriptors for all local models.
+          <Property name="id" type="string">
+             Unique identifier of this model.
+          </Property>
+          <Property name="created" type="integer">
+             Unix Timestamp of the creation time of this model.
+          </Property>
+          <Property name="object" type="string">
+              The type of this item, always "model".
+          </Property>
+          <Property name="owned_by" type="string">
+              Owner of the model repository.
+          </Property>
+      </Property>
+    </Properties>
+  </Col>
+
+  <Col sticky>
+
+    <CodeGroup title="Request" tag="GET" label="v1/models">
+
+    ```bash {{ title: 'cURL' }}
+    curl http://localhost:33322/v1/models\
+      -H "Authorization: Bearer no-key-required"
+    ```
+
+    ```python
+    from edgen import Edgen
+    client = Edgen()
+
+    models = client.models.list()
+    for m in models:
+        print(m)
+    ```
+
+    ```ts
+    import fs from "fs";
+    import Edgen from "edgen";
+
+    const client = new Edgen();
+
+    async function main() {
+      const models = await client.models.list();
+
+      for for await (const model of models) {
+          console.log(model);
+      }
+    }
+    main();
+
+    ```
+    </CodeGroup>
+
+    ```json {{ title: 'Response' }}
+    {
+        "object":"list","data":[
+            {"id":"TheBloke/neural-chat-7B-v3-3-GGUF","created":1708333035,"object":"model","owned_by":"TheBloke"},
+            {"id":"TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF","created":1708333060,"object":"model","owned_by":"TheBloke"},
+            {"id":"TheBloke/phi-2-GGUF","created":1708333062,"object":"model","owned_by":"TheBloke"},
+            {"id":"distil-whisper/distil-small.en","created":1708333030,"object":"model","owned_by":"distil-whisper"}
+        ],
+        "page":1,
+        "per_page":4
+    }
+    ```
+
+  </Col>
+</Row>
+
+---
+
+## retrieve model {{ tag: 'GET', label: 'http://localhost:33322/v1/models{model} ' }}
+
+<Row>
+  <Col>
+
+    Retrieve model information.
+
+    ### Response attributes
+
+    <Properties>
+        <Property name="id" type="string">
+            Unique identifier of this model.
+        </Property>
+        <Property name="created" type="integer">
+            Unix Timestamp of the creation time of this model.
+        </Property>
+        <Property name="object" type="string">
+            The type of this item, always "model".
+        </Property>
+        <Property name="owned_by" type="string">
+            Owner of the model repository.
+        </Property>
+    </Properties>
+  </Col>
+
+  <Col sticky>
+
+    <CodeGroup title="Request" tag="GET" label="v1/models">
+
+    ```bash {{ title: 'cURL' }}
+    curl http://localhost:33322/v1/models/TheBloke%2fneural-chat-7B-v3-3-GGUF \
+      -H "Authorization: Bearer no-key-required"
+    ```
+
+    ```python
+    from edgen import Edgen
+    client = Edgen()
+
+    model = client.models.retrieve("TheBloke%2fneural-chat-7B-v3-3-GGUF")
+    print(m)
+    ```
+
+    ```ts
+    import fs from "fs";
+    import Edgen from "edgen";
+
+    const client = new Edgen();
+
+    async function main() {
+      const model = await client.models.retrieve("TheBloke%2fneural-chat-7B-v3-3-GGUF");
+
+      console.log(model);
+    }
+    main();
+
+    ```
+    </CodeGroup>
+
+    ```json {{ title: 'Response' }}
+    {
+         "id":"TheBloke/neural-chat-7B-v3-3-GGUF","created":1708333035,"object":"model","owned_by":"TheBloke"
+    }
+    ```
+
+  </Col>
+</Row>
+
+---
+
+## delete model {{ tag: 'GET', label: 'http://localhost:33322/v1/delete{model} ' }}
+
+<Row>
+  <Col>
+
+    Delete local model.
+
+    ### Response attributes
+
+    <Properties>
+        <Property name="id" type="string">
+            Unique identifier of this model.
+        </Property>
+        <Property name="object" type="string">
+            The type of this item, always "model".
+        </Property>
+        <Property name="deleted" type="bool">
+            Whether the model was actually deleted.
+        </Property>
+    </Properties>
+  </Col>
+
+  <Col sticky>
+
+    <CodeGroup title="Request" tag="GET" label="v1/models">
+
+    ```bash {{ title: 'cURL' }}
+    curl -X DELETE http://localhost:33322/v1/models/TheBloke%2fneural-chat-7B-v3-3-GGUF \
+      -H "Authorization: Bearer no-key-required"
+    ```
+
+    ```python
+    from edgen import Edgen
+    client = Edgen()
+
+    status = client.models.delete("TheBloke%2fneural-chat-7B-v3-3-GGUF")
+    print(status)
+    ```
+
+    ```ts
+    import fs from "fs";
+    import Edgen from "edgen";
+
+    const client = new Edgen();
+
+    async function main() {
+      const status = await client.models.del("TheBloke%2fneural-chat-7B-v3-3-GGUF");
+
+      console.log(status);
+    }
+    main();
+
+    ```
+    </CodeGroup>
+
+    ```json {{ title: 'Response' }}
+    {
+         "id":"TheBloke/neural-chat-7B-v3-3-GGUF","object":"model","deleted":true
+    }
+    ```
+
+  </Col>
+</Row>
+---
