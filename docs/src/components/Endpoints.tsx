@@ -12,6 +12,7 @@ import { GridPattern } from '@/components/GridPattern'
 import { Heading } from '@/components/Heading'
 import { ChatBubbleIcon } from '@/components/icons/ChatBubbleIcon'
 import { MicrophoneIcon } from '@/components/icons/MicrophoneIcon'
+import { CubeIcon } from '@/components/icons/CubeIcon'
 import { EnvelopeIcon } from '@/components/icons/EnvelopeIcon'
 import { UserIcon } from '@/components/icons/UserIcon'
 import { UsersIcon } from '@/components/icons/UsersIcon'
@@ -45,8 +46,22 @@ const endpoints: Array<Endpoint> = [
     href: '/api-reference/chat',
     name: 'Chat',
     description:
-      'Create a chat response, given an list of input chat messages.',
+      'Create a chat response, given a list of input chat messages.',
     icon: ChatBubbleIcon,
+    pattern: {
+      y: 16,
+      squares: [
+        [0, 1],
+        [1, 3],
+      ],
+    },
+  },
+  {
+    href: '/api-reference/models',
+    name: 'Models',
+    description:
+      'Manage models: list local models, retrieve model information and remove models.',
+    icon: CubeIcon,
     pattern: {
       y: 16,
       squares: [
