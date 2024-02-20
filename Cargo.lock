@@ -2892,7 +2892,7 @@ checksum = "01cda141df6706de531b6c46c3a33ecca755538219bd484262fa09410c13539c"
 [[package]]
 name = "llama_cpp"
 version = "0.3.0"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#847d4f5d104c23b87a925618027942313badec2c"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#1141010df235747293ccb130eb733c6214a6e52b"
 dependencies = [
  "derive_more",
  "futures",
@@ -2906,7 +2906,7 @@ dependencies = [
 [[package]]
 name = "llama_cpp_sys"
 version = "0.3.0"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#847d4f5d104c23b87a925618027942313badec2c"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#1141010df235747293ccb130eb733c6214a6e52b"
 dependencies = [
  "ash",
  "bindgen",
@@ -6125,7 +6125,7 @@ dependencies = [
 [[package]]
 name = "whisper_cpp"
 version = "0.2.1"
-source = "git+https://github.com/edgenai/whisper_cpp-rs?branch=main#2c6d1c7c2a4b69a11fb2bcc468ffbdec853bcaa8"
+source = "git+https://github.com/edgenai/whisper_cpp-rs?branch=main#fa765380b409f56504761afccf6db447e9155591"
 dependencies = [
  "derive_more",
  "thiserror",
@@ -6137,7 +6137,7 @@ dependencies = [
 [[package]]
 name = "whisper_cpp_sys"
 version = "0.2.1"
-source = "git+https://github.com/edgenai/whisper_cpp-rs?branch=main#2c6d1c7c2a4b69a11fb2bcc468ffbdec853bcaa8"
+source = "git+https://github.com/edgenai/whisper_cpp-rs?branch=main#fa765380b409f56504761afccf6db447e9155591"
 dependencies = [
  "bindgen",
  "cmake",
