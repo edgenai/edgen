@@ -12,7 +12,15 @@
 
 //! Contains all routes served by Edgen
 
-use axum::Router;
+use axum::{
+    extract::Path,
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{delete, get, post},
+    Router,
+};
+
+use tracing::warn;
 
 use crate::misc;
 use crate::model_man;
@@ -23,36 +31,88 @@ pub fn routes() -> Router {
     Router::new()
         // -- AI endpoints -----------------------------------------------------
         // ---- Chat -----------------------------------------------------------
-        .route(
-            "/v1/chat/completions",
-            axum::routing::post(openai_shim::chat_completions),
-        )
+        .route("/v1/chat/completions", post(openai_shim::chat_completions))
         // ---- Audio ----------------------------------------------------------
         .route(
             "/v1/audio/transcriptions",
-            axum::routing::post(openai_shim::create_transcription),
+            post(openai_shim::create_transcription),
         )
         // -- AI status endpoints ----------------------------------------------
         // ---- Chat -----------------------------------------------------------
         .route(
             "/v1/chat/completions/status",
-            axum::routing::get(status::chat_completions_status),
+            get(status::chat_completions_status),
         )
         // ---- Audio ----------------------------------------------------------
         .route(
             "/v1/audio/transcriptions/status",
-            axum::routing::get(status::audio_transcriptions_status),
+            get(status::audio_transcriptions_status),
         )
         // -- Model Manager ----------------------------------------------------
-        .route("/v1/models", axum::routing::get(model_man::list_models))
-        .route(
-            "/v1/models/:model",
-            axum::routing::get(model_man::retrieve_model),
-        )
-        .route(
-            "/v1/models/:model",
-            axum::routing::delete(model_man::delete_model),
-        )
+        .route("/v1/models", get(model_man::list_models))
+        .route("/v1/models/:model", get(model_man::retrieve_model))
+        .route("/v1/models/:model", delete(model_man::delete_model))
         // -- Miscellaneous services -------------------------------------------
-        .route("/v1/misc/version", axum::routing::get(misc::edgen_version))
+        .route("/v1/misc/version", get(misc::edgen_version))
+        // -- Catch-all route to log all requests ------------------------------
+        .route("/*path", get(catch_all))
+}
+
+async fn catch_all(Path(path): Path<String>) -> impl IntoResponse {
+    // Log the requested path for debugging or information purposes
+    warn!("Unknown path requested: {}", path);
+
+    // Return a 404 Not Found status code without any body to mimic a non-existent endpoint
+    StatusCode::NOT_FOUND
+}
+
+#[cfg(test)]
+mod test {
+    use super::catch_all;
+    use axum::http::StatusCode;
+    use axum::routing::get;
+    use axum::Router;
+    use axum_test::TestServer;
+
+    #[tokio::test]
+    async fn test_get_any_path() {
+        let router = Router::new().route("/*path", get(catch_all));
+
+        let server = TestServer::new(router).expect("cannot instantiate TestServer");
+
+        let resp = server.get("/v1/does/not_exist").await;
+
+        assert_eq!(resp.status_code(), StatusCode::NOT_FOUND);
+
+        let resp = server.get("/v0/misc/version").await;
+
+        assert_eq!(resp.status_code(), StatusCode::NOT_FOUND);
+
+        let resp = server.get("/misc/version").await;
+
+        assert_eq!(resp.status_code(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_post_any_path() {
+        let router = Router::new().route("/*path", get(catch_all));
+
+        let server = TestServer::new(router).expect("cannot instantiate TestServer");
+
+        let resp = server.post("/v1/misc/version").await;
+
+        assert_eq!(resp.status_code(), StatusCode::METHOD_NOT_ALLOWED);
+
+        let resp = server.post("/v1/does/not_exist").await;
+
+        assert_eq!(resp.status_code(), StatusCode::METHOD_NOT_ALLOWED);
+
+        let resp = server.post("/v0/misc/version").await;
+
+        assert_eq!(resp.status_code(), StatusCode::METHOD_NOT_ALLOWED);
+
+        let resp = server.post("/misc/version").await;
+
+        assert_eq!(resp.status_code(), StatusCode::METHOD_NOT_ALLOWED);
+    }
 }

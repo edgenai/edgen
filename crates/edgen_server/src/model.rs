@@ -96,7 +96,11 @@ impl Model {
             .model(self.repo.to_string())
             .get(&self.name)
             .is_none();
-        let size = self.get_size(&api).await;
+        let size = if download {
+            self.get_size(&api).await
+        } else {
+            None
+        };
         let progress_handle = match self.kind {
             ModelKind::LLM => {
                 status::observe_chat_completions_progress(&self.dir, size, download).await
