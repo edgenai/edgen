@@ -39,8 +39,8 @@ outputs = { self, nixpkgs, rust-overlay, flake-utils }:
     nativeBuildInputs = with pkgs; [
       pkg-config
       rust-toolchain
-      alsa-lib
       cmake
+      vulkan-loader
     ] ++ clangBuildInputs;
 
     packages = with pkgs; [
@@ -93,6 +93,9 @@ outputs = { self, nixpkgs, rust-overlay, flake-utils }:
 
       # tauri
       export WEBKIT_DISABLE_COMPOSITING_MODE=1
+
+      # vulkan
+      export VULKAN_SDK=${pkgs.vulkan-loader}
       '';
     };
   });

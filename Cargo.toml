@@ -49,13 +49,11 @@ tempfile = "3.9.0"
 thiserror = "1.0.50"
 time = "0.3.30"
 tinyvec = "1.6.0"
+tauri = { version = "1.5.4", features = [] }
 tokio = "1.34.0"
 tokio-stream = "0.1.14"
 tokio-util = "0.7.10"
-toml_edit = "0.21.0"
+toml_edit = "0.22.5"
 tracing = "0.1.40"
 uuid = "1.6.1"
 utoipa = { version = "4", features = ["yaml"] }
-llama_cpp = { git = "https://github.com/edgenai/llama_cpp-rs", branch = "main" }
-whisper_cpp = { git = "https://github.com/edgenai/whisper_cpp-rs", branch = "main" }
-tauri = { version = "1.5.4", features = [] }

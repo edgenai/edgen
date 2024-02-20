@@ -29,3 +29,6 @@ no_gui = []
 # DO NOT REMOVE!!
 custom-protocol = ["tauri/custom-protocol"]
 enable-windows-terminal = []
+llama_vulkan = ["edgen_server/llama_vulkan"]
+llama_cuda = ["edgen_server/llama_cuda"]
+whisper_cuda = ["edgen_server/whisper_cuda"]
