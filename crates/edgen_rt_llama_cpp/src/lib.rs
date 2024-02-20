@@ -301,7 +301,7 @@ async fn get_or_init_model(
                     args.n_gpu_layers = 0;
                 }
                 DevicePolicy::AlwaysDevice { .. } => {
-                    args.n_gpu_layers = u32::MAX;
+                    args.n_gpu_layers = i32::MAX as u32;
                 }
                 _ => {
                     unimplemented!()
