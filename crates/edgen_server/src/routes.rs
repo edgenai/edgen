@@ -13,8 +13,7 @@
 //! Contains all routes served by Edgen
 
 use axum::{
-    extract::Path,
-    http::StatusCode,
+    http::{uri::Uri, Method, StatusCode},
     response::IntoResponse,
     routing::{delete, get, post},
     Router,
@@ -55,12 +54,12 @@ pub fn routes() -> Router {
         // -- Miscellaneous services -------------------------------------------
         .route("/v1/misc/version", get(misc::edgen_version))
         // -- Catch-all route to log all requests ------------------------------
-        .route("/*path", get(catch_all))
+        .fallback(catch_all)
 }
 
-async fn catch_all(Path(path): Path<String>) -> impl IntoResponse {
+async fn catch_all(method: Method, uri: Uri) -> impl IntoResponse {
     // Log the requested path for debugging or information purposes
-    warn!("Unknown path requested: {}", path);
+    warn!("Unknown route requested: {} {}", method, uri);
 
     // Return a 404 Not Found status code without any body to mimic a non-existent endpoint
     StatusCode::NOT_FOUND
@@ -70,13 +69,12 @@ async fn catch_all(Path(path): Path<String>) -> impl IntoResponse {
 mod test {
     use super::catch_all;
     use axum::http::StatusCode;
-    use axum::routing::get;
     use axum::Router;
     use axum_test::TestServer;
 
     #[tokio::test]
     async fn test_get_any_path() {
-        let router = Router::new().route("/*path", get(catch_all));
+        let router = Router::new().fallback(catch_all);
 
         let server = TestServer::new(router).expect("cannot instantiate TestServer");
 
@@ -95,24 +93,24 @@ mod test {
 
     #[tokio::test]
     async fn test_post_any_path() {
-        let router = Router::new().route("/*path", get(catch_all));
+        let router = Router::new().fallback(catch_all);
 
         let server = TestServer::new(router).expect("cannot instantiate TestServer");
 
         let resp = server.post("/v1/misc/version").await;
 
-        assert_eq!(resp.status_code(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(resp.status_code(), StatusCode::NOT_FOUND);
 
         let resp = server.post("/v1/does/not_exist").await;
 
-        assert_eq!(resp.status_code(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(resp.status_code(), StatusCode::NOT_FOUND);
 
         let resp = server.post("/v0/misc/version").await;
 
-        assert_eq!(resp.status_code(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(resp.status_code(), StatusCode::NOT_FOUND);
 
         let resp = server.post("/misc/version").await;
 
-        assert_eq!(resp.status_code(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(resp.status_code(), StatusCode::NOT_FOUND);
     }
 }
