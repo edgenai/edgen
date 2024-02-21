@@ -38,7 +38,7 @@
 ### Features
 
 - [x] Session Caching: ⚡Edgen maintains top performance with big contexts (big chat histories), by caching sessions. Sessions are auto-detected in function of the chat history.
-- [ ] GPU support: CUDA [#54](https://github.com/edgenai/edgen/issues/54), Vulkan [#16](https://github.com/edgenai/edgen/issues/16)
+- [x] [GPU support](https://github.com/edgenai/edgen#gpu-support): CUDA, Vulkan. Metal coming soon
 
 ### Endpoints
 
