@@ -31,6 +31,8 @@ pub fn routes() -> Router {
         // -- AI endpoints -----------------------------------------------------
         // ---- Chat -----------------------------------------------------------
         .route("/v1/chat/completions", post(openai_shim::chat_completions))
+        // ---- Embeddings -----------------------------------------------------
+        .route("/v1/embeddings", post(openai_shim::create_embeddings))
         // ---- Audio ----------------------------------------------------------
         .route(
             "/v1/audio/transcriptions",

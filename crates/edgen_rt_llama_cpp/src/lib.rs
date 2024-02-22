@@ -90,6 +90,15 @@ impl LlamaCppEndpoint {
         let model = self.get(model_path).await;
         model.stream_chat_completions(args).await
     }
+
+    async fn async_embeddings(
+        &self,
+        model_path: impl AsRef<Path>,
+        inputs: Vec<String>,
+    ) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
+        let model = self.get(model_path).await;
+        model.embeddings(inputs).await
+    }
 }
 
 impl LLMEndpoint for LlamaCppEndpoint {
@@ -108,6 +117,15 @@ impl LLMEndpoint for LlamaCppEndpoint {
         args: CompletionArgs,
     ) -> BoxedFuture<Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError>> {
         let pinned = Box::pin(self.async_stream_chat_completions(model_path, args));
+        Box::new(pinned)
+    }
+
+    fn embeddings<'a>(
+        &'a self,
+        model_path: impl AsRef<Path> + Send + 'a,
+        inputs: Vec<String>,
+    ) -> BoxedFuture<Result<Vec<Vec<f32>>, LLMEndpointError>> {
+        let pinned = Box::pin(self.async_embeddings(model_path, inputs));
         Box::new(pinned)
     }
 
@@ -275,6 +293,11 @@ impl UnloadingModel {
             )
             .await?,
         ))
+    }
+    
+    async fn embeddings(&self, inputs: Vec<String>,) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
+        let (_model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
+        Ok(model_guard.embeddings(&inputs)?)
     }
 }
 

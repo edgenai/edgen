@@ -26,7 +26,6 @@ use axum::response::{IntoResponse, Response, Sse};
 use axum::Json;
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use derive_more::{Deref, DerefMut, From};
-use edgen_core::llm::LLMEndpointError;
 use either::Either;
 use futures::{Stream, StreamExt, TryStream};
 use serde_derive::{Deserialize, Serialize};
@@ -37,9 +36,11 @@ use tracing::error;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use edgen_core::llm::LLMEndpointError;
 use edgen_core::settings::SETTINGS;
 use edgen_core::whisper::WhisperEndpointError;
 
+use crate::llm::embeddings;
 use crate::model::{Model, ModelError, ModelKind};
 
 /// The plaintext or image content of a [`ChatMessage`] within a [`CreateChatCompletionRequest`].
@@ -682,6 +683,141 @@ pub async fn chat_completions(
     };
 
     Ok(response)
+}
+
+#[derive(Serialize, Deserialize, ToSchema)]
+pub struct CreateEmbeddingsRequest<'a> {
+    /// The text input to embed as either a string or an array of strings.
+    #[schema(value_type = String)]
+    pub input: Either<Cow<'a, str>, Vec<Cow<'a, str>>>,
+
+    /// ID of the model to use.
+    #[schema(value_type = String)]
+    pub model: Cow<'a, str>,
+
+    /// The format to return the embeddings in. Can be either `float` or `base64`.
+    #[schema(value_type = String)]
+    pub encoding_format: Option<Cow<'a, str>>,
+
+    /// The number of dimensions the resulting output embeddings should have. Only supported in some models.
+    pub dimensions: Option<usize>,
+}
+
+#[derive(Serialize, Deserialize, ToSchema)]
+pub struct EmbeddingsResponse {
+    /// Always `"list"`.
+    pub object: String,
+
+    pub embeddings: Vec<Embedding>,
+
+    pub model: String,
+
+    pub usage: EmbeddingsUsage,
+}
+
+/// Represents an embedding vector returned by embedding endpoint.
+#[derive(Serialize, Deserialize, ToSchema)]
+pub struct Embedding {
+    /// Always `"embedding"`.
+    pub object: String,
+
+    /// The embedding vector, which is a list of floats. The length of vector depends on the model.
+    pub embedding: Vec<f32>,
+
+    /// The index of the embedding in the list of embeddings.
+    pub index: usize,
+}
+
+#[derive(Serialize, Deserialize, ToSchema)]
+pub struct EmbeddingsUsage {
+    pub prompt_tokens: usize,
+    pub total_tokens: usize,
+}
+
+// TODO change to use a dedicated error type, or make a common error type
+#[utoipa::path(
+post,
+path = "/embeddings",
+request_body = CreateEmbeddingsRequest,
+responses(
+(status = 200, description = "OK", body = EmbeddingsResponse),
+(status = 500, description = "unexpected internal server error", body = ChatCompletionError)
+),
+)]
+pub async fn create_embeddings(
+    Json(req): Json<CreateEmbeddingsRequest<'_>>,
+) -> Result<impl IntoResponse, ChatCompletionError> {
+    // For MVP1, the model string in the request is *always* ignored.
+    let model_name = SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .chat_completions_model_name
+        .trim()
+        .to_string();
+    let repo = SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .chat_completions_model_repo
+        .trim()
+        .to_string();
+    let dir = SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .chat_completions_models_dir
+        .trim()
+        .to_string();
+
+    if model_name.is_empty() {
+        return Err(ChatCompletionError::ProhibitedName {
+            model_name,
+            reason: Cow::Borrowed("Empty model name in config"),
+        });
+    }
+    if dir.is_empty() {
+        return Err(ChatCompletionError::ProhibitedName {
+            model_name: dir,
+            reason: Cow::Borrowed("Empty model directory in config"),
+        });
+    }
+
+    let mut model = Model::new(ModelKind::LLM, &model_name, &repo, &PathBuf::from(&dir));
+
+    model
+        .preload()
+        .await
+        .map_err(move |_| ChatCompletionError::NoSuchModel {
+            model_name: model_name.to_string(),
+        })?;
+
+    let input = req.input.either(
+        move |s| vec![s.to_string()],
+        move |v| v.iter().map(move |s| s.to_string()).collect(),
+    );
+    let mut res = embeddings(model, input).await?;
+
+    Ok(EmbeddingsResponse {
+        object: "list".to_string(),
+        embeddings: res
+            .drain(..)
+            .enumerate()
+            .map(move |(index, embedding)| Embedding {
+                object: "embedding".to_string(),
+                embedding,
+                index,
+            })
+            .collect(),
+        model: req.model.to_string(),
+        usage: EmbeddingsUsage {
+            prompt_tokens: 0,
+            total_tokens: 0,
+        },
+    })
 }
 
 /// A request to transcribe an audio file into text in either the specified language, or whichever
