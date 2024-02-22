@@ -77,10 +77,10 @@ mod whisper;
         openai_shim::FunctionStub,
         openai_shim::AssistantFunctionStub,
         openai_shim::AssistantToolCall,
-        openai_shim::CreateEmbeddingsRequest
-        openai_shim::EmbeddingsResponse
-        openai_shim::Embedding
-        openai_shim::EmbeddingsUsage
+        openai_shim::CreateEmbeddingsRequest,
+        openai_shim::EmbeddingsResponse,
+        openai_shim::Embedding,
+        openai_shim::EmbeddingsUsage,
         openai_shim::CreateTranscriptionRequest,
         openai_shim::TranscriptionResponse,
         openai_shim::TranscriptionError,

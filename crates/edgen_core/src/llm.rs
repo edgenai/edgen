@@ -37,6 +37,8 @@ pub enum LLMEndpointError {
     Load(String),
     #[error("failed to create a new session: {0}")]
     SessionCreationFailed(String),
+    #[error("failed to create embeddings: {0}")]
+    Embeddings(String), // Embeddings may involve session creation, advancing, and other things, so it should have its own error
 }
 
 #[derive(Debug, Clone)]

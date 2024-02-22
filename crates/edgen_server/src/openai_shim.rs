@@ -801,7 +801,7 @@ pub async fn create_embeddings(
     );
     let mut res = embeddings(model, input).await?;
 
-    Ok(EmbeddingsResponse {
+    Ok(Json(EmbeddingsResponse {
         object: "list".to_string(),
         embeddings: res
             .drain(..)
@@ -817,7 +817,7 @@ pub async fn create_embeddings(
             prompt_tokens: 0,
             total_tokens: 0,
         },
-    })
+    }))
 }
 
 /// A request to transcribe an audio file into text in either the specified language, or whichever

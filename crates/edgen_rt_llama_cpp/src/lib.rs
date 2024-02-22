@@ -294,10 +294,12 @@ impl UnloadingModel {
             .await?,
         ))
     }
-    
-    async fn embeddings(&self, inputs: Vec<String>,) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
+
+    async fn embeddings(&self, inputs: Vec<String>) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
         let (_model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
-        Ok(model_guard.embeddings(&inputs)?)
+        model_guard
+            .embeddings(&inputs)
+            .map_err(move |e| LLMEndpointError::Embeddings(e.to_string()))
     }
 }
 
