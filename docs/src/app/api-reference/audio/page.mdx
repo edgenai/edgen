@@ -30,6 +30,20 @@ Discover how to convert audio to text or text to audio. OpenAI compliant. {{ cla
       </Property>
     </Properties>
 
+    ### Optional attributes
+
+    <Properties>
+      <Property name="create_session" type="bool">
+        If present and true, a new audio session will be created and used for the transcription and the session's UUID is returned in the response object. A session will keep track of past inferences, this may be useful for things like live transcriptions where continuous audio is submitted across several requests.
+      </Property>
+    </Properties>
+
+    <Properties>
+      <Property name="session" type="UUID">
+        The UUID of an existing session, which will be used for the transcription.
+      </Property>
+    </Properties>
+
 
   </Col>
   <Col sticky>
