@@ -753,7 +753,7 @@ pub async fn create_embeddings(
         .await
         .read()
         .await
-        .chat_completions_model_name
+        .embeddings_model_name
         .trim()
         .to_string();
     let repo = SETTINGS
@@ -761,7 +761,7 @@ pub async fn create_embeddings(
         .await
         .read()
         .await
-        .chat_completions_model_repo
+        .embeddings_model_repo
         .trim()
         .to_string();
     let dir = SETTINGS
@@ -769,7 +769,7 @@ pub async fn create_embeddings(
         .await
         .read()
         .await
-        .chat_completions_models_dir
+        .embeddings_models_dir
         .trim()
         .to_string();
 
