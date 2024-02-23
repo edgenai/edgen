@@ -20,7 +20,9 @@ use dashmap::DashMap;
 use futures::executor::block_on;
 use futures::{Future, Stream};
 use llama_cpp::standard_sampler::StandardSampler;
-use llama_cpp::{CompletionHandle, LlamaModel, LlamaParams, LlamaSession, SessionParams, Token};
+use llama_cpp::{
+    CompletionHandle, EmbeddingsParams, LlamaModel, LlamaParams, LlamaSession, SessionParams, Token,
+};
 use smol::future::FutureExt;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::Mutex;
@@ -296,9 +298,15 @@ impl UnloadingModel {
     }
 
     async fn embeddings(&self, inputs: Vec<String>) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
+        let threads = SETTINGS.read().await.read().await.auto_threads(false);
+        let mut params = EmbeddingsParams::default();
+        params.n_threads = threads;
+        params.n_threads_batch = threads;
+
         let (_model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
         model_guard
-            .embeddings(&inputs)
+            .embeddings_async(&inputs, params)
+            .await
             .map_err(move |e| LLMEndpointError::Embeddings(e.to_string()))
     }
 }
