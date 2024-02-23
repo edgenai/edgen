@@ -2,12 +2,15 @@ import Link from 'next/link'
 import clsx from 'clsx'
 
 import { Feedback } from '@/components/Feedback'
-import { Heading } from '@/components/Heading'
+import { Heading} from '@/components/Heading'
 import { Prose } from '@/components/Prose'
 
 export const a = Link
 export { Button } from '@/components/Button'
 export { CodeGroup, Code as code, Pre as pre } from '@/components/Code'
+export { ButtonRow } from '@/components/ButtonRow'
+
+export { Eyebrow, HeadingNoEyebrow } from '@/components/Heading'
 
 export function wrapper({ children }: { children: React.ReactNode }) {
   return (

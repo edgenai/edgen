@@ -103,7 +103,7 @@ function EndpointPattern({
         />
       </div>
       <motion.div
-        className="absolute inset-0 rounded-2xl bg-gradient-to-r from-[#F3D7AE] to-[#776942] to-[#EDE7D7] opacity-0 transition duration-300 group-hover:opacity-100 dark:from-[#776942]"
+        className="absolute inset-0 rounded-2xl bg-gradient-to-r from-[#F3D7AE] to-[#EDE7D7] opacity-0 transition duration-300 group-hover:opacity-100 dark:from-[#776942]"
         style={style}
       />
       <motion.div
