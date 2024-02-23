@@ -16,6 +16,7 @@ The Edgen configuration. It is read from a file where you can define your models
 | `audio_transcriptions_models_dir` | Directory for audio transcriptions models  | `<DATA_DIR>/edgen/models/audio/transcriptions`   |
 | `audio_transcriptions_model_name` | Name of audio transcriptions model         | ggml-distil-small.en.bin                         |
 | `audio_transcriptions_model_repo` | HuggingFace repo for audio transcriptions  | distil-whisper/distil-small.en                   |
+| `gpu_policy`                      | Policy to choose how a model gets loaded   | !always_device                                   |
 
 ### Configuration Paths for DATA_DIR
 
@@ -24,3 +25,12 @@ The Edgen configuration. It is read from a file where you can define your models
 | Linux    | `$XDG_DATA_HOME/_project_path_` or `$HOME/.local/share/_project_path_` | `/home/Alex/.local/share/edgen`                 |
 | macOS    | `$HOME/Library/Application Support/_project_path_`               | `/Users/Alex/Library/Application Support/com.EdgenAI.Edgen`    |
 | Windows  | `{FOLDERID_RoamingAppData}\_project_path_\data`                   | `C:\Users\Alex\AppData\Roaming\EdgenAI\Edgen\data` |
+
+### GPU policies
+
+Edgen supports the following policies, each with their own sub-settings:
+
+    - `!always_device` - Models will always get loaded to a GPU.
+        - `overflow_to_cpu` - If true, when a model can't be loaded to a GPU, it gets loaded to system memory. Else, Edgen will free GPU memory until the model can be loaded. **WARNING**: neither of these systems are currently implemented.
+    - `!always_cpu` - Models will always get loaded to system memory.
+        - `overflow_to_device` - If true, when a model can't be loaded to system memory, it gets loaded to a GPU. Else, Edgen will free system memory until the model can be loaded. **WARNING**: neither of these systems are currently implemented.
