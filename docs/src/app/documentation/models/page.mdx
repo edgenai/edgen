@@ -19,4 +19,6 @@ For the audio transcriptions endpoint, Edgen supports all whisper.cpp models:
 | distil-whisper-large-v2   | [distil-whisper/distil-large-v2](https://huggingface.co/distil-whisper/distil-large-v2/resolve/main/ggml-large-32-2.en.bin) |
 
 ## How to switch an active model?
-Just change the configuration file! Check [Documentation &raquo; Configuration](/documentation/configuration) and if Edgen cannot find the model you specified, it'll download it automatically from HuggingFace.
+Just change the configuration file! Check [Documentation &raquo; Configuration](/documentation/configuration) and if Edgen cannot find the model you specified locally, it'll download it automatically from HuggingFace. See also [API Reference &raquo; Models](/api-reference/models).
+
+You can also download your model manually and copy it to the model directory. In this case, Edgen will not manage this model.
