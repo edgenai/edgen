@@ -22,7 +22,7 @@ function AnchorIcon(props: React.ComponentPropsWithoutRef<'svg'>) {
   )
 }
 
-function Eyebrow({ tag, label }: { tag?: string; label?: string }) {
+export function Eyebrow({ tag, label }: { tag?: string; label?: string }) {
   if (!tag && !label) {
     return null
   }
@@ -111,6 +111,51 @@ export function Heading<Level extends 2 | 3>({
         ) : (
           children
         )}
+      </Component>
+    </>
+  )
+}
+
+export function HeadingNoEyebrow<Level extends 2 | 3>({
+  children,
+  tag,
+  label,
+  level,
+  anchor = true,
+  ...props
+}: React.ComponentPropsWithoutRef<`h${Level}`> & {
+  id: string
+  tag?: string
+  label?: string
+  level?: Level
+  anchor?: boolean
+}) {
+  level = level ?? (2 as Level)
+  let Component = `h${level}` as 'h2' | 'h3'
+  let ref = useRef<HTMLHeadingElement>(null)
+  let registerHeading = useSectionStore((s) => s.registerHeading)
+
+  let inView = useInView(ref, {
+    margin: `${remToPx(-3.5)}px 0px 0px 0px`,
+    amount: 'all',
+  })
+
+  useEffect(() => {
+    if (level === 2) {
+      registerHeading({ id: props.id, ref, offsetRem: tag || label ? 8 : 6 })
+    }
+  })
+
+  return (
+    <>
+      <Component
+        ref={ref}
+        className={tag || label ? 'mt-2 scroll-mt-32' : 'scroll-mt-24'}
+        {...props}
+      >
+        {<Anchor id={props.id} inView={inView}>
+            {children}
+          </Anchor>}
       </Component>
     </>
   )
