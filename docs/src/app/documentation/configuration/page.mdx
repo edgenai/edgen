@@ -34,3 +34,24 @@ Edgen supports the following policies, each with their own sub-settings:
         - `overflow_to_cpu` - If true, when a model can't be loaded to a GPU, it gets loaded to system memory. Else, Edgen will free GPU memory until the model can be loaded. **WARNING**: neither of these systems are currently implemented.
     - `!always_cpu` - Models will always get loaded to system memory.
         - `overflow_to_device` - If true, when a model can't be loaded to system memory, it gets loaded to a GPU. Else, Edgen will free system memory until the model can be loaded. **WARNING**: neither of these systems are currently implemented.
+
+### Model Name and Repo
+
+Model name and repo define the model to use and how to obtain it automatically. If you download the model yourself you just have to copy it to the corresponding model directory and set the `model_name` setting to the file name. The repo has only informative character in this case, for instance:
+
+| Config Name                       | Your Value                                 |
+| --------------------------------- | ------------------------------------------ |
+| `chat_completions_models_dir`     | `<DATA_DIR>/edgen/models/chat/completions` |
+| `chat_completions_model_name`     | my-fancy-model                             |
+| `chat_completions_model_repo`     | ModelMaster/fancy-model-1.v1-1.GGUF        |
+
+If you prefer to let Edgen manage your models, you need to fill in the correct model name and repo, e.g.
+
+| Config Name                       | Your Value                                 |
+| --------------------------------- | ------------------------------------------ |
+| `chat_completions_models_dir`     | `<DATA_DIR>/edgen/models/chat/completions` |
+| `chat_completions_model_name`     | fancy-model-1.v1-1.gguf                    |
+| `chat_completions_model_repo`     | ModelMaster/fancy-model-1.v1-1.GGUF        |
+
+In this case, if the model does not exist in the model directory, Edgen will automatically download for you. You can use the model manager ([API Reference &raquo; Models](/api-reference/models)) to inspect and delete automatically downloaded models. 
+ 
