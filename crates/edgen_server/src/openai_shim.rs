@@ -685,6 +685,14 @@ pub async fn chat_completions(
     Ok(response)
 }
 
+/// A request to generate embeddings for one or more pieces of text.
+///
+/// An `axum` handler, [`create_embeddings`][create_embeddings], is provided to handle this request.
+///
+/// See [the documentation for creating transcriptions][openai] for more details.
+///
+/// [embeddings]: fn.create_embeddings.html
+/// [openai]: https://platform.openai.com/docs/api-reference/embeddings/create
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct CreateEmbeddingsRequest<'a> {
     /// The text input to embed as either a string or an array of strings.
@@ -703,19 +711,27 @@ pub struct CreateEmbeddingsRequest<'a> {
     pub dimensions: Option<usize>,
 }
 
+/// The return type of [`create_embeddings`].
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct EmbeddingsResponse {
     /// Always `"list"`.
     pub object: String,
 
+    /// The generated embeddings.
     pub embeddings: Vec<Embedding>,
 
+    /// The model used for generation.
     pub model: String,
 
+    /// The usage statistics of the request.
     pub usage: EmbeddingsUsage,
 }
 
 /// Represents an embedding vector returned by embedding endpoint.
+///
+/// See [the documentation for creating transcriptions][openai] for more details.
+///
+/// [openai]: https://platform.openai.com/docs/api-reference/embeddings/object
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct Embedding {
     /// Always `"embedding"`.
@@ -728,13 +744,27 @@ pub struct Embedding {
     pub index: usize,
 }
 
+/// The usage statistics of the request.
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct EmbeddingsUsage {
+    // TODO doc
+    /// ???
     pub prompt_tokens: usize,
+
+    // TODO doc
+    /// ???
     pub total_tokens: usize,
 }
 
 // TODO change to use a dedicated error type, or make a common error type
+/// POST `/v1/embeddings`: generates embeddings for the provided text.
+///
+/// See [the original OpenAI API specification][openai], which this endpoint is compatible with.
+///
+/// [openai]: https://platform.openai.com/docs/api-reference/embeddings/create
+///
+/// On failure, may raise a `500 Internal Server Error` with a JSON-encoded [`ChatCompletionError`]
+/// to the peer.
 #[utoipa::path(
 post,
 path = "/embeddings",
@@ -882,7 +912,7 @@ pub struct TranscriptionResponse {
 
     /// The [`Uuid`] of a newly created session, present only if `create_session` in
     /// [`CreateTranscriptionRequest`] is set to `true`. This additional member is **not normative**
-    /// with OpenAI's specification, as it is intended for **Edgen** specific functinality.
+    /// with OpenAI's specification, as it is intended for **Edgen** specific functionality.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<Uuid>,
 }
@@ -893,7 +923,7 @@ pub struct TranscriptionResponse {
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/audio/createTranscription
 ///
-/// On failure, may raise a `500 Internal Server Error` with a JSON-encoded [`WhisperEndpointError`]
+/// On failure, may raise a `500 Internal Server Error` with a JSON-encoded [`TranscriptionError`]
 /// to the peer.
 #[utoipa::path(
 post,
