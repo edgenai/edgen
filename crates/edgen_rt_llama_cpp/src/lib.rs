@@ -18,10 +18,10 @@ use std::task::{Context, Poll};
 use blake3::Hasher;
 use dashmap::DashMap;
 use futures::executor::block_on;
-use futures::{Future, Stream};
+use futures::Stream;
 use llama_cpp::standard_sampler::StandardSampler;
 use llama_cpp::{
-    CompletionHandle, LlamaModel, LlamaParams, LlamaSession, SessionParams, Token, TokensToStrings,
+    CompletionHandle, LlamaModel, LlamaParams, LlamaSession, SessionParams, TokensToStrings,
 };
 use smol::stream::StreamExt;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
@@ -458,20 +458,8 @@ fn find_any(text: &str, patterns: &[&str]) -> Option<usize> {
 
 /// A [`Stream`] of [`Token`]s returned by a [`LlamaCppSession::stream_complete`] call.
 struct CompletionStream {
-    /// The [`LlamaModel`] used to call [`LlamaModel::token_to_piece`].
-    model: LlamaModel,
-
-    // TODO look better into this implementation, could try sending this across channels instead
-    /// Handle to the model completions, needs to be an [`Arc`] so it can be cloned in
-    /// [`Stream::poll_next`], or else it would be referencing a vanishing `self`.
+    /// Handle to the model completions handle.
     handle: TokensToStrings<CompletionHandle>,
-
-    //TODO i dont know if it is possible to do this without a box
-    /// An [`Option`] potentially containing the result of a [`CompletionHandle::next_token_async`] call.
-    next: Option<Pin<Box<dyn Future<Output = Option<Token>> + Send>>>,
-
-    /// The *end of sequence* [`Token`] of the [`LlamaModel`] this [`CompletionStream`] is associated with.
-    end_token: Token,
 
     /// The session used for generation completions.
     session: Option<Perishable<LlamaSession>>,
@@ -510,9 +498,6 @@ impl CompletionStream {
         sampler: StandardSampler,
         finished_tx: UnboundedSender<(SessionId, Perishable<LlamaSession>)>,
     ) -> Result<Self, LLMEndpointError> {
-        let model_clone = model.clone();
-        let end_token = model.eos();
-
         let (session_signal, handle) = {
             let (session_signal, mut session_guard) = get_or_init_session(&session, model).await?;
 
@@ -529,10 +514,7 @@ impl CompletionStream {
         };
 
         Ok(Self {
-            model: model_clone,
             handle: handle.into_strings(),
-            next: None,
-            end_token,
             session: Some(session),
             session_id: Some(session_id),
             finished_tx,
@@ -553,17 +535,10 @@ impl Stream for CompletionStream {
                 if let Some(id) = &mut stream.session_id {
                     id.advance(&val);
                 }
-                println!("Value: {val}");
                 Poll::Ready(Some(val))
             }
-            Poll::Ready(None) => {
-                println!("Done");
-                Poll::Ready(None)
-            }
-            Poll::Pending => {
-                println!("Pending");
-                Poll::Pending
-            }
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
         }
     }
 }
