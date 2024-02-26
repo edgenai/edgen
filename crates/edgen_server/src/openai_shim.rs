@@ -26,7 +26,7 @@ use axum::response::{IntoResponse, Response, Sse};
 use axum::Json;
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use derive_more::{Deref, DerefMut, From};
-use edgen_core::llm::LLMEndpointError;
+use edgen_core::llm::{CompletionArgs, LLMEndpointError};
 use either::Either;
 use futures::{Stream, StreamExt, TryStream};
 use serde_derive::{Deserialize, Serialize};
@@ -362,6 +362,10 @@ pub struct CreateChatCompletionRequest<'a> {
     /// A unique identifier for the _end user_ creating this request. This is used for telemetry
     /// and user tracking, and is unused within Edgen.
     pub user: Option<Cow<'a, str>>,
+
+    /// Indicate if this is an isolated request, with no associated past or future context. This may allow for
+    /// optimisations in some implementations. Default: `false`
+    pub one_shot: Option<bool>,
 }
 
 /// A message in a chat completion.
@@ -625,37 +629,48 @@ pub async fn chat_completions(
 
     let untokenized_context = format!("{}<|ASSISTANT|>", req.messages);
 
-    let stream_response = if let Some(stream) = req.stream {
-        stream
-    } else {
-        false
+    let mut args = CompletionArgs {
+        prompt: untokenized_context,
+        seed: req.seed,
+        ..Default::default()
     };
+
+    if let Some(one_shot) = req.one_shot {
+        args.one_shot = one_shot;
+    }
+
+    if let Some(frequency_penalty) = req.frequency_penalty {
+        args.frequency_penalty = frequency_penalty;
+    }
+
+    let stream_response = req.stream.unwrap_or(false);
 
     let fp = format!("edgen-{}", cargo_crate_version!());
     let response = if stream_response {
-        let completions_stream = crate::llm::chat_completion_stream(model, untokenized_context)
-            .await?
-            .map(move |chunk| {
-                Event::default().json_data(ChatCompletionChunk {
-                    id: Uuid::new_v4().to_string().into(),
-                    choices: tiny_vec![ChatCompletionChunkChoice {
-                        index: 0,
-                        finish_reason: None,
-                        delta: ChatCompletionChunkDelta {
-                            content: Some(Cow::Owned(chunk)),
-                            role: None,
-                        },
-                    }],
-                    created: OffsetDateTime::now_utc().unix_timestamp(),
-                    model: Cow::Borrowed("main"),
-                    system_fingerprint: Cow::Borrowed(&fp), // use macro for version
-                    object: Cow::Borrowed("text_completion"),
-                })
-            });
+        let completions_stream =
+            crate::llm::chat_completion_stream(model, args)
+                .await?
+                .map(move |chunk| {
+                    Event::default().json_data(ChatCompletionChunk {
+                        id: Uuid::new_v4().to_string().into(),
+                        choices: tiny_vec![ChatCompletionChunkChoice {
+                            index: 0,
+                            finish_reason: None,
+                            delta: ChatCompletionChunkDelta {
+                                content: Some(Cow::Owned(chunk)),
+                                role: None,
+                            },
+                        }],
+                        created: OffsetDateTime::now_utc().unix_timestamp(),
+                        model: Cow::Borrowed("main"),
+                        system_fingerprint: Cow::Borrowed(&fp), // use macro for version
+                        object: Cow::Borrowed("text_completion"),
+                    })
+                });
 
         ChatCompletionResponse::Stream(Sse::new(completions_stream))
     } else {
-        let content_str = crate::llm::chat_completion(model, untokenized_context).await?;
+        let content_str = crate::llm::chat_completion(model, args).await?;
         let response = ChatCompletion {
             id: Uuid::new_v4().to_string().into(),
             choices: vec![ChatCompletionChoice {

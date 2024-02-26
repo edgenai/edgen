@@ -21,13 +21,10 @@ use crate::util::StoppingStream;
 
 static ENDPOINT: Lazy<LlamaCppEndpoint> = Lazy::new(Default::default);
 
-pub async fn chat_completion(model: Model, context: String) -> Result<String, LLMEndpointError> {
-    let args = CompletionArgs {
-        prompt: context,
-        seed: 0,
-        frequency_penalty: 0.0,
-    };
-
+pub async fn chat_completion(
+    model: Model,
+    args: CompletionArgs,
+) -> Result<String, LLMEndpointError> {
     ENDPOINT
         .chat_completions(
             model
@@ -40,14 +37,8 @@ pub async fn chat_completion(model: Model, context: String) -> Result<String, LL
 
 pub async fn chat_completion_stream(
     model: Model,
-    context: String,
+    args: CompletionArgs,
 ) -> Result<StoppingStream<Box<dyn Stream<Item = String> + Unpin + Send>>, LLMEndpointError> {
-    let args = CompletionArgs {
-        prompt: context,
-        seed: 0,
-        frequency_penalty: 0.0,
-    };
-
     let stream = ENDPOINT
         .stream_chat_completions(
             model
