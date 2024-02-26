@@ -20,10 +20,11 @@ use dashmap::DashMap;
 use futures::executor::block_on;
 use futures::{Future, Stream};
 use llama_cpp::standard_sampler::StandardSampler;
-use llama_cpp::{CompletionHandle, LlamaModel, LlamaParams, LlamaSession, SessionParams, Token};
-use smol::future::FutureExt;
+use llama_cpp::{
+    CompletionHandle, LlamaModel, LlamaParams, LlamaSession, SessionParams, Token, TokensToStrings,
+};
+use smol::stream::StreamExt;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{interval, MissedTickBehavior};
 use tokio::{select, spawn};
@@ -463,7 +464,7 @@ struct CompletionStream {
     // TODO look better into this implementation, could try sending this across channels instead
     /// Handle to the model completions, needs to be an [`Arc`] so it can be cloned in
     /// [`Stream::poll_next`], or else it would be referencing a vanishing `self`.
-    handle: Arc<Mutex<CompletionHandle>>,
+    handle: TokensToStrings<CompletionHandle>,
 
     //TODO i dont know if it is possible to do this without a box
     /// An [`Option`] potentially containing the result of a [`CompletionHandle::next_token_async`] call.
@@ -529,7 +530,7 @@ impl CompletionStream {
 
         Ok(Self {
             model: model_clone,
-            handle: Arc::new(Mutex::new(handle)),
+            handle: handle.into_strings(),
             next: None,
             end_token,
             session: Some(session),
@@ -539,31 +540,6 @@ impl CompletionStream {
             _session_signal: session_signal,
         })
     }
-
-    /// Helper function that captures the provided [`CompletionHandle`] handle [`Arc`] clone and
-    /// calls [`CompletionHandle::next_token_async`].
-    async fn get_next(handle: Arc<Mutex<CompletionHandle>>) -> Option<Token> {
-        handle.lock().await.next_token_async().await
-    }
-
-    /// Small helper function that takes in an acquired [`Poll::Ready`] value and returns the [`String`]
-    /// representation of the contained [`Token`]. If the [`Token`] is either not present or the *end of sequence*
-    /// [`Token`], return [`Option::None`].
-    fn poll_result(&mut self, result: Option<Token>) -> Poll<Option<String>> {
-        if let Some(token) = result {
-            if token != self.end_token {
-                let piece = self.model.token_to_piece(token);
-                if let Some(ref mut id) = &mut self.session_id {
-                    id.advance(&piece);
-                }
-                Poll::Ready(Some(piece))
-            } else {
-                Poll::Ready(None)
-            }
-        } else {
-            Poll::Ready(None)
-        }
-    }
 }
 
 impl Stream for CompletionStream {
@@ -572,20 +548,20 @@ impl Stream for CompletionStream {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let stream = std::ops::DerefMut::deref_mut(&mut self);
 
-        if let Some(next) = stream.next.as_mut() {
-            if let Poll::Ready(val) = next.poll(cx) {
-                stream.next = None;
-                stream.poll_result(val)
-            } else {
-                Poll::Pending
+        match stream.handle.poll_next(cx) {
+            Poll::Ready(Some(val)) => {
+                if let Some(id) = &mut stream.session_id {
+                    id.advance(&val);
+                }
+                println!("Value: {val}");
+                Poll::Ready(Some(val))
             }
-        } else {
-            let mut fut = Box::pin(Self::get_next(stream.handle.clone()));
-
-            if let Poll::Ready(val) = fut.poll(cx) {
-                stream.poll_result(val)
-            } else {
-                stream.next = Some(fut);
+            Poll::Ready(None) => {
+                println!("Done");
+                Poll::Ready(None)
+            }
+            Poll::Pending => {
+                println!("Pending");
                 Poll::Pending
             }
         }
