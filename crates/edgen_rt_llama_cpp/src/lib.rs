@@ -10,6 +10,7 @@
  * limitations under the License.
  */
 
+use std::mem::{swap, take};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -216,39 +217,71 @@ impl UnloadingModel {
 
     /// Computes the full chat completions for the provided [`CompletionArgs`].
     async fn chat_completions(&self, args: CompletionArgs) -> Result<String, LLMEndpointError> {
-        let (session, mut id, new_context) = self.take_chat_session(&args.prompt).await;
         let (_model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
 
-        let (_session_signal, mut handle) = {
-            let (session_signal, mut session_guard) =
-                get_or_init_session(&session, model_guard.clone()).await?;
+        if args.one_shot {
+            info!("Allocating one-shot LLM session");
+            let mut params = SessionParams::default();
+            let threads = SETTINGS.read().await.read().await.auto_threads(false);
 
-            session_guard
-                .advance_context_async(new_context)
-                .await
-                .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
-            id.advance(new_context);
+            // TODO handle optional params
+            //params.seed = args.seed;
+            params.n_threads = threads;
+            params.n_threads_batch = threads;
+            params.n_ctx = CONTEXT_SIZE;
+
+            let mut session = model_guard
+                .create_session(params)
+                .map_err(move |e| LLMEndpointError::SessionCreationFailed(e.to_string()))?;
 
             let sampler = StandardSampler::default();
-            let handle = session_guard.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
+            let mut handle = session.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
 
-            (session_signal, handle)
-        };
+            let mut res = String::default();
+            while let Some(token) = handle.next_token_async().await {
+                if token == model_guard.eos() {
+                    break;
+                }
 
-        let mut res = String::default();
-        while let Some(token) = handle.next_token_async().await {
-            if token == model_guard.eos() {
-                break;
+                let piece = model_guard.token_to_piece(token);
+                res += &piece;
             }
 
-            let piece = model_guard.token_to_piece(token);
-            res += &piece;
-            id.advance(&piece);
+            Ok(res)
+        } else {
+            let (session, mut id, new_context) = self.take_chat_session(&args.prompt).await;
+
+            let (_session_signal, mut handle) = {
+                let (session_signal, mut session_guard) =
+                    get_or_init_session(&session, model_guard.clone()).await?;
+
+                session_guard
+                    .advance_context_async(new_context)
+                    .await
+                    .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
+                id.advance(new_context);
+
+                let sampler = StandardSampler::default();
+                let handle = session_guard.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
+
+                (session_signal, handle)
+            };
+
+            let mut res = String::default();
+            while let Some(token) = handle.next_token_async().await {
+                if token == model_guard.eos() {
+                    break;
+                }
+
+                let piece = model_guard.token_to_piece(token);
+                res += &piece;
+                id.advance(&piece);
+            }
+
+            self.sessions.insert(id, session);
+
+            Ok(res)
         }
-
-        self.sessions.insert(id, session);
-
-        Ok(res)
     }
 
     /// Return a [`Box`]ed [`Stream`] of chat completions computed for the provided
@@ -257,24 +290,53 @@ impl UnloadingModel {
         &self,
         args: CompletionArgs,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
-        let (session, id, new_context) = self.take_chat_session(&args.prompt).await;
         let (model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
 
-        let sampler = StandardSampler::default();
-        let tx = self.finished_tx.clone();
+        if args.one_shot {
+            info!("Allocating one-shot LLM session");
+            let mut params = SessionParams::default();
+            let threads = SETTINGS.read().await.read().await.auto_threads(false);
 
-        Ok(Box::new(
-            CompletionStream::new(
-                session,
-                id,
-                new_context,
-                model_guard.clone(),
-                model_signal,
-                sampler,
-                tx,
-            )
-            .await?,
-        ))
+            // TODO handle optional params
+            //params.seed = args.seed;
+            params.n_threads = threads;
+            params.n_threads_batch = threads;
+            params.n_ctx = CONTEXT_SIZE;
+
+            let session = model_guard
+                .create_session(params)
+                .map_err(move |e| LLMEndpointError::SessionCreationFailed(e.to_string()))?;
+            let sampler = StandardSampler::default();
+
+            Ok(Box::new(
+                CompletionStream::new_oneshot(
+                    session,
+                    &args.prompt,
+                    model_guard.clone(),
+                    model_signal,
+                    sampler,
+                )
+                .await?,
+            ))
+        } else {
+            let (session, id, new_context) = self.take_chat_session(&args.prompt).await;
+
+            let sampler = StandardSampler::default();
+            let tx = self.finished_tx.clone();
+
+            Ok(Box::new(
+                CompletionStream::new(
+                    session,
+                    id,
+                    new_context,
+                    model_guard.clone(),
+                    model_signal,
+                    sampler,
+                    tx,
+                )
+                .await?,
+            ))
+        }
     }
 }
 
@@ -473,19 +535,19 @@ struct CompletionStream {
     end_token: Token,
 
     /// The session used for generation completions.
-    session: Option<Perishable<LlamaSession>>,
+    session: SessionOption,
 
     /// The `session`'s id.
     session_id: Option<SessionId>,
 
     /// A sender used to send both `session` and `session_id` once generation is completion
-    finished_tx: UnboundedSender<(SessionId, Perishable<LlamaSession>)>,
+    finished_tx: Option<UnboundedSender<(SessionId, Perishable<LlamaSession>)>>,
 
     /// The object signaling that `model` is currently active.
     _model_signal: ActiveSignal,
 
     /// The object signaling that `session` is currently active.
-    _session_signal: ActiveSignal,
+    _session_signal: Option<ActiveSignal>,
 }
 
 impl CompletionStream {
@@ -532,11 +594,40 @@ impl CompletionStream {
             handle: Arc::new(Mutex::new(handle)),
             next: None,
             end_token,
-            session: Some(session),
+            session: SessionOption::Perishable(session),
             session_id: Some(session_id),
-            finished_tx,
+            finished_tx: Some(finished_tx),
             _model_signal: model_signal,
-            _session_signal: session_signal,
+            _session_signal: Some(session_signal),
+        })
+    }
+
+    async fn new_oneshot(
+        mut session: LlamaSession,
+        new_context: &str,
+        model: LlamaModel,
+        model_signal: ActiveSignal,
+        sampler: StandardSampler,
+    ) -> Result<Self, LLMEndpointError> {
+        let model_clone = model.clone();
+        let end_token = model.eos();
+
+        session
+            .advance_context_async(new_context)
+            .await
+            .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
+        let handle = session.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
+
+        Ok(Self {
+            model: model_clone,
+            handle: Arc::new(Mutex::new(handle)),
+            next: None,
+            end_token,
+            session: SessionOption::OneShot(session),
+            session_id: None,
+            finished_tx: None,
+            _model_signal: model_signal,
+            _session_signal: None,
         })
     }
 
@@ -595,13 +686,27 @@ impl Stream for CompletionStream {
 impl Drop for CompletionStream {
     fn drop(&mut self) {
         if let Some(id) = self.session_id.take() {
-            if let Some(session) = self.session.take() {
-                self.finished_tx
-                    .send((id, session))
-                    .unwrap_or_else(move |e| {
+            if let SessionOption::Perishable(session) = self.session.take() {
+                if let Some(channel) = self.finished_tx.take() {
+                    channel.send((id, session)).unwrap_or_else(move |e| {
                         error!("Failed to send session to maintenance thread: {e}")
                     });
+                }
             }
         }
+    }
+}
+
+#[derive(Default)]
+enum SessionOption {
+    OneShot(LlamaSession),
+    Perishable(Perishable<LlamaSession>),
+    #[default]
+    None,
+}
+
+impl SessionOption {
+    fn take(&mut self) -> Self {
+        take(self)
     }
 }

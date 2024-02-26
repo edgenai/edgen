@@ -10,12 +10,14 @@
  * limitations under the License.
  */
 
-use crate::BoxedFuture;
 use core::time::Duration;
+use std::path::Path;
+
 use futures::Stream;
 use serde::Serialize;
-use std::path::Path;
 use thiserror::Error;
+
+use crate::BoxedFuture;
 
 /// The context tag marking the start of generated dialogue.
 pub const ASSISTANT_TAG: &str = "<|ASSISTANT|>";
@@ -42,8 +44,20 @@ pub enum LLMEndpointError {
 #[derive(Debug, Clone)]
 pub struct CompletionArgs {
     pub prompt: String,
-    pub seed: u32,
+    pub one_shot: bool,
+    pub seed: Option<u32>,
     pub frequency_penalty: f32,
+}
+
+impl Default for CompletionArgs {
+    fn default() -> Self {
+        Self {
+            prompt: "".to_string(),
+            one_shot: false,
+            seed: None,
+            frequency_penalty: 0.0,
+        }
+    }
 }
 
 /// A large language model endpoint, that is, an object that provides various ways to interact with
