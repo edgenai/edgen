@@ -539,7 +539,7 @@ dependencies = [
  "bitflags 2.4.2",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools",
  "lazy_static",
  "lazycell",
  "log",
@@ -2413,7 +2413,7 @@ dependencies = [
  "httpdate",
  "itoa 1.0.10",
  "pin-project-lite",
- "socket2 0.5.5",
+ "socket2 0.4.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -2660,15 +2660,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "itertools"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
-dependencies = [
- "either",
-]
-
-[[package]]
 name = "itoa"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2892,7 +2883,7 @@ checksum = "01cda141df6706de531b6c46c3a33ecca755538219bd484262fa09410c13539c"
 [[package]]
 name = "llama_cpp"
 version = "0.3.0"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#1141010df235747293ccb130eb733c6214a6e52b"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#6b599bd9a3a9b5e82d680cd2df20691d0252095f"
 dependencies = [
  "derive_more",
  "futures",
@@ -2906,7 +2897,7 @@ dependencies = [
 [[package]]
 name = "llama_cpp_sys"
 version = "0.3.0"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#1141010df235747293ccb130eb733c6214a6e52b"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#6b599bd9a3a9b5e82d680cd2df20691d0252095f"
 dependencies = [
  "ash",
  "bindgen",
@@ -3842,7 +3833,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "efb6c9a1dd1def8e2124d17e83a20af56f1570d6c2d2bd9e266ccb768df3840e"
 dependencies = [
  "anyhow",
- "itertools 0.11.0",
+ "itertools",
  "proc-macro2",
  "quote",
  "syn 2.0.50",
