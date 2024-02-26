@@ -22,15 +22,15 @@ export function ButtonRow({
   return (
     <>
         <div className='flex h-fit flex-col items-end'>
-            <ul className="flex w-fit list-none p-0.5 mt-6 mb-0.5 h-10 rounded-lg bg-yellow-400">
+            <ul className="flex w-fit list-none p-1.5 mt-6 mb-0.5 h-11 rounded-full bg-zinc-900 dark:bg-yellow-400/10 dark:bg-yellow-400/10 dark:ring-1 dark:ring-inset dark:ring-yellow-400/20 dark:hover:bg-yellow-400/10">
                 {types.map((t, i) => {
                 return (
                     <li
                         key={i}
                         className={clsx(
-                            `${types[currentType] == t ? 'bg-yellow-400' : 'bg-yellow-100'}`,
-                            'flex h-full text-black justify-center items-center',
-                            'first:rounded-bl-lg first:rounded-tl-lg last:rounded-tr-lg last:rounded-br-lg',
+                            `${types[currentType] == t ? 'bg-yellow-300 dark:bg-yellow-100 text-black hover:bg-yellow-300' : 'bg-none text-white dark:text-yellow-400 dark:hover:text-yellow-300'}`,
+                            'flex h-full justify-center items-center',
+                            'first:rounded-full last:rounded-full',
                             'm-0 px-4',
                             'cursor-pointer'
                         )}
