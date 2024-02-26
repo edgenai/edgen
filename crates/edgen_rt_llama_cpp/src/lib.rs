@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-use std::mem::{swap, take};
+use std::mem::take;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -233,6 +233,11 @@ impl UnloadingModel {
             let mut session = model_guard
                 .create_session(params)
                 .map_err(move |e| LLMEndpointError::SessionCreationFailed(e.to_string()))?;
+
+            session
+                .advance_context_async(args.prompt)
+                .await
+                .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
 
             let sampler = StandardSampler::default();
             let mut handle = session.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
