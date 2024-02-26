@@ -241,23 +241,13 @@ impl UnloadingModel {
                 .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
 
             let sampler = StandardSampler::default();
-            let mut handle = session.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
+            let handle = session.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
 
-            let mut res = String::default();
-            while let Some(token) = handle.next_token_async().await {
-                if token == model_guard.eos() {
-                    break;
-                }
-
-                let piece = model_guard.token_to_piece(token);
-                res += &piece;
-            }
-
-            Ok(res)
+            Ok(model_guard.decode_tokens(handle))
         } else {
             let (session, mut id, new_context) = self.take_chat_session(&args.prompt).await;
 
-            let (_session_signal, mut handle) = {
+            let (_session_signal, handle) = {
                 let (session_signal, mut session_guard) =
                     get_or_init_session(&session, model_guard.clone()).await?;
 
@@ -273,16 +263,7 @@ impl UnloadingModel {
                 (session_signal, handle)
             };
 
-            let mut res = String::default();
-            while let Some(token) = handle.next_token_async().await {
-                if token == model_guard.eos() {
-                    break;
-                }
-
-                let piece = model_guard.token_to_piece(token);
-                res += &piece;
-                id.advance(&piece);
-            }
+            let res = model_guard.decode_tokens(handle);
 
             self.sessions.insert(id, session);
 
@@ -315,14 +296,7 @@ impl UnloadingModel {
             let sampler = StandardSampler::default();
 
             Ok(Box::new(
-                CompletionStream::new_oneshot(
-                    session,
-                    &args.prompt,
-                    model_guard.clone(),
-                    model_signal,
-                    sampler,
-                )
-                .await?,
+                CompletionStream::new_oneshot(session, &args.prompt, model_signal, sampler).await?,
             ))
         } else {
             let (session, id, new_context) = self.take_chat_session(&args.prompt).await;
@@ -593,13 +567,9 @@ impl CompletionStream {
     async fn new_oneshot(
         mut session: LlamaSession,
         new_context: &str,
-        model: LlamaModel,
         model_signal: ActiveSignal,
         sampler: StandardSampler,
     ) -> Result<Self, LLMEndpointError> {
-        let model_clone = model.clone();
-        let end_token = model.eos();
-
         session
             .advance_context_async(new_context)
             .await
