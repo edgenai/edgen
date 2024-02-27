@@ -24,7 +24,6 @@ use llama_cpp::standard_sampler::StandardSampler;
 use llama_cpp::{
     CompletionHandle, LlamaModel, LlamaParams, LlamaSession, SessionParams, TokensToStrings,
 };
-use smol::stream::StreamExt;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::task::JoinHandle;
 use tokio::time::{interval, MissedTickBehavior};
@@ -243,7 +242,7 @@ impl UnloadingModel {
             let sampler = StandardSampler::default();
             let handle = session.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
 
-            Ok(model_guard.decode_tokens(handle))
+            Ok(handle.into_string_async().await)
         } else {
             let (session, mut id, new_context) = self.take_chat_session(&args.prompt).await;
 
@@ -263,7 +262,7 @@ impl UnloadingModel {
                 (session_signal, handle)
             };
 
-            let res = model_guard.decode_tokens(handle);
+            let res = handle.into_string_async().await;
 
             self.sessions.insert(id, session);
 
@@ -591,11 +590,9 @@ impl Stream for CompletionStream {
     type Item = String;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let stream = std::ops::DerefMut::deref_mut(&mut self);
-
-        match stream.handle.poll_next(cx) {
+        match std::pin::pin!(&mut self.handle).poll_next(cx) {
             Poll::Ready(Some(val)) => {
-                if let Some(id) = &mut stream.session_id {
+                if let Some(id) = &mut self.session_id {
                     id.advance(&val);
                 }
                 Poll::Ready(Some(val))

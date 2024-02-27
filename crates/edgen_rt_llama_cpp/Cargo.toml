@@ -8,13 +8,9 @@ blake3 = { workspace = true }
 dashmap = { workspace = true }
 derive_more = { workspace = true }
 edgen_core = { path = "../edgen_core" }
-flume = { workspace = true }
 futures = { workspace = true }
 llama_cpp = { git = "https://github.com/edgenai/llama_cpp-rs", branch = "main", features = ["native"] }
-num_cpus = { workspace = true }
-smol = { workspace = true }
 thiserror = { workspace = true }
-tinyvec = { workspace = true, features = ["alloc"] }
 tokio = { workspace = true, features = ["sync", "rt", "fs"] }
 tracing = { workspace = true }
 

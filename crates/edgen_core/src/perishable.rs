@@ -13,16 +13,16 @@
 //! Lazily self-destructing types.
 
 use core::time::Duration;
-use futures::executor::block_on;
 use std::future::Future;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use futures::executor::block_on;
 use tokio::select;
 use tokio::sync::{oneshot, RwLock, RwLockReadGuard, RwLockWriteGuard};
-use tracing::{span, Level};
+use tracing::{info, span, Level};
 
 /// An asynchronous `OnceCell` with expiration semantics.
 ///
@@ -39,6 +39,7 @@ pub struct Perishable<T> {
     /// Channel used to signal that this [`Perishable`] has been dropped.
     _drop_tx: oneshot::Sender<()>,
 }
+
 struct PerishableInner<T> {
     current_value: RwLock<Option<T>>,
     active_signal: ActiveSignal,
@@ -172,8 +173,8 @@ where
                 select! {
                     _ = &mut drop_rx => break,
                     _ = yield_until(check_date) => {
-                        if watched_inner.state.read().await.last_accessed == accessed {
-                            let _ = watched_inner.current_value.write().await.take();
+                        if watched_inner.state.read().await.last_accessed == accessed && watched_inner.current_value.write().await.take().is_some() {
+                            info!("A {} has perished", std::any::type_name::<T>());
                         }
                     }
                 }
@@ -219,6 +220,7 @@ impl<T: 'static> Perishable<T> {
         // Value isn't initialized. Acquire a write lock and initialize it.
         let mut guard = self.inner.current_value.write().await;
 
+        info!("(Re)Creating a new {}", std::any::type_name::<T>());
         *guard = Some(constructor.construct().await);
 
         (signal, PerishableReadGuard(guard.downgrade()))
@@ -245,6 +247,7 @@ impl<T: 'static> Perishable<T> {
         // Value isn't initialized. Acquire a write lock and initialize it.
         let mut guard = self.inner.current_value.write().await;
 
+        info!("(Re)Creating a new {}", std::any::type_name::<T>());
         *guard = Some(constructor.construct().await?);
 
         Ok((signal, PerishableReadGuard(guard.downgrade())))
@@ -261,6 +264,7 @@ impl<T: 'static> Perishable<T> {
         let mut guard = self.inner.current_value.write().await;
 
         if guard.is_none() {
+            info!("(Re)Creating a new {}", std::any::type_name::<T>());
             *guard = Some(constructor.construct().await);
         }
 
@@ -279,6 +283,7 @@ impl<T: 'static> Perishable<T> {
         let mut guard = self.inner.current_value.write().await;
 
         if guard.is_none() {
+            info!("(Re)Creating a new {}", std::any::type_name::<T>());
             *guard = Some(constructor.construct().await?);
         }
 
