@@ -9,10 +9,11 @@ Generate text from text. {{ className: 'lead' }}
 
 ---
 
-## Create chat completion {{ tag: 'POST', label: 'http://localhost:33322/v1/chat/completions' }}
-
 <Row>
   <Col>
+
+    ## Create chat completion {{tag:'POST', label:'http://localhost:33322/v1/chat/completions'}}
+
     Given a list of messages belonging to a chat history, generate a response.
 
     ### Required attributes
@@ -32,89 +33,161 @@ Generate text from text. {{ className: 'lead' }}
   </Col>
   <Col sticky>
 
-    <CodeGroup title="Request" tag="POST" label="/v1/chat/completions">
+  <ButtonRow types={["Default", "Streaming"]}>
 
-    ```bash {{ title: 'cURL' }}
-    curl http://localhost:33322/v1/chat/completions \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer no-key-required" \
-    -d '{
-      "model": "default",
-      "messages": [
-        {
-          "role": "system",
-          "content": "You are EdgenChat, a helpful AI assistant."
-        },
-        {
-          "role": "user",
-          "content": "Hello!"
-        }
-      ],
-      "stream": true
-    }'
-    ```
+      <div>
+        <CodeGroup title="Request" tag="POST" label="/v1/chat/completions">
 
-    ```python
-    from edgen import Edgen
-    client = Edgen()
+          ```bash {{ title: 'cURL' }}
+          curl http://localhost:33322/v1/chat/completions \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer no-key-required" \
+          -d '{
+            "model": "default",
+            "messages": [
+              {
+                "role": "system",
+                "content": "You are EdgenChat, a helpful AI assistant."
+              },
+              {
+                "role": "user",
+                "content": "Hello!"
+              }
+            ]
+          }'
+          ```
 
-    completion = client.chat.completions.create(
-      model="default",
-      messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "Hello!"}
-      ],
-      stream=True
-    )
+          ```python
+          from edgen import Edgen
+          client = Edgen()
 
-    for chunk in completion:
-      print(chunk.choices[0].delta)
-    ```
+          completion = client.chat.completions.create(
+            model="default",
+            messages=[
+              {"role": "system", "content": "You are a helpful assistant."},
+              {"role": "user", "content": "Hello!"}
+            ]
+          )
 
-    ```ts
-    import Edgen from "edgen";
+          for chunk in completion:
+            print(chunk.choices[0].delta)
+          ```
 
-    const client = new Edgen();
+          ```ts
+          import Edgen from "edgen";
 
-    async function main() {
-      const completion = await client.chat.completions.create({
-        model: "default",
-        messages: [
-          {"role": "system", "content": "You are a helpful assistant."},
-          {"role": "user", "content": "Hello!"}
-        ],
-        stream: true,
-      });
+          const client = new Edgen();
 
-      for await (const chunk of completion) {
-        console.log(chunk.choices[0].delta.content);
-      }
-    }
+          async function main() {
+            const completion = await client.chat.completions.create({
+              model: "default",
+              messages: [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Hello!"}
+              ]
+            });
 
-    main();
-    ```
+            for await (const chunk of completion) {
+              console.log(chunk.choices[0].delta.content);
+            }
+          }
 
-    </CodeGroup>
+          main();
+          ```
 
-    ```json {{ title: 'Response' }}
-    {"id":"e55b11e3-985b-4fbf-ba2e-5e81e6c100c2","choices":[{"delta":{"content":"Hello","role":null},"finish_reason":null,"index":0}],"created":1706718034,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+        </CodeGroup>
 
-    {"id":"010b3954-af7c-4360-9891-1d6c5e27da8c","choices":[{"delta":{"content":"!","role":null},"finish_reason":null,"index":0}],"created":1706718040,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+          ```json {{ title: 'Response' }}
+          {"id":"f403d6f4-4826-40b1-8798-77e4837e5041","choices":[{"message":{"role":"assistant","content":"Hello! How can I help you today?","name":null,"tool_calls":null},"finish_reason":null,"index":0}],"created":1708958149,"model":"main","system_fingerprint":"edgen-0.1.3","object":"text_completion","usage":{"completion_tokens":0,"prompt_tokens":0,"total_tokens":0}}
+          ```
+      </div>
 
-    {"id":"7455343f-99bc-4d63-9d03-cc8e75fab29c","choices":[{"delta":{"content":" How","role":null},"finish_reason":null,"index":0}],"created":1706718044,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+      <div>
+        <CodeGroup title="Request" tag="POST" label="/v1/chat/completions">
 
-    {"id":"82f72e44-162d-4e21-93c6-387950a61c79","choices":[{"delta":{"content":" can","role":null},"finish_reason":null,"index":0}],"created":1706718049,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+          ```bash {{ title: 'cURL' }}
+          curl http://localhost:33322/v1/chat/completions \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer no-key-required" \
+          -d '{
+            "model": "default",
+            "messages": [
+              {
+                "role": "system",
+                "content": "You are EdgenChat, a helpful AI assistant."
+              },
+              {
+                "role": "user",
+                "content": "Hello!"
+              }
+            ],
+            "stream": true
+          }'
+          ```
 
-    {"id":"7d451531-d117-48b1-9e68-2554338e34ba","choices":[{"delta":{"content":" I","role":null},"finish_reason":null,"index":0}],"created":1706718053,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+          ```python
+          from edgen import Edgen
+          client = Edgen()
 
-    {"id":"66fe6034-c97d-4c46-8c05-bf73804e557d","choices":[{"delta":{"content":" assist","role":null},"finish_reason":null,"index":0}],"created":1706718059,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+          completion = client.chat.completions.create(
+            model="default",
+            messages=[
+              {"role": "system", "content": "You are a helpful assistant."},
+              {"role": "user", "content": "Hello!"}
+            ],
+            stream=True
+          )
 
-    {"id":"56a260a8-f41b-4954-9b67-e6620fb32f0d","choices":[{"delta":{"content":" you","role":null},"finish_reason":null,"index":0}],"created":1706718063,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+          for chunk in completion:
+            print(chunk.choices[0].delta)
+          ```
 
-    {"id":"ccef46ce-ba8b-4ac8-8262-a66cb96832a5","choices":[{"delta":{"content":" today","role":null},"finish_reason":null,"index":0}],"created":1706718068,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+          ```ts
+          import Edgen from "edgen";
 
-    {"id":"0d2b9ba2-ab04-4aed-ad51-72a89acb3122","choices":[{"delta":{"content":"?","role":null},"finish_reason":null,"index":0}],"created":1706718069,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
-    ```
+          const client = new Edgen();
+
+          async function main() {
+            const completion = await client.chat.completions.create({
+              model: "default",
+              messages: [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Hello!"}
+              ],
+              stream: true,
+            });
+
+            for await (const chunk of completion) {
+              console.log(chunk.choices[0].delta.content);
+            }
+          }
+
+          main();
+          ```
+
+        </CodeGroup>
+
+          ```json {{ title: 'Response' }}
+          {"id":"e55b11e3-985b-4fbf-ba2e-5e81e6c100c2","choices":[{"delta":{"content":"Hello","role":null},"finish_reason":null,"index":0}],"created":1706718034,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+
+          {"id":"010b3954-af7c-4360-9891-1d6c5e27da8c","choices":[{"delta":{"content":"!","role":null},"finish_reason":null,"index":0}],"created":1706718040,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+
+          {"id":"7455343f-99bc-4d63-9d03-cc8e75fab29c","choices":[{"delta":{"content":" How","role":null},"finish_reason":null,"index":0}],"created":1706718044,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+
+          {"id":"82f72e44-162d-4e21-93c6-387950a61c79","choices":[{"delta":{"content":" can","role":null},"finish_reason":null,"index":0}],"created":1706718049,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+
+          {"id":"7d451531-d117-48b1-9e68-2554338e34ba","choices":[{"delta":{"content":" I","role":null},"finish_reason":null,"index":0}],"created":1706718053,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+
+          {"id":"66fe6034-c97d-4c46-8c05-bf73804e557d","choices":[{"delta":{"content":" assist","role":null},"finish_reason":null,"index":0}],"created":1706718059,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+
+          {"id":"56a260a8-f41b-4954-9b67-e6620fb32f0d","choices":[{"delta":{"content":" you","role":null},"finish_reason":null,"index":0}],"created":1706718063,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+
+          {"id":"ccef46ce-ba8b-4ac8-8262-a66cb96832a5","choices":[{"delta":{"content":" today","role":null},"finish_reason":null,"index":0}],"created":1706718068,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+
+          {"id":"0d2b9ba2-ab04-4aed-ad51-72a89acb3122","choices":[{"delta":{"content":"?","role":null},"finish_reason":null,"index":0}],"created":1706718069,"model":"main","system_fingerprint":"edgen-0.1.0","object":"text_completion"}
+          ```
+      </div>
+  </ButtonRow>
 
   </Col>
 </Row>

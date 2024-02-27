@@ -10,6 +10,7 @@
  * limitations under the License.
  */
 
+use std::mem::take;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -18,14 +19,13 @@ use std::task::{Context, Poll};
 use blake3::Hasher;
 use dashmap::DashMap;
 use futures::executor::block_on;
-use futures::{Future, Stream};
+use futures::Stream;
 use llama_cpp::standard_sampler::StandardSampler;
 use llama_cpp::{
-    CompletionHandle, EmbeddingsParams, LlamaModel, LlamaParams, LlamaSession, SessionParams, Token,
+    CompletionHandle, EmbeddingsParams, LlamaModel, LlamaParams, LlamaSession, SessionParams,
+    TokensToStrings,
 };
-use smol::future::FutureExt;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{interval, MissedTickBehavior};
 use tokio::{select, spawn};
@@ -236,39 +236,57 @@ impl UnloadingModel {
 
     /// Computes the full chat completions for the provided [`CompletionArgs`].
     async fn chat_completions(&self, args: CompletionArgs) -> Result<String, LLMEndpointError> {
-        let (session, mut id, new_context) = self.take_chat_session(&args.prompt).await;
         let (_model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
 
-        let (_session_signal, mut handle) = {
-            let (session_signal, mut session_guard) =
-                get_or_init_session(&session, model_guard.clone()).await?;
+        if args.one_shot {
+            info!("Allocating one-shot LLM session");
+            let mut params = SessionParams::default();
+            let threads = SETTINGS.read().await.read().await.auto_threads(false);
 
-            session_guard
-                .advance_context_async(new_context)
+            // TODO handle optional params
+            //params.seed = args.seed;
+            params.n_threads = threads;
+            params.n_threads_batch = threads;
+            params.n_ctx = CONTEXT_SIZE;
+
+            let mut session = model_guard
+                .create_session(params)
+                .map_err(move |e| LLMEndpointError::SessionCreationFailed(e.to_string()))?;
+
+            session
+                .advance_context_async(args.prompt)
                 .await
                 .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
-            id.advance(new_context);
 
             let sampler = StandardSampler::default();
-            let handle = session_guard.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
+            let handle = session.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
 
-            (session_signal, handle)
-        };
+            Ok(handle.into_string_async().await)
+        } else {
+            let (session, mut id, new_context) = self.take_chat_session(&args.prompt).await;
 
-        let mut res = String::default();
-        while let Some(token) = handle.next_token_async().await {
-            if token == model_guard.eos() {
-                break;
-            }
+            let (_session_signal, handle) = {
+                let (session_signal, mut session_guard) =
+                    get_or_init_session(&session, model_guard.clone()).await?;
 
-            let piece = model_guard.token_to_piece(token);
-            res += &piece;
-            id.advance(&piece);
+                session_guard
+                    .advance_context_async(new_context)
+                    .await
+                    .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
+                id.advance(new_context);
+
+                let sampler = StandardSampler::default();
+                let handle = session_guard.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
+
+                (session_signal, handle)
+            };
+
+            let res = handle.into_string_async().await;
+
+            self.sessions.insert(id, session);
+
+            Ok(res)
         }
-
-        self.sessions.insert(id, session);
-
-        Ok(res)
     }
 
     /// Return a [`Box`]ed [`Stream`] of chat completions computed for the provided
@@ -277,24 +295,46 @@ impl UnloadingModel {
         &self,
         args: CompletionArgs,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
-        let (session, id, new_context) = self.take_chat_session(&args.prompt).await;
         let (model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
 
-        let sampler = StandardSampler::default();
-        let tx = self.finished_tx.clone();
+        if args.one_shot {
+            info!("Allocating one-shot LLM session");
+            let mut params = SessionParams::default();
+            let threads = SETTINGS.read().await.read().await.auto_threads(false);
 
-        Ok(Box::new(
-            CompletionStream::new(
-                session,
-                id,
-                new_context,
-                model_guard.clone(),
-                model_signal,
-                sampler,
-                tx,
-            )
-            .await?,
-        ))
+            // TODO handle optional params
+            //params.seed = args.seed;
+            params.n_threads = threads;
+            params.n_threads_batch = threads;
+            params.n_ctx = CONTEXT_SIZE;
+
+            let session = model_guard
+                .create_session(params)
+                .map_err(move |e| LLMEndpointError::SessionCreationFailed(e.to_string()))?;
+            let sampler = StandardSampler::default();
+
+            Ok(Box::new(
+                CompletionStream::new_oneshot(session, &args.prompt, model_signal, sampler).await?,
+            ))
+        } else {
+            let (session, id, new_context) = self.take_chat_session(&args.prompt).await;
+
+            let sampler = StandardSampler::default();
+            let tx = self.finished_tx.clone();
+
+            Ok(Box::new(
+                CompletionStream::new(
+                    session,
+                    id,
+                    new_context,
+                    model_guard.clone(),
+                    model_signal,
+                    sampler,
+                    tx,
+                )
+                .await?,
+            ))
+        }
     }
 
     async fn embeddings(&self, inputs: Vec<String>) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
@@ -490,35 +530,23 @@ fn find_any(text: &str, patterns: &[&str]) -> Option<usize> {
 
 /// A [`Stream`] of [`Token`]s returned by a [`LlamaCppSession::stream_complete`] call.
 struct CompletionStream {
-    /// The [`LlamaModel`] used to call [`LlamaModel::token_to_piece`].
-    model: LlamaModel,
-
-    // TODO look better into this implementation, could try sending this across channels instead
-    /// Handle to the model completions, needs to be an [`Arc`] so it can be cloned in
-    /// [`Stream::poll_next`], or else it would be referencing a vanishing `self`.
-    handle: Arc<Mutex<CompletionHandle>>,
-
-    //TODO i dont know if it is possible to do this without a box
-    /// An [`Option`] potentially containing the result of a [`CompletionHandle::next_token_async`] call.
-    next: Option<Pin<Box<dyn Future<Output = Option<Token>> + Send>>>,
-
-    /// The *end of sequence* [`Token`] of the [`LlamaModel`] this [`CompletionStream`] is associated with.
-    end_token: Token,
+    /// Handle to the model completions handle.
+    handle: TokensToStrings<CompletionHandle>,
 
     /// The session used for generation completions.
-    session: Option<Perishable<LlamaSession>>,
+    session: SessionOption,
 
     /// The `session`'s id.
     session_id: Option<SessionId>,
 
     /// A sender used to send both `session` and `session_id` once generation is completion
-    finished_tx: UnboundedSender<(SessionId, Perishable<LlamaSession>)>,
+    finished_tx: Option<UnboundedSender<(SessionId, Perishable<LlamaSession>)>>,
 
     /// The object signaling that `model` is currently active.
     _model_signal: ActiveSignal,
 
     /// The object signaling that `session` is currently active.
-    _session_signal: ActiveSignal,
+    _session_signal: Option<ActiveSignal>,
 }
 
 impl CompletionStream {
@@ -542,9 +570,6 @@ impl CompletionStream {
         sampler: StandardSampler,
         finished_tx: UnboundedSender<(SessionId, Perishable<LlamaSession>)>,
     ) -> Result<Self, LLMEndpointError> {
-        let model_clone = model.clone();
-        let end_token = model.eos();
-
         let (session_signal, handle) = {
             let (session_signal, mut session_guard) = get_or_init_session(&session, model).await?;
 
@@ -561,41 +586,35 @@ impl CompletionStream {
         };
 
         Ok(Self {
-            model: model_clone,
-            handle: Arc::new(Mutex::new(handle)),
-            next: None,
-            end_token,
-            session: Some(session),
+            handle: handle.into_strings(),
+            session: SessionOption::Perishable(session),
             session_id: Some(session_id),
-            finished_tx,
+            finished_tx: Some(finished_tx),
             _model_signal: model_signal,
-            _session_signal: session_signal,
+            _session_signal: Some(session_signal),
         })
     }
 
-    /// Helper function that captures the provided [`CompletionHandle`] handle [`Arc`] clone and
-    /// calls [`CompletionHandle::next_token_async`].
-    async fn get_next(handle: Arc<Mutex<CompletionHandle>>) -> Option<Token> {
-        handle.lock().await.next_token_async().await
-    }
+    async fn new_oneshot(
+        mut session: LlamaSession,
+        new_context: &str,
+        model_signal: ActiveSignal,
+        sampler: StandardSampler,
+    ) -> Result<Self, LLMEndpointError> {
+        session
+            .advance_context_async(new_context)
+            .await
+            .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
+        let handle = session.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
 
-    /// Small helper function that takes in an acquired [`Poll::Ready`] value and returns the [`String`]
-    /// representation of the contained [`Token`]. If the [`Token`] is either not present or the *end of sequence*
-    /// [`Token`], return [`Option::None`].
-    fn poll_result(&mut self, result: Option<Token>) -> Poll<Option<String>> {
-        if let Some(token) = result {
-            if token != self.end_token {
-                let piece = self.model.token_to_piece(token);
-                if let Some(ref mut id) = &mut self.session_id {
-                    id.advance(&piece);
-                }
-                Poll::Ready(Some(piece))
-            } else {
-                Poll::Ready(None)
-            }
-        } else {
-            Poll::Ready(None)
-        }
+        Ok(Self {
+            handle: handle.into_strings(),
+            session: SessionOption::OneShot(session),
+            session_id: None,
+            finished_tx: None,
+            _model_signal: model_signal,
+            _session_signal: None,
+        })
     }
 }
 
@@ -603,24 +622,15 @@ impl Stream for CompletionStream {
     type Item = String;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let stream = std::ops::DerefMut::deref_mut(&mut self);
-
-        if let Some(next) = stream.next.as_mut() {
-            if let Poll::Ready(val) = next.poll(cx) {
-                stream.next = None;
-                stream.poll_result(val)
-            } else {
-                Poll::Pending
+        match std::pin::pin!(&mut self.handle).poll_next(cx) {
+            Poll::Ready(Some(val)) => {
+                if let Some(id) = &mut self.session_id {
+                    id.advance(&val);
+                }
+                Poll::Ready(Some(val))
             }
-        } else {
-            let mut fut = Box::pin(Self::get_next(stream.handle.clone()));
-
-            if let Poll::Ready(val) = fut.poll(cx) {
-                stream.poll_result(val)
-            } else {
-                stream.next = Some(fut);
-                Poll::Pending
-            }
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
         }
     }
 }
@@ -628,13 +638,27 @@ impl Stream for CompletionStream {
 impl Drop for CompletionStream {
     fn drop(&mut self) {
         if let Some(id) = self.session_id.take() {
-            if let Some(session) = self.session.take() {
-                self.finished_tx
-                    .send((id, session))
-                    .unwrap_or_else(move |e| {
+            if let SessionOption::Perishable(session) = self.session.take() {
+                if let Some(channel) = self.finished_tx.take() {
+                    channel.send((id, session)).unwrap_or_else(move |e| {
                         error!("Failed to send session to maintenance thread: {e}")
                     });
+                }
             }
         }
+    }
+}
+
+#[derive(Default)]
+enum SessionOption {
+    OneShot(LlamaSession),
+    Perishable(Perishable<LlamaSession>),
+    #[default]
+    None,
+}
+
+impl SessionOption {
+    fn take(&mut self) -> Self {
+        take(self)
     }
 }
