@@ -1402,13 +1402,9 @@ dependencies = [
  "dashmap",
  "derive_more",
  "edgen_core",
- "flume 0.11.0",
  "futures",
  "llama_cpp",
- "num_cpus",
- "smol",
  "thiserror",
- "tinyvec",
  "tokio",
  "tracing",
 ]
@@ -1653,18 +1649,6 @@ dependencies = [
  "futures-sink",
  "nanorand",
  "pin-project",
- "spin",
-]
-
-[[package]]
-name = "flume"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55ac459de2512911e4b674ce33cf20befaba382d05b62b008afc1c8b57cbf181"
-dependencies = [
- "futures-core",
- "futures-sink",
- "nanorand",
  "spin",
 ]
 
@@ -2091,7 +2075,7 @@ dependencies = [
  "concurrent-queue 1.2.4",
  "crossbeam",
  "enclose",
- "flume 0.10.14",
+ "flume",
  "futures-lite 1.13.0",
  "intrusive-collections",
  "lazy_static",
@@ -2883,7 +2867,7 @@ checksum = "01cda141df6706de531b6c46c3a33ecca755538219bd484262fa09410c13539c"
 [[package]]
 name = "llama_cpp"
 version = "0.3.0"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#0bdae533e6575685a6c2add27a2222a2dca350d2"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#8b4bfbafe089c5307d0ba60a457e49021970c0b8"
 dependencies = [
  "derive_more",
  "futures",
@@ -2897,7 +2881,7 @@ dependencies = [
 [[package]]
 name = "llama_cpp_sys"
 version = "0.3.0"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#0bdae533e6575685a6c2add27a2222a2dca350d2"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#8b4bfbafe089c5307d0ba60a457e49021970c0b8"
 dependencies = [
  "ash",
  "bindgen",
