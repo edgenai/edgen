@@ -15,6 +15,7 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
+use axum::extract::DefaultBodyLimit;
 use core::future::IntoFuture;
 use std::process::exit;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -190,7 +191,9 @@ async fn run_server(args: &cli::Serve) -> Result<bool, error::EdgenError> {
     )
     .await;
 
-    let http_app = routes::routes().layer(CorsLayer::permissive());
+    let http_app = routes::routes()
+        .layer(CorsLayer::permissive())
+        .layer(DefaultBodyLimit::max(1024 * 1024 * 1024));
 
     let uri_vector = if !args.uri.is_empty() {
         info!("Overriding default URI");
