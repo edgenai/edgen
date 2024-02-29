@@ -711,6 +711,7 @@ pub async fn chat_completions(
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct CreateEmbeddingsRequest<'a> {
     /// The text input to embed as either a string or an array of strings.
+    #[serde(with = "either::serde_untagged")]
     #[schema(value_type = String)]
     pub input: Either<Cow<'a, str>, Vec<Cow<'a, str>>>,
 
