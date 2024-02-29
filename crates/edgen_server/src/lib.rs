@@ -20,12 +20,12 @@ use std::process::exit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use tower_http::cors::CorsLayer;
-
+use axum::extract::DefaultBodyLimit;
 use futures::executor::block_on;
 use tokio::select;
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
+use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 use utoipa::OpenApi;
 
@@ -158,7 +158,7 @@ async fn start_server(args: &cli::Serve) -> EdgenResult {
         .await
         .init()
         .await
-        .expect("Failed to initialise settings");
+        .expect("Failed to initialise settings. Please make sure the configuration file valid, or reset it via the system tray and restart Edgen.\nThe following error occurred");
 
     settings::create_project_dirs().await.unwrap();
 
@@ -190,7 +190,11 @@ async fn run_server(args: &cli::Serve) -> Result<bool, error::EdgenError> {
     )
     .await;
 
-    let http_app = routes::routes().layer(CorsLayer::permissive());
+    let http_app = routes::routes()
+        .layer(CorsLayer::permissive())
+        .layer(DefaultBodyLimit::max(
+            SETTINGS.read().await.read().await.max_request_size,
+        ));
 
     let uri_vector = if !args.uri.is_empty() {
         info!("Overriding default URI");
@@ -299,14 +303,16 @@ async fn run_server(args: &cli::Serve) -> Result<bool, error::EdgenError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::openai_shim::TranscriptionResponse;
     use axum::routing::post;
     use axum::Router;
     use axum_test::multipart;
     use axum_test::TestServer;
     use levenshtein;
     use serde_json::from_str;
+
+    use crate::openai_shim::TranscriptionResponse;
+
+    use super::*;
 
     fn completion_streaming_request() -> String {
         r#"
