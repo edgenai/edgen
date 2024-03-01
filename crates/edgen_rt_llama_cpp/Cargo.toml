@@ -17,3 +17,4 @@ tracing = { workspace = true }
 [features]
 vulkan = ["llama_cpp/vulkan"]
 cuda = ["llama_cpp/cuda"]
+metal = ["llama_cpp/metal"]
