@@ -49,6 +49,7 @@ pub struct CompletionArgs {
     pub one_shot: bool,
     pub seed: Option<u32>,
     pub frequency_penalty: f32,
+    pub context_hint: Option<u32>,
 }
 
 impl Default for CompletionArgs {
@@ -58,6 +59,7 @@ impl Default for CompletionArgs {
             one_shot: false,
             seed: None,
             frequency_penalty: 0.0,
+            context_hint: None,
         }
     }
 }
