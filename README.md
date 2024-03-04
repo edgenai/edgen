@@ -44,7 +44,7 @@
 
 - [x] \[Chat\] [Completions](https://docs.edgen.co/api-reference/chat)
 - [x] \[Audio\] [Transcriptions](https://docs.edgen.co/api-reference/audio)
-- [ ] \[Embeddings\] Embeddings [#41](https://github.com/edgenai/edgen/issues/41)
+- [x] \[Embeddings\] [Embeddings](https://platform.openai.com/docs/api-reference/embeddings)
 - [ ] \[Image\] Generation
 - [ ] \[Chat\] Multimodal chat completions
 - [ ] \[Audio\] Speech
