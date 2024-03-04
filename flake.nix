@@ -25,7 +25,7 @@ outputs = { self, nixpkgs, rust-overlay, flake-utils }:
     # };
 
     rust-toolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
-    llvm = pkgs.llvmPackages_16;
+    llvm = pkgs.llvmPackages_11;
 
     clangBuildInputs = with llvm; [
       clang
@@ -41,6 +41,7 @@ outputs = { self, nixpkgs, rust-overlay, flake-utils }:
       rust-toolchain
       cmake
       vulkan-loader
+      cudaPackagesGoogle.cudatoolkit
     ] ++ clangBuildInputs;
 
     packages = with pkgs; [
@@ -96,6 +97,7 @@ outputs = { self, nixpkgs, rust-overlay, flake-utils }:
 
       # vulkan
       export VULKAN_SDK=${pkgs.vulkan-loader}
+      export CUDA_PATH=${pkgs.cudatoolkit}
       '';
     };
   });

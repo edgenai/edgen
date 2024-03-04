@@ -191,8 +191,12 @@ pub struct SettingsParams {
     pub embeddings_model_repo: String,
 
     /// The policy used to decided if models/session should be allocated and run on acceleration
-    /// hardware
+    /// hardware.
     pub gpu_policy: DevicePolicy,
+
+    /// The maximum size, in bytes, any request can have. This is most relevant in requests with files, such as audio
+    /// transcriptions.
+    pub max_request_size: usize,
 }
 
 impl SettingsParams {
@@ -246,6 +250,7 @@ impl Default for SettingsParams {
             gpu_policy: DevicePolicy::AlwaysDevice {
                 overflow_to_cpu: true,
             },
+            max_request_size: 1024 * 1014 * 100, // 100 MB
         }
     }
 }

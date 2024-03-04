@@ -48,4 +48,5 @@ tempfile = { workspace = true }
 [features]
 llama_vulkan = ["edgen_rt_llama_cpp/vulkan"]
 llama_cuda = ["edgen_rt_llama_cpp/cuda"]
+llama_metal = ["edgen_rt_llama_cpp/metal"]
 whisper_cuda = ["edgen_rt_whisper_cpp/cuda"]
