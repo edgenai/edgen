@@ -26,7 +26,6 @@ use axum::response::{IntoResponse, Response, Sse};
 use axum::Json;
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use derive_more::{Deref, DerefMut, From};
-use edgen_core::llm::{CompletionArgs, LLMEndpointError};
 use either::Either;
 use futures::{Stream, StreamExt, TryStream};
 use serde_derive::{Deserialize, Serialize};
@@ -37,9 +36,11 @@ use tracing::error;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use edgen_core::llm::{CompletionArgs, LLMEndpointError};
 use edgen_core::settings::SETTINGS;
 use edgen_core::whisper::WhisperEndpointError;
 
+use crate::llm::embeddings;
 use crate::model::{Model, ModelError, ModelKind};
 
 /// The plaintext or image content of a [`ChatMessage`] within a [`CreateChatCompletionRequest`].
@@ -699,6 +700,172 @@ pub async fn chat_completions(
     Ok(response)
 }
 
+/// A request to generate embeddings for one or more pieces of text.
+///
+/// An `axum` handler, [`create_embeddings`][create_embeddings], is provided to handle this request.
+///
+/// See [the documentation for creating transcriptions][openai] for more details.
+///
+/// [embeddings]: fn.create_embeddings.html
+/// [openai]: https://platform.openai.com/docs/api-reference/embeddings/create
+#[derive(Serialize, Deserialize, ToSchema)]
+pub struct CreateEmbeddingsRequest<'a> {
+    /// The text input to embed as either a string or an array of strings.
+    #[serde(with = "either::serde_untagged")]
+    #[schema(value_type = String)]
+    pub input: Either<Cow<'a, str>, Vec<Cow<'a, str>>>,
+
+    /// ID of the model to use.
+    #[schema(value_type = String)]
+    pub model: Cow<'a, str>,
+
+    /// The format to return the embeddings in. Can be either `float` or `base64`.
+    #[schema(value_type = String)]
+    pub encoding_format: Option<Cow<'a, str>>,
+
+    /// The number of dimensions the resulting output embeddings should have. Only supported in some models.
+    pub dimensions: Option<usize>,
+}
+
+/// The return type of [`create_embeddings`].
+#[derive(Serialize, Deserialize, ToSchema)]
+pub struct EmbeddingsResponse {
+    /// Always `"list"`.
+    pub object: String,
+
+    /// The generated embeddings.
+    pub embeddings: Vec<Embedding>,
+
+    /// The model used for generation.
+    pub model: String,
+
+    /// The usage statistics of the request.
+    pub usage: EmbeddingsUsage,
+}
+
+/// Represents an embedding vector returned by embedding endpoint.
+///
+/// See [the documentation for creating transcriptions][openai] for more details.
+///
+/// [openai]: https://platform.openai.com/docs/api-reference/embeddings/object
+#[derive(Serialize, Deserialize, ToSchema)]
+pub struct Embedding {
+    /// Always `"embedding"`.
+    pub object: String,
+
+    /// The embedding vector, which is a list of floats. The length of vector depends on the model.
+    pub embedding: Vec<f32>,
+
+    /// The index of the embedding in the list of embeddings.
+    pub index: usize,
+}
+
+/// The usage statistics of the request.
+#[derive(Serialize, Deserialize, ToSchema)]
+pub struct EmbeddingsUsage {
+    // TODO doc
+    /// ???
+    pub prompt_tokens: usize,
+
+    // TODO doc
+    /// ???
+    pub total_tokens: usize,
+}
+
+// TODO change to use a dedicated error type, or make a common error type
+/// POST `/v1/embeddings`: generates embeddings for the provided text.
+///
+/// See [the original OpenAI API specification][openai], which this endpoint is compatible with.
+///
+/// [openai]: https://platform.openai.com/docs/api-reference/embeddings/create
+///
+/// On failure, may raise a `500 Internal Server Error` with a JSON-encoded [`ChatCompletionError`]
+/// to the peer.
+#[utoipa::path(
+post,
+path = "/embeddings",
+request_body = CreateEmbeddingsRequest,
+responses(
+(status = 200, description = "OK", body = EmbeddingsResponse),
+(status = 500, description = "unexpected internal server error", body = ChatCompletionError)
+),
+)]
+pub async fn create_embeddings(
+    Json(req): Json<CreateEmbeddingsRequest<'_>>,
+) -> Result<impl IntoResponse, ChatCompletionError> {
+    // For MVP1, the model string in the request is *always* ignored.
+    let model_name = SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .embeddings_model_name
+        .trim()
+        .to_string();
+    let repo = SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .embeddings_model_repo
+        .trim()
+        .to_string();
+    let dir = SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .embeddings_models_dir
+        .trim()
+        .to_string();
+
+    if model_name.is_empty() {
+        return Err(ChatCompletionError::ProhibitedName {
+            model_name,
+            reason: Cow::Borrowed("Empty model name in config"),
+        });
+    }
+    if dir.is_empty() {
+        return Err(ChatCompletionError::ProhibitedName {
+            model_name: dir,
+            reason: Cow::Borrowed("Empty model directory in config"),
+        });
+    }
+
+    let mut model = Model::new(ModelKind::LLM, &model_name, &repo, &PathBuf::from(&dir));
+
+    model
+        .preload()
+        .await
+        .map_err(move |_| ChatCompletionError::NoSuchModel {
+            model_name: model_name.to_string(),
+        })?;
+
+    let input = req.input.either(
+        move |s| vec![s.to_string()],
+        move |v| v.iter().map(move |s| s.to_string()).collect(),
+    );
+    let mut res = embeddings(model, input).await?;
+
+    Ok(Json(EmbeddingsResponse {
+        object: "list".to_string(),
+        embeddings: res
+            .drain(..)
+            .enumerate()
+            .map(move |(index, embedding)| Embedding {
+                object: "embedding".to_string(),
+                embedding,
+                index,
+            })
+            .collect(),
+        model: req.model.to_string(),
+        usage: EmbeddingsUsage {
+            prompt_tokens: 0,
+            total_tokens: 0,
+        },
+    }))
+}
+
 /// A request to transcribe an audio file into text in either the specified language, or whichever
 /// language is automatically detected, if none is specified.
 ///
@@ -761,7 +928,7 @@ pub struct TranscriptionResponse {
 
     /// The [`Uuid`] of a newly created session, present only if `create_session` in
     /// [`CreateTranscriptionRequest`] is set to `true`. This additional member is **not normative**
-    /// with OpenAI's specification, as it is intended for **Edgen** specific functinality.
+    /// with OpenAI's specification, as it is intended for **Edgen** specific functionality.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<Uuid>,
 }
@@ -772,7 +939,7 @@ pub struct TranscriptionResponse {
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/audio/createTranscription
 ///
-/// On failure, may raise a `500 Internal Server Error` with a JSON-encoded [`WhisperEndpointError`]
+/// On failure, may raise a `500 Internal Server Error` with a JSON-encoded [`TranscriptionError`]
 /// to the peer.
 #[utoipa::path(
 post,

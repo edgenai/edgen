@@ -1,0 +1,105 @@
+export const metadata = {
+  title: 'Embeddings',
+  description: 'Generate embeddings',
+}
+
+# Embeddings
+
+Generate embeddings from text. {{ className: 'lead' }}
+
+---
+
+## Create embeddings {{ tag: 'POST', label: 'http://localhost:33322/v1/embeddings' }}
+
+<Row>
+  <Col>
+    Given a list of messages belonging to a chat history, generate a response.
+
+    ### Required attributes
+
+    <Properties>
+      <Property name="input" type="string or array">
+        One or multiple pieces of text from which embeddings will be generated. For each piece of text, one embedding is generated.
+      </Property>
+    </Properties>
+
+    <Properties>
+      <Property name="model" type="string">
+        The model used for chat completions. **WARNING**: currently, this attribute is **ignored** and the **default model is used**.
+      </Property>
+    </Properties>
+
+  </Col>
+  <Col sticky>
+
+    <CodeGroup title="Request" tag="POST" label="/v1/embeddings">
+
+    ```bash {{ title: 'cURL' }}
+    curl http://localhost:33322/v1/embeddings \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer no-key-required" \
+    -d '{
+      "model": "default",
+      "input": "Hello World!"
+    }'
+    ```
+
+    ```python
+    from edgen import Edgen
+    client = Edgen()
+
+    embeddings = client.embeddings.create(
+      model="default",
+      input="Who is John Doe?"
+    )
+
+    for item in completion.data:
+      print(data.embedding)
+    ```
+
+    ```ts
+    import Edgen from "edgen";
+
+    const client = new Edgen();
+
+    async function main() {
+      const embeddings = await client.embeddings.create({
+        model: "default",
+        messages: "Who is Foo Bar?"
+      });
+
+      for await (const item of embeddings.data) {
+        console.log(item.embedding.content);
+      }
+    }
+
+    main();
+    ```
+
+    </CodeGroup>
+
+    ```json {{ title: 'Response' }}
+    {
+      "object": "list",
+      "data": [
+        {
+          "object": "embedding",
+          "embedding": [
+            0.0023064255,
+            -0.009327292,
+            ....
+            -0.0028842222,
+          ],
+          "index": 0
+        }
+      ],
+      "model": "default",
+      "usage": {
+        "prompt_tokens": 8,
+        "total_tokens": 8
+      }
+    }
+    ```
+
+  </Col>
+</Row>

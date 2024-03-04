@@ -183,6 +183,13 @@ pub struct SettingsParams {
     /// The audio transcription repo that Edgen will use for downloads
     pub audio_transcriptions_model_repo: String,
 
+    // TODO temporary, until the model parameter in incoming requests can be parsed into local paths
+    pub embeddings_models_dir: String,
+    /// The embeddings model that Edgen will use when the user does not provide a model
+    pub embeddings_model_name: String,
+    /// The embeddings repo that Edgen will use for downloads
+    pub embeddings_model_repo: String,
+
     /// The policy used to decided if models/session should be allocated and run on acceleration
     /// hardware.
     pub gpu_policy: DevicePolicy,
@@ -214,12 +221,14 @@ impl Default for SettingsParams {
         let data_dir = PROJECT_DIRS.data_dir();
         let chat_completions_dir = data_dir.join(Path::new("models/chat/completions"));
         let audio_transcriptions_dir = data_dir.join(Path::new("models/audio/transcriptions"));
+        let embeddings_dir = data_dir.join(Path::new("models/embeddings"));
 
         let chat_completions_str = chat_completions_dir.into_os_string().into_string().unwrap();
         let audio_transcriptions_str = audio_transcriptions_dir
             .into_os_string()
             .into_string()
             .unwrap();
+        let embeddings_str = embeddings_dir.into_os_string().into_string().unwrap();
 
         let cpus = num_cpus::get_physical();
         let threads = if cpus > 1 { cpus - 1 } else { 1 };
@@ -230,10 +239,13 @@ impl Default for SettingsParams {
             default_uri: "http://127.0.0.1:33322".to_string(),
             chat_completions_model_name: "neural-chat-7b-v3-3.Q4_K_M.gguf".to_string(),
             chat_completions_model_repo: "TheBloke/neural-chat-7B-v3-3-GGUF".to_string(),
+            chat_completions_models_dir: chat_completions_str,
             audio_transcriptions_model_name: "ggml-distil-small.en.bin".to_string(),
             audio_transcriptions_model_repo: "distil-whisper/distil-small.en".to_string(),
-            chat_completions_models_dir: chat_completions_str,
             audio_transcriptions_models_dir: audio_transcriptions_str,
+            embeddings_model_name: "nomic-embed-text-v1.5.f16.gguf".to_string(),
+            embeddings_model_repo: "nomic-ai/nomic-embed-text-v1.5-GGUF".to_string(),
+            embeddings_models_dir: embeddings_str,
             // TODO detect if the system has acceleration hardware to decide the default
             gpu_policy: DevicePolicy::AlwaysDevice {
                 overflow_to_cpu: true,
@@ -325,7 +337,8 @@ impl DerefMut for SettingsInner {
 
 pub struct Settings {
     inner: Arc<RwLock<SettingsInner>>,
-    _watcher: PollWatcher, // we use a PollWatcher because it observes the path, not the inode
+    _watcher: PollWatcher,
+    // we use a PollWatcher because it observes the path, not the inode
     handler: UpdateHandler,
 }
 

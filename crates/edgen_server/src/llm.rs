@@ -59,6 +59,20 @@ pub async fn chat_completion_stream(
     ))
 }
 
+pub async fn embeddings(
+    model: Model,
+    input: Vec<String>,
+) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
+    ENDPOINT
+        .embeddings(
+            model
+                .file_path()
+                .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
+            input,
+        )
+        .await
+}
+
 pub async fn reset_environment() {
     ENDPOINT.reset()
 }
