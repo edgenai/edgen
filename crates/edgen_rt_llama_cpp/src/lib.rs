@@ -247,7 +247,7 @@ impl UnloadingModel {
             //params.seed = args.seed;
             params.n_threads = threads;
             params.n_threads_batch = threads;
-            params.n_ctx = CONTEXT_SIZE;
+            params.n_ctx = args.context_hint.unwrap_or(CONTEXT_SIZE);
 
             let mut session = model_guard
                 .create_session(params)
@@ -306,7 +306,7 @@ impl UnloadingModel {
             //params.seed = args.seed;
             params.n_threads = threads;
             params.n_threads_batch = threads;
-            params.n_ctx = CONTEXT_SIZE;
+            params.n_ctx = args.context_hint.unwrap_or(CONTEXT_SIZE);
 
             let session = model_guard
                 .create_session(params)

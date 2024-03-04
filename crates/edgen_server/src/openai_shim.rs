@@ -367,6 +367,13 @@ pub struct CreateChatCompletionRequest<'a> {
     /// Indicate if this is an isolated request, with no associated past or future context. This may allow for
     /// optimisations in some implementations. Default: `false`
     pub one_shot: Option<bool>,
+
+    /// A hint for how big a context will be.
+    ///
+    /// # Warning
+    /// An unsound hint may severely drop performance and/or inference quality, and in some cases even cause Edgen
+    /// to crash. Do not set this value unless you know what you are doing.
+    pub context_hint: Option<u32>,
 }
 
 /// A message in a chat completion.
@@ -633,6 +640,7 @@ pub async fn chat_completions(
     let mut args = CompletionArgs {
         prompt: untokenized_context,
         seed: req.seed,
+        context_hint: req.context_hint,
         ..Default::default()
     };
 
