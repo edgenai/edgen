@@ -252,6 +252,7 @@ export const navigation: Array<NavGroup> = [
     links: [
       { title: 'Audio', href: '/api-reference/audio' },
       { title: 'Chat', href: '/api-reference/chat' },
+      { title: 'Embeddings', href: '/api-reference/embeddings' },
       { title: 'Models', href: '/api-reference/models' },
     ],
   },
