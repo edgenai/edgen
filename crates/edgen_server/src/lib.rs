@@ -27,6 +27,8 @@ use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use utoipa::OpenApi;
 
 use edgen_core::settings;
@@ -155,7 +157,19 @@ fn serve(args: &cli::Serve) -> EdgenResult {
 
 #[tokio::main]
 async fn start_server(args: &cli::Serve) -> EdgenResult {
-    console_subscriber::init();
+    let format = tracing_subscriber::fmt::layer().compact();
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or(
+        tracing_subscriber::EnvFilter::default()
+            .add_directive(tracing_subscriber::filter::LevelFilter::INFO.into()),
+    );
+    let console_layer = console_subscriber::ConsoleLayer::builder()
+        .with_default_env()
+        .spawn();
+    tracing_subscriber::registry()
+        .with(console_layer)
+        .with(format)
+        .with(filter)
+        .init();
 
     SETTINGS
         .write()
