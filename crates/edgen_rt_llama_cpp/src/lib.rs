@@ -32,8 +32,8 @@ use tokio::{select, spawn};
 use tracing::{error, info};
 
 use edgen_core::llm::{
-    inactive_llm_session_ttl, inactive_llm_ttl, CompletionArgs, LLMEndpoint, LLMEndpointError,
-    ASSISTANT_TAG, SYSTEM_TAG, TOOL_TAG, USER_TAG,
+    default_context_settings, inactive_llm_session_ttl, inactive_llm_ttl, CompletionArgs,
+    LLMEndpoint, LLMEndpointError, ASSISTANT_TAG, SYSTEM_TAG, TOOL_TAG, USER_TAG,
 };
 use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, PerishableWriteGuard};
 use edgen_core::settings::{DevicePolicy, SETTINGS};
@@ -240,16 +240,13 @@ impl UnloadingModel {
         if args.one_shot {
             info!("Allocating one-shot LLM session");
             let mut params = SessionParams::default();
-            let (threads, default_context_size) = {
-                let guard = SETTINGS.read().await.read().await;
-                (guard.auto_threads(false), guard.llm_default_context_size)
-            };
+            let default_settings = default_context_settings().await;
 
             // TODO handle optional params
             //params.seed = args.seed;
-            params.n_threads = threads;
-            params.n_threads_batch = threads;
-            params.n_ctx = args.context_hint.unwrap_or(default_context_size);
+            params.n_threads = default_settings.threads;
+            params.n_threads_batch = default_settings.threads;
+            params.n_ctx = args.context_hint.unwrap_or(default_settings.size);
 
             let mut session = model_guard
                 .create_session(params)
@@ -302,16 +299,13 @@ impl UnloadingModel {
         if args.one_shot {
             info!("Allocating one-shot LLM session");
             let mut params = SessionParams::default();
-            let (threads, default_context_size) = {
-                let guard = SETTINGS.read().await.read().await;
-                (guard.auto_threads(false), guard.llm_default_context_size)
-            };
+            let default_settings = default_context_settings().await;
 
             // TODO handle optional params
             //params.seed = args.seed;
-            params.n_threads = threads;
-            params.n_threads_batch = threads;
-            params.n_ctx = args.context_hint.unwrap_or(default_context_size);
+            params.n_threads = default_settings.threads;
+            params.n_threads_batch = default_settings.threads;
+            params.n_ctx = args.context_hint.unwrap_or(default_settings.size);
 
             let session = model_guard
                 .create_session(params)
@@ -403,16 +397,13 @@ async fn get_or_init_session(
         .get_or_try_init_mut(move || async move {
             info!("Allocating new LLM session");
             let mut params = SessionParams::default();
-            let (threads, default_context_size) = {
-                let guard = SETTINGS.read().await.read().await;
-                (guard.auto_threads(false), guard.llm_default_context_size)
-            };
+            let default_settings = default_context_settings().await;
 
             // TODO handle optional params
             //params.seed = args.seed;
-            params.n_threads = threads;
-            params.n_threads_batch = threads;
-            params.n_ctx = default_context_size;
+            params.n_threads = default_settings.threads;
+            params.n_threads_batch = default_settings.threads;
+            params.n_ctx = default_settings.size;
 
             model
                 .create_session(params)

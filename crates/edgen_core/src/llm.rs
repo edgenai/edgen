@@ -17,6 +17,7 @@ use futures::Stream;
 use serde::Serialize;
 use thiserror::Error;
 
+use crate::settings::SETTINGS;
 use crate::BoxedFuture;
 
 /// The context tag marking the start of generated dialogue.
@@ -106,4 +107,21 @@ pub fn inactive_llm_ttl() -> Duration {
 pub fn inactive_llm_session_ttl() -> Duration {
     // TODO this should come from the settings
     Duration::from_secs(2 * 60)
+}
+
+/// Default LLM context settings retrived from [` ].
+pub struct ContextSettings {
+    pub threads: u32,
+    pub size: u32,
+}
+
+/// Returns some default parameters for Large Language Models contexts retrieved from the global settings.
+pub async fn default_context_settings() -> ContextSettings {
+    let global_guard = SETTINGS.read().await;
+    let instance_guard = global_guard.read().await;
+
+    ContextSettings {
+        threads: instance_guard.auto_threads(false),
+        size: instance_guard.llm_default_context_size,
+    }
 }
