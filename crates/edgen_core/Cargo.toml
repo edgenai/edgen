@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 ahash = { workspace = true }
+async-trait = { workspace = true }
 dashmap = { workspace = true }
 directories = { workspace = true }
 derive_more = { workspace = true }

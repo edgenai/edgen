@@ -31,13 +31,13 @@ use tokio::time::{interval, MissedTickBehavior};
 use tokio::{select, spawn};
 use tracing::{error, info};
 
+use edgen_core::cleanup_interval;
 use edgen_core::llm::{
     default_context_settings, inactive_llm_session_ttl, inactive_llm_ttl, CompletionArgs,
     LLMEndpoint, LLMEndpointError, ASSISTANT_TAG, SYSTEM_TAG, TOOL_TAG, USER_TAG,
 };
 use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, PerishableWriteGuard};
 use edgen_core::settings::{DevicePolicy, SETTINGS};
-use edgen_core::{cleanup_interval, BoxedFuture};
 
 // TODO this should be in settings
 const SINGLE_MESSAGE_LIMIT: usize = 4096;
@@ -69,65 +69,35 @@ impl LlamaCppEndpoint {
         // PANIC SAFETY: Just inserted the element if it isn't already inside the map, so must be present in the map
         self.models.get(&key).unwrap()
     }
+}
 
-    /// Helper `async` function that returns the full chat completions for the specified model and
-    /// [`CompletionArgs`].
-    async fn async_chat_completions(
+#[async_trait::async_trait]
+impl LLMEndpoint for LlamaCppEndpoint {
+    async fn chat_completions(
         &self,
-        model_path: impl AsRef<Path>,
+        model_path: impl AsRef<Path> + Send,
         args: CompletionArgs,
     ) -> Result<String, LLMEndpointError> {
         let model = self.get(model_path).await;
         model.chat_completions(args).await
     }
 
-    /// Helper `async` function that returns the chat completions stream for the specified model and
-    /// [`CompletionArgs`].
-    async fn async_stream_chat_completions(
+    async fn stream_chat_completions(
         &self,
-        model_path: impl AsRef<Path>,
+        model_path: impl AsRef<Path> + Send,
         args: CompletionArgs,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
         let model = self.get(model_path).await;
         model.stream_chat_completions(args).await
     }
 
-    async fn async_embeddings(
+    async fn embeddings(
         &self,
-        model_path: impl AsRef<Path>,
+        model_path: impl AsRef<Path> + Send,
         inputs: Vec<String>,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
         let model = self.get(model_path).await;
         model.embeddings(inputs).await
-    }
-}
-
-impl LLMEndpoint for LlamaCppEndpoint {
-    fn chat_completions<'a>(
-        &'a self,
-        model_path: impl AsRef<Path> + Send + 'a,
-        args: CompletionArgs,
-    ) -> BoxedFuture<Result<String, LLMEndpointError>> {
-        let pinned = Box::pin(self.async_chat_completions(model_path, args));
-        Box::new(pinned)
-    }
-
-    fn stream_chat_completions<'a>(
-        &'a self,
-        model_path: impl AsRef<Path> + Send + 'a,
-        args: CompletionArgs,
-    ) -> BoxedFuture<Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError>> {
-        let pinned = Box::pin(self.async_stream_chat_completions(model_path, args));
-        Box::new(pinned)
-    }
-
-    fn embeddings<'a>(
-        &'a self,
-        model_path: impl AsRef<Path> + Send + 'a,
-        inputs: Vec<String>,
-    ) -> BoxedFuture<Result<Vec<Vec<f32>>, LLMEndpointError>> {
-        let pinned = Box::pin(self.async_embeddings(model_path, inputs));
-        Box::new(pinned)
     }
 
     fn reset(&self) {

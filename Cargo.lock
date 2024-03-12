@@ -1372,6 +1372,7 @@ name = "edgen_core"
 version = "0.1.0"
 dependencies = [
  "ahash 0.8.9",
+ "async-trait",
  "dashmap",
  "derive_more",
  "directories",
@@ -1398,6 +1399,7 @@ dependencies = [
 name = "edgen_rt_llama_cpp"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "blake3",
  "dashmap",
  "derive_more",
