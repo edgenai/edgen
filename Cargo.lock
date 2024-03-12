@@ -1339,7 +1339,7 @@ checksum = "56ce8c6da7551ec6c462cbaf3bfbc75131ebbfa1c944aeaa9dab51ca1c5f0c3b"
 
 [[package]]
 name = "edgen"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "edgen_core",
  "edgen_server",
@@ -1427,7 +1427,7 @@ dependencies = [
 
 [[package]]
 name = "edgen_server"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "argh",
  "axum 0.7.4",
