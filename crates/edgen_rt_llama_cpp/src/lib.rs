@@ -41,7 +41,6 @@ use edgen_core::{cleanup_interval, BoxedFuture};
 
 // TODO this should be in settings
 const SINGLE_MESSAGE_LIMIT: usize = 4096;
-const CONTEXT_SIZE: u32 = 4096;
 
 /// A large language model endpoint, implementing [`LLMEndpoint`] using a [`llama_cpp`] backend.
 pub struct LlamaCppEndpoint {
@@ -241,13 +240,16 @@ impl UnloadingModel {
         if args.one_shot {
             info!("Allocating one-shot LLM session");
             let mut params = SessionParams::default();
-            let threads = SETTINGS.read().await.read().await.auto_threads(false);
+            let (threads, default_context_size) = {
+                let guard = SETTINGS.read().await.read().await;
+                (guard.auto_threads(false), guard.llm_default_context_size)
+            };
 
             // TODO handle optional params
             //params.seed = args.seed;
             params.n_threads = threads;
             params.n_threads_batch = threads;
-            params.n_ctx = args.context_hint.unwrap_or(CONTEXT_SIZE);
+            params.n_ctx = args.context_hint.unwrap_or(default_context_size);
 
             let mut session = model_guard
                 .create_session(params)
@@ -300,13 +302,16 @@ impl UnloadingModel {
         if args.one_shot {
             info!("Allocating one-shot LLM session");
             let mut params = SessionParams::default();
-            let threads = SETTINGS.read().await.read().await.auto_threads(false);
+            let (threads, default_context_size) = {
+                let guard = SETTINGS.read().await.read().await;
+                (guard.auto_threads(false), guard.llm_default_context_size)
+            };
 
             // TODO handle optional params
             //params.seed = args.seed;
             params.n_threads = threads;
             params.n_threads_batch = threads;
-            params.n_ctx = args.context_hint.unwrap_or(CONTEXT_SIZE);
+            params.n_ctx = args.context_hint.unwrap_or(default_context_size);
 
             let session = model_guard
                 .create_session(params)
@@ -398,13 +403,16 @@ async fn get_or_init_session(
         .get_or_try_init_mut(move || async move {
             info!("Allocating new LLM session");
             let mut params = SessionParams::default();
-            let threads = SETTINGS.read().await.read().await.auto_threads(false);
+            let (threads, default_context_size) = {
+                let guard = SETTINGS.read().await.read().await;
+                (guard.auto_threads(false), guard.llm_default_context_size)
+            };
 
             // TODO handle optional params
             //params.seed = args.seed;
             params.n_threads = threads;
             params.n_threads_batch = threads;
-            params.n_ctx = CONTEXT_SIZE;
+            params.n_ctx = default_context_size;
 
             model
                 .create_session(params)

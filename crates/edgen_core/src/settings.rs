@@ -197,6 +197,9 @@ pub struct SettingsParams {
     /// The maximum size, in bytes, any request can have. This is most relevant in requests with files, such as audio
     /// transcriptions.
     pub max_request_size: usize,
+
+    /// The default maximum number of tokens a Large Language Model context will have (where applicable).
+    pub llm_default_context_size: u32,
 }
 
 impl SettingsParams {
@@ -251,6 +254,7 @@ impl Default for SettingsParams {
                 overflow_to_cpu: true,
             },
             max_request_size: 1024 * 1014 * 100, // 100 MB
+            llm_default_context_size: 4096,
         }
     }
 }
