@@ -12,8 +12,6 @@
 
 //! Utility types.
 
-pub use perishable::*;
 pub use stopping_stream::*;
 
-mod perishable;
 mod stopping_stream;
