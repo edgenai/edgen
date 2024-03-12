@@ -443,9 +443,9 @@ dependencies = [
 
 [[package]]
 name = "axum-test"
-version = "14.3.0"
+version = "14.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc431b62ab307c833af24700936485eb5f9a8ac18a19347fe37dd4f7ae3dffe9"
+checksum = "673f937bbc7eaadff359e2797c0de2c20e02c9db5bd6f2aed457c7ae93559b9b"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1380,7 +1380,7 @@ dependencies = [
  "notify",
  "num_cpus",
  "once_cell",
- "rubato",
+ "rubato 0.14.1",
  "serde",
  "serde_yaml",
  "smol",
@@ -1449,7 +1449,7 @@ dependencies = [
  "once_cell",
  "pin-project",
  "reqwest",
- "rubato",
+ "rubato 0.15.0",
  "serde",
  "serde_derive",
  "serde_json",
@@ -1465,6 +1465,7 @@ dependencies = [
  "toml_edit 0.22.6",
  "tower-http",
  "tracing",
+ "tracing-subscriber",
  "utoipa",
  "uuid",
 ]
@@ -2867,7 +2868,7 @@ checksum = "01cda141df6706de531b6c46c3a33ecca755538219bd484262fa09410c13539c"
 [[package]]
 name = "llama_cpp"
 version = "0.3.1"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#a0c3d8309587a11a336fe448c964cd8cb25ba48c"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#9c098a769785738deb5e0179ad2c5e5554d1cb43"
 dependencies = [
  "derive_more",
  "futures",
@@ -2881,7 +2882,7 @@ dependencies = [
 [[package]]
 name = "llama_cpp_sys"
 version = "0.3.1"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#a0c3d8309587a11a336fe448c964cd8cb25ba48c"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#9c098a769785738deb5e0179ad2c5e5554d1cb43"
 dependencies = [
  "ash",
  "bindgen",
@@ -4116,6 +4117,18 @@ name = "rubato"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6dd52e80cfc21894deadf554a5673002938ae4625f7a283e536f9cf7c17b0d5"
+dependencies = [
+ "num-complex",
+ "num-integer",
+ "num-traits",
+ "realfft",
+]
+
+[[package]]
+name = "rubato"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b5d18b486e7d29a408ef3f825bc1327d8f87af091c987ca2f5b734625940e234"
 dependencies = [
  "num-complex",
  "num-integer",
