@@ -23,6 +23,7 @@ static ENDPOINT: Lazy<LlamaCppEndpoint> = Lazy::new(Default::default);
 
 pub async fn chat_completion(
     model: Model,
+    prompt: String,
     args: CompletionArgs,
 ) -> Result<String, LLMEndpointError> {
     ENDPOINT
@@ -30,6 +31,7 @@ pub async fn chat_completion(
             model
                 .file_path()
                 .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
+            &prompt,
             args,
         )
         .await
@@ -37,6 +39,7 @@ pub async fn chat_completion(
 
 pub async fn chat_completion_stream(
     model: Model,
+    prompt: String,
     args: CompletionArgs,
 ) -> Result<StoppingStream<Box<dyn Stream<Item = String> + Unpin + Send>>, LLMEndpointError> {
     let stream = ENDPOINT
@@ -44,6 +47,7 @@ pub async fn chat_completion_stream(
             model
                 .file_path()
                 .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
+            &prompt,
             args,
         )
         .await?;

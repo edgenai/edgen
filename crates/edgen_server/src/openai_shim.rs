@@ -615,7 +615,7 @@ pub async fn chat_completions(
 
     if model_name.is_empty() {
         return Err(ChatCompletionError::ProhibitedName {
-            model_name: model_name,
+            model_name,
             reason: Cow::Borrowed("Empty model name in config"),
         });
     }
@@ -638,7 +638,6 @@ pub async fn chat_completions(
     let untokenized_context = format!("{}<|ASSISTANT|>", req.messages);
 
     let mut args = CompletionArgs {
-        prompt: untokenized_context,
         seed: req.seed,
         context_hint: req.context_hint,
         ..Default::default()
@@ -657,7 +656,7 @@ pub async fn chat_completions(
     let fp = format!("edgen-{}", cargo_crate_version!());
     let response = if stream_response {
         let completions_stream =
-            crate::llm::chat_completion_stream(model, args)
+            crate::llm::chat_completion_stream(model, untokenized_context, args)
                 .await?
                 .map(move |chunk| {
                     Event::default().json_data(ChatCompletionChunk {
@@ -679,7 +678,7 @@ pub async fn chat_completions(
 
         ChatCompletionResponse::Stream(Sse::new(completions_stream))
     } else {
-        let content_str = crate::llm::chat_completion(model, args).await?;
+        let content_str = crate::llm::chat_completion(model, untokenized_context, args).await?;
         let response = ChatCompletion {
             id: Uuid::new_v4().to_string().into(),
             choices: vec![ChatCompletionChoice {

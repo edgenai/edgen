@@ -47,11 +47,15 @@ impl RequestManager {
         Self { queues }
     }
 
-    pub async fn enqueue(&self, requirements: Request) -> Result<Ticket, QueueError> {
-        let required_memory = match requirements.kind {
-            RequestKind::Model(required_memory) => (required_memory as f64 * 1.2) as usize,
-            RequestKind::Regular(required_memory) => (required_memory as f64 * 1.1) as usize,
-            RequestKind::Free => return Ok(Ticket::Free),
+    pub async fn enqueue(&self, requirements: Passport) -> Result<Ticket, QueueError> {
+        let required_memory = match requirements.request {
+            Request::Model(required_memory) => (required_memory as f64 * 1.2) as usize,
+            Request::Regular(required_memory) => (required_memory as f64 * 1.1) as usize,
+            Request::Free => {
+                return Ok(Ticket {
+                    content: Some(TicketContent::Free),
+                })
+            }
         };
 
         let queue = if requirements.device == Device::Any {
@@ -82,7 +86,7 @@ impl RequestManager {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum Device {
+pub enum Device {
     CPU,
     Vulkan(usize),
     Cuda(usize),
@@ -124,9 +128,11 @@ impl Queue {
             .await
             .map_err(move |e| QueueError::Enqueue(e.to_string()))?;
 
-        let ticket = Ticket::Regular {
-            ticket_memory: required_memory,
-            transient_memory: self.transient_memory.clone(),
+        let ticket = Ticket {
+            content: Some(TicketContent::Regular {
+                ticket_memory: required_memory,
+                transient_memory: self.transient_memory.clone(),
+            }),
         };
 
         Ok(ticket)
@@ -173,19 +179,35 @@ enum QueueWaiter {
     Close,
 }
 
-pub struct Request {
-    kind: RequestKind,
+pub struct Passport {
+    request: Request,
     device: Device,
 }
 
+impl Passport {
+    pub fn new(request: Request, device: Device) -> Self {
+        Self { request, device }
+    }
+}
+
 #[derive(Eq, PartialEq)]
-enum RequestKind {
+pub enum Request {
     Model(usize),
     Regular(usize),
     Free,
 }
 
-pub enum Ticket {
+pub struct Ticket {
+    content: Option<TicketContent>,
+}
+
+impl Ticket {
+    pub fn consume(&mut self) -> bool {
+        self.content.take().is_some()
+    }
+}
+
+enum TicketContent {
     Regular {
         ticket_memory: usize,
         transient_memory: Arc<AtomicUsize>,
@@ -193,13 +215,9 @@ pub enum Ticket {
     Free,
 }
 
-impl Ticket {
-    pub fn consume(self) {}
-}
-
-impl Drop for Ticket {
+impl Drop for TicketContent {
     fn drop(&mut self) {
-        if let Ticket::Regular {
+        if let TicketContent::Regular {
             ticket_memory,
             transient_memory,
         } = self

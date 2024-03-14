@@ -13,6 +13,7 @@
 use core::time::Duration;
 use std::path::Path;
 
+use crate::request::Passport;
 use futures::Stream;
 use serde::Serialize;
 use thiserror::Error;
@@ -45,7 +46,6 @@ pub enum LLMEndpointError {
 
 #[derive(Debug, Clone)]
 pub struct CompletionArgs {
-    pub prompt: String,
     pub one_shot: bool,
     pub seed: Option<u32>,
     pub frequency_penalty: f32,
@@ -55,7 +55,6 @@ pub struct CompletionArgs {
 impl Default for CompletionArgs {
     fn default() -> Self {
         Self {
-            prompt: "".to_string(),
             one_shot: false,
             seed: None,
             frequency_penalty: 0.0,
@@ -68,28 +67,37 @@ impl Default for CompletionArgs {
 /// a large language model.
 #[async_trait::async_trait]
 pub trait LLMEndpoint {
-    /// Given a prompt with several arguments, return a [`Box`]ed [`Future`] which may eventually
-    /// contain the prompt completion in [`String`] form.
+    /// Given a prompt with several arguments, return the prompt completion in [`String`] form.
     async fn chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
+        prompt: &str,
         args: CompletionArgs,
     ) -> Result<String, LLMEndpointError>;
 
-    /// Given a prompt with several arguments, return a [`Box`]ed [`Future`] which may eventually
-    /// contain a [`Stream`] of [`String`] chunks of the prompt completion, acquired as they get
-    /// processed.
+    /// Given a prompt with several arguments, return a [`Box`]ed [`Stream`] of [`String`] chunks of the prompt completion,
+    /// acquired as they get processed.
     async fn stream_chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
+        prompt: &str,
         args: CompletionArgs,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError>;
 
+    /// Runs embeddings inference for the given inputs, returning the result.
     async fn embeddings(
         &self,
         model_path: impl AsRef<Path> + Send,
         inputs: Vec<String>,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError>;
+
+    /// Return an estimation of the resources required to process inference given its arguments.
+    async fn requirements_of(
+        &self,
+        model_path: impl AsRef<Path> + Send,
+        prompt: &str,
+        args: &CompletionArgs,
+    ) -> Result<Passport, LLMEndpointError>;
 
     /// Unloads everything from memory.
     fn reset(&self);

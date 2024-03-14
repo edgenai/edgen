@@ -27,7 +27,7 @@ pub mod whisper;
 pub mod settings;
 
 pub mod perishable;
-mod request;
+pub mod request;
 
 /// A generic [`Box`]ed [`Future`], used to emulate `async` functions in traits.
 pub type BoxedFuture<'a, T> = Box<dyn Future<Output = T> + Send + Unpin + 'a>;
