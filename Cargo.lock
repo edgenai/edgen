@@ -1378,10 +1378,11 @@ dependencies = [
  "directories",
  "edgen_async_compat",
  "futures",
+ "memonitor",
  "notify",
  "num_cpus",
  "once_cell",
- "rubato 0.14.1",
+ "rubato",
  "serde",
  "serde_yaml",
  "smol",
@@ -1451,7 +1452,6 @@ dependencies = [
  "once_cell",
  "pin-project",
  "reqwest",
- "rubato 0.15.0",
  "serde",
  "serde_derive",
  "serde_json",
@@ -2400,7 +2400,7 @@ dependencies = [
  "httpdate",
  "itoa 1.0.10",
  "pin-project-lite",
- "socket2 0.4.10",
+ "socket2 0.5.5",
  "tokio",
  "tower-service",
  "tracing",
@@ -3009,6 +3009,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "memonitor"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a196a71f4a046c37d56a7f1e92ef539b45b579670f82f54d6da784d3bb2b3c80"
+dependencies = [
+ "memonitor-sys",
+ "sysinfo",
+]
+
+[[package]]
+name = "memonitor-sys"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0b08cad7e175a3264405ebd9d5a01dfe37c51bb7454c5a5445429cf90c60b1b"
+dependencies = [
+ "bindgen",
+ "cmake",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3192,6 +3212,15 @@ dependencies = [
  "mio",
  "walkdir",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "ntapi"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8a3895c6391c39d7fe7ebc444a87eb2991b2a0bc718fdabd071eec617fc68e4"
+dependencies = [
+ "winapi",
 ]
 
 [[package]]
@@ -3941,6 +3970,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2ff9a1f06a88b01621b7ae906ef0211290d1c8a168a15542486a8f61c0833b9"
 
 [[package]]
+name = "rayon"
+version = "1.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4963ed1bc86e4f3ee217022bd855b297cef07fb9eac5dfa1f788b220b49b3bd"
+dependencies = [
+ "either",
+ "rayon-core",
+]
+
+[[package]]
+name = "rayon-core"
+version = "1.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1465873a3dfdaa8ae7cb14b4383657caab0b3e8a0aa9ae8e04b044854c8dfce2"
+dependencies = [
+ "crossbeam-deque",
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "realfft"
 version = "3.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4112,18 +4161,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc0bf25554376fd362f54332b8410a625c71f15445bca32ffdfdf4ec9ac91726"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "rubato"
-version = "0.14.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6dd52e80cfc21894deadf554a5673002938ae4625f7a283e536f9cf7c17b0d5"
-dependencies = [
- "num-complex",
- "num-integer",
- "num-traits",
- "realfft",
 ]
 
 [[package]]
@@ -4941,6 +4978,21 @@ name = "sync_wrapper"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2047c6ded9c721764247e62cd3b03c09ffc529b2ba5b10ec482ae507a4a70160"
+
+[[package]]
+name = "sysinfo"
+version = "0.30.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c385888ef380a852a16209afc8cfad22795dd8873d69c9a14d2e2088f118d18"
+dependencies = [
+ "cfg-if",
+ "core-foundation-sys",
+ "libc",
+ "ntapi",
+ "once_cell",
+ "rayon",
+ "windows 0.52.0",
+]
 
 [[package]]
 name = "system-configuration"
@@ -6199,6 +6251,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e686886bc078bc1b0b600cac0147aadb815089b6e4da64016cbd754b6342700f"
 dependencies = [
  "windows-targets 0.48.5",
+]
+
+[[package]]
+name = "windows"
+version = "0.52.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e48a53791691ab099e5e2ad123536d0fff50652600abaf43bbf952894110d0be"
+dependencies = [
+ "windows-core",
+ "windows-targets 0.52.0",
 ]
 
 [[package]]

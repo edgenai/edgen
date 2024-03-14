@@ -205,7 +205,7 @@ impl UnloadingModel {
 
     /// Computes the full chat completions for the provided [`CompletionArgs`].
     async fn chat_completions(&self, args: CompletionArgs) -> Result<String, LLMEndpointError> {
-        let (_model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
+        let (_model_signal, model_guard) = self.get_or_init_model().await?;
 
         if args.one_shot {
             info!("Allocating one-shot LLM session");
@@ -264,7 +264,7 @@ impl UnloadingModel {
         &self,
         args: CompletionArgs,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
-        let (model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
+        let (model_signal, model_guard) = self.get_or_init_model().await?;
 
         if args.one_shot {
             info!("Allocating one-shot LLM session");
@@ -312,11 +312,41 @@ impl UnloadingModel {
         params.n_threads = threads;
         params.n_threads_batch = threads;
 
-        let (_model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
+        let (_model_signal, model_guard) = self.get_or_init_model().await?;
         model_guard
             .embeddings_async(&inputs, params)
             .await
             .map_err(move |e| LLMEndpointError::Embeddings(e.to_string()))
+    }
+
+    /// Helper function to acquire a read guard to a [`LlamaModel`] (and its associated
+    /// [`ActiveSignal`]).
+    async fn get_or_init_model(
+        &self,
+    ) -> Result<(ActiveSignal, PerishableReadGuard<LlamaModel>), LLMEndpointError> {
+        let path = self.path.clone();
+        self.model
+            .get_or_try_init(move || async move {
+                info!("Loading {} into memory", path.to_string_lossy());
+                let mut args = LlamaParams::default();
+
+                match SETTINGS.read().await.read().await.gpu_policy {
+                    DevicePolicy::AlwaysCpu { .. } => {
+                        args.n_gpu_layers = 0;
+                    }
+                    DevicePolicy::AlwaysDevice { .. } => {
+                        args.n_gpu_layers = i32::MAX as u32;
+                    }
+                    _ => {
+                        unimplemented!()
+                    }
+                }
+
+                LlamaModel::load_from_file_async(path, args)
+                    .await
+                    .map_err(move |e| LLMEndpointError::Load(e.to_string()))
+            })
+            .await
     }
 }
 
@@ -324,37 +354,6 @@ impl Drop for UnloadingModel {
     fn drop(&mut self) {
         self.maintenance_thread.abort()
     }
-}
-
-/// Helper function to acquire a read guard to a [`LlamaModel`] (and its associated
-/// [`ActiveSignal`]).
-async fn get_or_init_model(
-    model: &Perishable<LlamaModel>,
-    path: impl AsRef<Path>,
-) -> Result<(ActiveSignal, PerishableReadGuard<LlamaModel>), LLMEndpointError> {
-    let path = path.as_ref().to_path_buf();
-    model
-        .get_or_try_init(move || async move {
-            info!("Loading {} into memory", path.to_string_lossy());
-            let mut args = LlamaParams::default();
-
-            match SETTINGS.read().await.read().await.gpu_policy {
-                DevicePolicy::AlwaysCpu { .. } => {
-                    args.n_gpu_layers = 0;
-                }
-                DevicePolicy::AlwaysDevice { .. } => {
-                    args.n_gpu_layers = i32::MAX as u32;
-                }
-                _ => {
-                    unimplemented!()
-                }
-            }
-
-            LlamaModel::load_from_file_async(path, args)
-                .await
-                .map_err(move |e| LLMEndpointError::Load(e.to_string()))
-        })
-        .await
 }
 
 /// Helper function to acquire a write guard to a [`LlamaSession`] (and its associated
