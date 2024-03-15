@@ -302,6 +302,10 @@ async fn run_queue(
                     - transient_memory.load(Ordering::SeqCst)
                     < required_memory
                 {
+                    if signal_tx.is_closed() {
+                        break;
+                    }
+
                     select! {
                         Some(_) = free_rx.recv() => {},
                         _ = interval.tick() => {},

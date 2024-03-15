@@ -340,20 +340,26 @@ impl UnloadingModel {
         if args.one_shot {
             info!("Allocating one-shot LLM session");
             let params = from_completion_args(args).await;
-            let mut session = model_guard
-                .create_session(params)
-                .map_err(move |e| LLMEndpointError::SessionCreationFailed(e.to_string()))?;
-            ticket.consume();
+            let res = {
+                let mut session = model_guard
+                    .create_session(params)
+                    .map_err(move |e| LLMEndpointError::SessionCreationFailed(e.to_string()))?;
+                ticket.consume();
 
-            session
-                .advance_context_async(prompt)
-                .await
-                .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
+                session
+                    .advance_context_async(prompt)
+                    .await
+                    .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
 
-            let sampler = StandardSampler::default();
-            let handle = session.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
+                let sampler = StandardSampler::default();
+                let handle = session.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
 
-            Ok(handle.into_string_async().await)
+                handle.into_string_async().await
+            };
+
+            REQUEST_QUEUE.notify_free(&self.device)?;
+
+            Ok(res)
         } else {
             let (session, mut id, new_context) = self.take_chat_session(prompt, args).await?;
 
@@ -400,7 +406,8 @@ impl UnloadingModel {
             ticket.consume();
 
             Ok(Box::new(
-                CompletionStream::new_oneshot(session, prompt, model_signal, sampler).await?,
+                CompletionStream::new_oneshot(session, prompt, model_signal, self.device, sampler)
+                    .await?,
             ))
         } else {
             let (session, id, new_context) = self.take_chat_session(prompt, args).await?;
@@ -422,10 +429,14 @@ impl UnloadingModel {
         params.n_threads_batch = threads;
 
         let (_model_signal, model_guard) = self.get_or_init().await?;
-        model_guard
+        let res = model_guard
             .embeddings_async(&inputs, params)
             .await
-            .map_err(move |e| LLMEndpointError::Embeddings(e.to_string()))
+            .map_err(move |e| LLMEndpointError::Embeddings(e.to_string()))?;
+
+        REQUEST_QUEUE.notify_free(&Device::CPU)?;
+
+        Ok(res)
     }
 
     /// Helper function to acquire a read guard to a [`LlamaModel`] (and its associated
@@ -717,6 +728,7 @@ impl CompletionStream {
         mut session: LlamaSession,
         new_context: &str,
         model_signal: ActiveSignal,
+        device: Device,
         sampler: StandardSampler,
     ) -> Result<Self, LLMEndpointError> {
         session
@@ -727,7 +739,7 @@ impl CompletionStream {
 
         Ok(Self {
             handle: handle.into_strings(),
-            session: SessionOption::OneShot(session),
+            session: SessionOption::OneShot { session, device },
             session_id: None,
             finished_tx: None,
             _model_signal: model_signal,
@@ -755,21 +767,35 @@ impl Stream for CompletionStream {
 
 impl Drop for CompletionStream {
     fn drop(&mut self) {
+        let mut notify = None;
+
         if let Some(id) = self.session_id.take() {
-            if let SessionOption::Perishable(session) = self.session.take() {
-                if let Some(channel) = self.finished_tx.take() {
-                    channel.send((id, session)).unwrap_or_else(move |e| {
-                        error!("Failed to send session to maintenance thread: {e}")
-                    });
+            match self.session.take() {
+                SessionOption::OneShot { device, .. } => notify = Some(device),
+                SessionOption::Perishable(session) => {
+                    if let Some(channel) = self.finished_tx.take() {
+                        channel.send((id, session)).unwrap_or_else(move |e| {
+                            error!("Failed to send session to maintenance thread: {e}")
+                        });
+                    }
                 }
+                SessionOption::None => {}
             }
+        }
+
+        // Make sure the notification is only sent after the session has been dropped
+        if let Some(device) = notify {
+            let _ = REQUEST_QUEUE.notify_free(&device);
         }
     }
 }
 
 #[derive(Default)]
 enum SessionOption {
-    OneShot(LlamaSession),
+    OneShot {
+        session: LlamaSession,
+        device: Device,
+    },
     Perishable(UnloadingSession),
     #[default]
     None,
