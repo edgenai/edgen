@@ -44,6 +44,7 @@ struct PerishableInner<T> {
     current_value: RwLock<Option<T>>,
     active_signal: ActiveSignal,
     state: Arc<RwLock<PerishableState>>,
+    perish_callback: RwLock<Option<Box<dyn Fn() + Send + Sync>>>,
 }
 
 struct PerishableState {
@@ -142,6 +143,7 @@ where
                 },
             ),
             state,
+            perish_callback: RwLock::new(None),
         });
 
         let watched_inner = Arc::clone(&inner);
@@ -175,6 +177,9 @@ where
                     _ = yield_until(check_date) => {
                         if watched_inner.state.read().await.last_accessed == accessed && watched_inner.current_value.write().await.take().is_some() {
                             info!("A {} has perished", std::any::type_name::<T>());
+                            if let Some(callback) = watched_inner.perish_callback.read().await.as_ref() {
+                                callback()
+                            }
                         }
                     }
                 }
@@ -198,6 +203,22 @@ impl<T: 'static> Perishable<T> {
     /// initialized and has not expired).
     pub async fn is_alive(&self) -> bool {
         self.inner.current_value.read().await.is_some()
+    }
+
+    /// Forcefully drops the inner value.
+    pub async fn kill(&self) {
+        if self.inner.current_value.write().await.take().is_some() {
+            info!("A {} has been killed", std::any::type_name::<T>());
+            if let Some(callback) = self.inner.perish_callback.read().await.as_ref() {
+                callback()
+            }
+        }
+    }
+
+    /// Sets an optional called when the value perishes.
+    pub async fn set_callback(&self, callback: Option<impl Fn() + Send + Sync + 'static>) {
+        let callback = callback.map(|f| Box::new(f) as Box<dyn Fn() + Send + Sync>);
+        *self.inner.perish_callback.write().await = callback;
     }
 
     /// Gets a RAII read guard for the value, possibly initializing it.

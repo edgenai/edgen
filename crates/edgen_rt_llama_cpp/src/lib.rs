@@ -78,34 +78,31 @@ impl LLMEndpoint for LlamaCppEndpoint {
     async fn chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
-        device: Device,
         prompt: &str,
         args: CompletionArgs,
         ticket: Ticket,
     ) -> Result<String, LLMEndpointError> {
-        let model = self.get(model_path, device).await;
+        let model = self.get(model_path, ticket.device()).await;
         model.chat_completions(prompt, args, ticket).await
     }
 
     async fn stream_chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
-        device: Device,
         prompt: &str,
         args: CompletionArgs,
         ticket: Ticket,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
-        let model = self.get(model_path, device).await;
+        let model = self.get(model_path, ticket.device()).await;
         model.stream_chat_completions(prompt, args, ticket).await
     }
 
     async fn embeddings(
         &self,
         model_path: impl AsRef<Path> + Send,
-        device: Device,
         inputs: Vec<String>,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
-        let model = self.get(model_path, device).await;
+        let model = self.get(model_path, Device::CPU).await;
         model.embeddings(inputs).await
     }
 
@@ -150,7 +147,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
                         })
                         .await?;
                     if device_pick == Device::CPU && use_mmap {
-                        let model = self.get(model_path, device).await;
+                        let model = self.get(model_path, Device::CPU).await;
                         model.requirements_of(prompt, args).await
                     } else {
                         Ok(Passport::new(Request::Model(size), device))
@@ -268,8 +265,17 @@ impl UnloadingModel {
             }
         });
 
+        let model = Perishable::with_ttl(inactive_llm_ttl());
+        model
+            .set_callback(Some(move || {
+                if let Err(e) = REQUEST_QUEUE.notify_free(&device) {
+                    error!("Failed to notify request queue: {e}");
+                }
+            }))
+            .await;
+
         Self {
-            model: Perishable::with_ttl(inactive_llm_ttl()),
+            model,
             path: model_path.as_ref().to_path_buf(),
             device,
             sessions,
@@ -316,7 +322,7 @@ impl UnloadingModel {
         } else {
             info!("No matching session found, creating new one");
             let (_signal, model) = self.get_or_init().await?;
-            UnloadingSession::new(args, model.clone()).await
+            UnloadingSession::new(args, model.clone(), self.device).await
         };
 
         Ok((session, id, new_context))
@@ -467,10 +473,19 @@ struct UnloadingSession {
 }
 
 impl UnloadingSession {
-    async fn new(args: CompletionArgs, model: LlamaModel) -> Self {
+    async fn new(args: CompletionArgs, model: LlamaModel, device: Device) -> Self {
+        let session = Perishable::with_ttl(inactive_llm_session_ttl());
+        session
+            .set_callback(Some(move || {
+                if let Err(e) = REQUEST_QUEUE.notify_free(&device) {
+                    error!("Failed to notify request queue: {e}");
+                }
+            }))
+            .await;
+
         let params = from_completion_args(args).await;
         Self {
-            session: Perishable::with_ttl(inactive_llm_session_ttl()),
+            session,
             params,
             model,
         }

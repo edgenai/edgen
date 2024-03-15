@@ -73,7 +73,6 @@ pub trait LLMEndpoint {
     async fn chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
-        device: Device,
         prompt: &str,
         args: CompletionArgs,
         ticket: Ticket,
@@ -84,7 +83,6 @@ pub trait LLMEndpoint {
     async fn stream_chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
-        device: Device,
         prompt: &str,
         args: CompletionArgs,
         ticket: Ticket,
@@ -94,7 +92,6 @@ pub trait LLMEndpoint {
     async fn embeddings(
         &self,
         model_path: impl AsRef<Path> + Send,
-        device: Device,
         inputs: Vec<String>,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError>;
 
@@ -125,7 +122,7 @@ pub fn inactive_llm_session_ttl() -> Duration {
     Duration::from_secs(2 * 60)
 }
 
-/// Default LLM context settings retrived from [` ].
+/// Default LLM context settings retrieved from [`default_context_settings`].
 pub struct ContextSettings {
     pub threads: u32,
     pub size: u32,

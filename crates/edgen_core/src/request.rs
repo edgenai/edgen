@@ -1,20 +1,19 @@
-use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::settings::{DevicePolicy, SETTINGS};
 use dashmap::DashMap;
-use memonitor::{list_all_devices, list_backends};
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use thiserror::Error;
-use tokio::spawn;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use tokio::time::sleep;
-use tracing::{info, warn};
+use tokio::time::MissedTickBehavior;
+use tokio::{select, spawn};
+use tracing::warn;
+
+use crate::settings::{DevicePolicy, SETTINGS};
 
 pub static REQUEST_QUEUE: Lazy<RequestManager> = Lazy::new(RequestManager::new);
 
@@ -24,10 +23,10 @@ pub enum QueueError {
     Closed(String),
     #[error("an error has occurred while waiting in queue {0}")]
     Enqueue(String),
-    #[error("cannot fulfill request, model does not fit in memory")]
+    #[error("cannot fulfill request, model does not fit in total memory")]
     Unfulfillable,
     #[error("no device in the system is present that can fulfill the requirements")]
-    NoDevices,
+    NoSuchDevice,
 }
 
 pub struct RequestManager {
@@ -40,17 +39,21 @@ impl RequestManager {
 
         let queues = DashMap::new();
 
-        for device in memonitor::list_all_devices().iter() {
-            let backend = match device.backend_name() {
+        for hw_device in memonitor::list_all_devices().iter() {
+            let device = match hw_device.backend_name() {
                 memonitor::CPU_NAME => Device::CPU,
-                memonitor::VULKAN_NAME => Device::Vulkan(device.local_id()),
+                memonitor::VULKAN_NAME => Device::Vulkan(hw_device.local_id()),
                 &_ => {
                     unimplemented!()
                 }
             };
 
-            let queue = Queue::new(device.global_id(), device.current_memory_stats().total);
-            queues.insert(backend, Arc::new(queue));
+            let queue = Queue::new(
+                device,
+                hw_device.global_id(),
+                hw_device.current_memory_stats().total,
+            );
+            queues.insert(device, Arc::new(queue));
         }
 
         Self { queues }
@@ -63,6 +66,7 @@ impl RequestManager {
             Request::Free => {
                 return Ok(Ticket {
                     content: Some(TicketContent::Free),
+                    device: requirements.device,
                 });
             }
         };
@@ -105,7 +109,10 @@ impl RequestManager {
             DevicePolicy::AlwaysCpu {
                 overflow_to_device: true,
             } => {
-                if local_size(Device::CPU) < list_all_devices()[0].current_memory_stats().available
+                if local_size(Device::CPU)
+                    < memonitor::list_all_devices()[0]
+                        .current_memory_stats()
+                        .available
                 {
                     Device::CPU
                 } else {
@@ -116,7 +123,7 @@ impl RequestManager {
                         }
 
                         if local_size(*queue.key())
-                            < list_all_devices()[queue.device_id]
+                            < memonitor::list_all_devices()[queue.device_id]
                                 .current_memory_stats()
                                 .available
                         {
@@ -132,7 +139,7 @@ impl RequestManager {
             } => {
                 if self.queues.len() == 1 {
                     // Only CPU is available.
-                    return Err(QueueError::NoDevices);
+                    return Err(QueueError::NoSuchDevice);
                 }
 
                 let mut device = Device::Any;
@@ -142,7 +149,7 @@ impl RequestManager {
                     }
 
                     if local_size(*queue.key())
-                        < list_all_devices()[queue.device_id]
+                        < memonitor::list_all_devices()[queue.device_id]
                             .current_memory_stats()
                             .available
                     {
@@ -162,7 +169,7 @@ impl RequestManager {
                     }
 
                     if local_size(*queue.key())
-                        < list_all_devices()[queue.device_id]
+                        < memonitor::list_all_devices()[queue.device_id]
                             .current_memory_stats()
                             .available
                     {
@@ -173,7 +180,9 @@ impl RequestManager {
 
                 if device == Device::Any
                     && local_size(Device::CPU)
-                        < list_all_devices()[0].current_memory_stats().available
+                        < memonitor::list_all_devices()[0]
+                            .current_memory_stats()
+                            .available
                 {
                     Device::CPU
                 } else {
@@ -183,6 +192,13 @@ impl RequestManager {
         };
 
         Ok(device)
+    }
+
+    pub fn notify_free(&self, device: &Device) -> Result<(), QueueError> {
+        self.queues
+            .get(device)
+            .ok_or(QueueError::NoSuchDevice)?
+            .notify_free()
     }
 }
 
@@ -197,22 +213,27 @@ pub enum Device {
 
 struct Queue {
     tx: UnboundedSender<QueueWaiter>,
+    free_tx: UnboundedSender<()>,
     thread: JoinHandle<()>,
     transient_memory: Arc<AtomicUsize>,
+    device: Device,
     device_id: usize,
     max_memory: usize,
 }
 
 impl Queue {
-    fn new(device_id: usize, max_memory: usize) -> Self {
+    fn new(device: Device, device_id: usize, max_memory: usize) -> Self {
         let (tx, rx) = unbounded_channel();
+        let (free_tx, free_rx) = unbounded_channel();
         let transient_memory = Arc::new(AtomicUsize::new(0));
-        let thread = spawn(run_queue(rx, device_id, transient_memory.clone()));
+        let thread = spawn(run_queue(rx, free_rx, device_id, transient_memory.clone()));
 
         Self {
             tx,
+            free_tx,
             thread,
             transient_memory,
+            device,
             device_id,
             max_memory,
         }
@@ -238,9 +259,16 @@ impl Queue {
                 ticket_memory: required_memory,
                 transient_memory: self.transient_memory.clone(),
             }),
+            device: self.device,
         };
 
         Ok(ticket)
+    }
+
+    fn notify_free(&self) -> Result<(), QueueError> {
+        self.free_tx
+            .send(())
+            .map_err(|e| QueueError::Closed(e.to_string()))
     }
 }
 
@@ -252,6 +280,7 @@ impl Drop for Queue {
 
 async fn run_queue(
     mut rx: UnboundedReceiver<QueueWaiter>,
+    mut free_rx: UnboundedReceiver<()>,
     device_id: usize,
     transient_memory: Arc<AtomicUsize>,
 ) {
@@ -261,13 +290,22 @@ async fn run_queue(
                 required_memory,
                 signal_tx,
             } => {
+                // Empty free alert channel
+                while let Ok(()) = free_rx.try_recv() {}
+
+                let mut interval = tokio::time::interval(Duration::from_millis(2000));
+                interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
                 while memonitor::list_all_devices()[device_id]
                     .current_memory_stats()
                     .available
                     - transient_memory.load(Ordering::SeqCst)
                     < required_memory
                 {
-                    sleep(Duration::from_millis(1000)).await; // TODO this is a terrible way to wait for memory to be freed
+                    select! {
+                        Some(_) = free_rx.recv() => {},
+                        _ = interval.tick() => {},
+                    }
                 }
                 let _ = signal_tx.send(());
             }
@@ -306,18 +344,23 @@ pub enum Request {
 #[derive(Debug)]
 pub struct Ticket {
     content: Option<TicketContent>,
+    device: Device,
 }
 
 impl Ticket {
     pub fn consume(&mut self) -> bool {
         self.content.take().is_some()
     }
+
+    pub fn device(&self) -> Device {
+        self.device
+    }
 }
 
 impl Drop for Ticket {
     fn drop(&mut self) {
         if self.content.is_some() {
-            warn!("Unconsumed ticket")
+            warn!("Unconsumed ticket: {self:?}")
         }
     }
 }

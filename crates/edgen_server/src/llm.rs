@@ -38,7 +38,7 @@ pub async fn chat_completion(
     let ticket = REQUEST_QUEUE.enqueue(passport).await?;
 
     ENDPOINT
-        .chat_completions(model_path, Device::Any, &prompt, args, ticket)
+        .chat_completions(model_path, &prompt, args, ticket)
         .await
 }
 
@@ -57,7 +57,7 @@ pub async fn chat_completion_stream(
     let ticket = REQUEST_QUEUE.enqueue(passport).await?;
 
     let stream = ENDPOINT
-        .stream_chat_completions(model_path, Device::Any, &prompt, args, ticket)
+        .stream_chat_completions(model_path, &prompt, args, ticket)
         .await?;
 
     Ok(StoppingStream::wrap_with_stop_words(
@@ -80,7 +80,6 @@ pub async fn embeddings(
             model
                 .file_path()
                 .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
-            Device::CPU,
             input,
         )
         .await
