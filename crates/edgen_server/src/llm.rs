@@ -12,8 +12,10 @@
 
 use futures::Stream;
 use once_cell::sync::Lazy;
+use tracing::info;
 
 use edgen_core::llm::{CompletionArgs, LLMEndpoint, LLMEndpointError};
+use edgen_core::request::{Device, REQUEST_QUEUE};
 use edgen_rt_llama_cpp::LlamaCppEndpoint;
 
 use crate::model::Model;
@@ -26,14 +28,17 @@ pub async fn chat_completion(
     prompt: String,
     args: CompletionArgs,
 ) -> Result<String, LLMEndpointError> {
+    let model_path = model
+        .file_path()
+        .map_err(move |e| LLMEndpointError::Load(e.to_string()))?;
+    let passport = ENDPOINT
+        .requirements_of(&model_path, Device::Any, &prompt, &args)
+        .await?;
+
+    let ticket = REQUEST_QUEUE.enqueue(passport).await?;
+
     ENDPOINT
-        .chat_completions(
-            model
-                .file_path()
-                .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
-            &prompt,
-            args,
-        )
+        .chat_completions(model_path, Device::Any, &prompt, args, ticket)
         .await
 }
 
@@ -42,14 +47,17 @@ pub async fn chat_completion_stream(
     prompt: String,
     args: CompletionArgs,
 ) -> Result<StoppingStream<Box<dyn Stream<Item = String> + Unpin + Send>>, LLMEndpointError> {
+    let model_path = model
+        .file_path()
+        .map_err(move |e| LLMEndpointError::Load(e.to_string()))?;
+    let passport = ENDPOINT
+        .requirements_of(&model_path, Device::Any, &prompt, &args)
+        .await?;
+
+    let ticket = REQUEST_QUEUE.enqueue(passport).await?;
+
     let stream = ENDPOINT
-        .stream_chat_completions(
-            model
-                .file_path()
-                .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
-            &prompt,
-            args,
-        )
+        .stream_chat_completions(model_path, Device::Any, &prompt, args, ticket)
         .await?;
 
     Ok(StoppingStream::wrap_with_stop_words(
@@ -72,6 +80,7 @@ pub async fn embeddings(
             model
                 .file_path()
                 .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
+            Device::CPU,
             input,
         )
         .await

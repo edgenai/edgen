@@ -1,8 +1,12 @@
-use dashmap::DashMap;
+use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::settings::{DevicePolicy, SETTINGS};
+use dashmap::DashMap;
+use memonitor::{list_all_devices, list_backends};
+use once_cell::sync::Lazy;
 use serde::Serialize;
 use thiserror::Error;
 use tokio::spawn;
@@ -10,18 +14,23 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
+use tracing::{info, warn};
+
+pub static REQUEST_QUEUE: Lazy<RequestManager> = Lazy::new(RequestManager::new);
 
 #[derive(Serialize, Error, Debug)]
-enum QueueError {
+pub enum QueueError {
     #[error("the queue has already been closed")]
     Closed(String),
     #[error("an error has occurred while waiting in queue {0}")]
     Enqueue(String),
     #[error("cannot fulfill request, model does not fit in memory")]
     Unfulfillable,
+    #[error("no device in the system is present that can fulfill the requirements")]
+    NoDevices,
 }
 
-struct RequestManager {
+pub struct RequestManager {
     queues: DashMap<Device, Arc<Queue>>,
 }
 
@@ -49,12 +58,12 @@ impl RequestManager {
 
     pub async fn enqueue(&self, requirements: Passport) -> Result<Ticket, QueueError> {
         let required_memory = match requirements.request {
-            Request::Model(required_memory) => (required_memory as f64 * 1.2) as usize,
-            Request::Regular(required_memory) => (required_memory as f64 * 1.1) as usize,
+            Request::Model(required_memory) => (required_memory as f64 * 1.1) as usize,
+            Request::Regular(required_memory) => (required_memory as f64 * 1.05) as usize,
             Request::Free => {
                 return Ok(Ticket {
                     content: Some(TicketContent::Free),
-                })
+                });
             }
         };
 
@@ -83,9 +92,101 @@ impl RequestManager {
 
         queue.enqueue(required_memory).await
     }
+
+    pub async fn pick_device(
+        &self,
+        local_size: impl Fn(Device) -> usize,
+    ) -> Result<Device, QueueError> {
+        let policy = SETTINGS.read().await.read().await.gpu_policy;
+        let device = match policy {
+            DevicePolicy::AlwaysCpu {
+                overflow_to_device: false,
+            } => Device::CPU,
+            DevicePolicy::AlwaysCpu {
+                overflow_to_device: true,
+            } => {
+                if local_size(Device::CPU) < list_all_devices()[0].current_memory_stats().available
+                {
+                    Device::CPU
+                } else {
+                    let mut device = Device::Any;
+                    for queue in self.queues.iter() {
+                        if *queue.key() == Device::CPU {
+                            continue;
+                        }
+
+                        if local_size(*queue.key())
+                            < list_all_devices()[queue.device_id]
+                                .current_memory_stats()
+                                .available
+                        {
+                            device = *queue.key();
+                            break;
+                        }
+                    }
+                    device
+                }
+            }
+            DevicePolicy::AlwaysDevice {
+                overflow_to_cpu: false,
+            } => {
+                if self.queues.len() == 1 {
+                    // Only CPU is available.
+                    return Err(QueueError::NoDevices);
+                }
+
+                let mut device = Device::Any;
+                for queue in self.queues.iter() {
+                    if *queue.key() == Device::CPU {
+                        continue;
+                    }
+
+                    if local_size(*queue.key())
+                        < list_all_devices()[queue.device_id]
+                            .current_memory_stats()
+                            .available
+                    {
+                        device = *queue.key();
+                        break;
+                    }
+                }
+                device
+            }
+            DevicePolicy::AlwaysDevice {
+                overflow_to_cpu: true,
+            } => {
+                let mut device = Device::Any;
+                for queue in self.queues.iter() {
+                    if *queue.key() == Device::CPU {
+                        continue;
+                    }
+
+                    if local_size(*queue.key())
+                        < list_all_devices()[queue.device_id]
+                            .current_memory_stats()
+                            .available
+                    {
+                        device = *queue.key();
+                        break;
+                    }
+                }
+
+                if device == Device::Any
+                    && local_size(Device::CPU)
+                        < list_all_devices()[0].current_memory_stats().available
+                {
+                    Device::CPU
+                } else {
+                    device
+                }
+            }
+        };
+
+        Ok(device)
+    }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Device {
     CPU,
     Vulkan(usize),
@@ -98,6 +199,7 @@ struct Queue {
     tx: UnboundedSender<QueueWaiter>,
     thread: JoinHandle<()>,
     transient_memory: Arc<AtomicUsize>,
+    device_id: usize,
     max_memory: usize,
 }
 
@@ -111,6 +213,7 @@ impl Queue {
             tx,
             thread,
             transient_memory,
+            device_id,
             max_memory,
         }
     }
@@ -128,6 +231,8 @@ impl Queue {
             .await
             .map_err(move |e| QueueError::Enqueue(e.to_string()))?;
 
+        self.transient_memory
+            .fetch_add(required_memory, Ordering::SeqCst);
         let ticket = Ticket {
             content: Some(TicketContent::Regular {
                 ticket_memory: required_memory,
@@ -179,6 +284,7 @@ enum QueueWaiter {
     Close,
 }
 
+#[derive(Debug)]
 pub struct Passport {
     request: Request,
     device: Device,
@@ -190,13 +296,14 @@ impl Passport {
     }
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Request {
     Model(usize),
     Regular(usize),
     Free,
 }
 
+#[derive(Debug)]
 pub struct Ticket {
     content: Option<TicketContent>,
 }
@@ -207,6 +314,15 @@ impl Ticket {
     }
 }
 
+impl Drop for Ticket {
+    fn drop(&mut self) {
+        if self.content.is_some() {
+            warn!("Unconsumed ticket")
+        }
+    }
+}
+
+#[derive(Debug)]
 enum TicketContent {
     Regular {
         ticket_memory: usize,

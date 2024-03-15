@@ -13,7 +13,7 @@
 use core::time::Duration;
 use std::path::Path;
 
-use crate::request::Passport;
+use crate::request::{Device, Passport, QueueError, Ticket};
 use futures::Stream;
 use serde::Serialize;
 use thiserror::Error;
@@ -42,6 +42,8 @@ pub enum LLMEndpointError {
     SessionCreationFailed(String),
     #[error("failed to create embeddings: {0}")]
     Embeddings(String), // Embeddings may involve session creation, advancing, and other things, so it should have its own error
+    #[error("could not submit request")]
+    Queue(#[from] QueueError),
 }
 
 #[derive(Debug, Clone)]
@@ -71,8 +73,10 @@ pub trait LLMEndpoint {
     async fn chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
+        device: Device,
         prompt: &str,
         args: CompletionArgs,
+        ticket: Ticket,
     ) -> Result<String, LLMEndpointError>;
 
     /// Given a prompt with several arguments, return a [`Box`]ed [`Stream`] of [`String`] chunks of the prompt completion,
@@ -80,21 +84,25 @@ pub trait LLMEndpoint {
     async fn stream_chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
+        device: Device,
         prompt: &str,
         args: CompletionArgs,
+        ticket: Ticket,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError>;
 
     /// Runs embeddings inference for the given inputs, returning the result.
     async fn embeddings(
         &self,
         model_path: impl AsRef<Path> + Send,
+        device: Device,
         inputs: Vec<String>,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError>;
 
     /// Return an estimation of the resources required to process inference given its arguments.
     async fn requirements_of(
         &self,
-        model_path: impl AsRef<Path> + Send,
+        model_path: impl AsRef<Path> + Send + Sync,
+        device: Device,
         prompt: &str,
         args: &CompletionArgs,
     ) -> Result<Passport, LLMEndpointError>;

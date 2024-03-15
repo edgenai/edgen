@@ -141,7 +141,7 @@ pub enum SettingsError {
 
 /// A device allocation/execution policy.
 #[non_exhaustive]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum DevicePolicy {
     /// Always allocate and run on the system CPU.
