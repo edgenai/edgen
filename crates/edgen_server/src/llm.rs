@@ -12,7 +12,6 @@
 
 use futures::Stream;
 use once_cell::sync::Lazy;
-use tracing::info;
 
 use edgen_core::llm::{CompletionArgs, LLMEndpoint, LLMEndpointError};
 use edgen_core::request::{Device, REQUEST_QUEUE};
@@ -21,7 +20,11 @@ use edgen_rt_llama_cpp::LlamaCppEndpoint;
 use crate::model::Model;
 use crate::util::StoppingStream;
 
-static ENDPOINT: Lazy<LlamaCppEndpoint> = Lazy::new(Default::default);
+static ENDPOINT: Lazy<LlamaCppEndpoint> = Lazy::new(move || {
+    let endpoint = LlamaCppEndpoint::default();
+    REQUEST_QUEUE.register_users(endpoint.resource_users());
+    endpoint
+});
 
 pub async fn chat_completion(
     model: Model,

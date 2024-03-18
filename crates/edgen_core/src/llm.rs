@@ -13,7 +13,7 @@
 use core::time::Duration;
 use std::path::Path;
 
-use crate::request::{Device, Passport, QueueError, Ticket};
+use crate::request::{Device, Passport, QueueError, ResourceUser, Ticket};
 use futures::Stream;
 use serde::Serialize;
 use thiserror::Error;
@@ -103,6 +103,8 @@ pub trait LLMEndpoint {
         prompt: &str,
         args: &CompletionArgs,
     ) -> Result<Passport, LLMEndpointError>;
+
+    fn resource_users(&self) -> Vec<(Device, Box<dyn ResourceUser>)>;
 
     /// Unloads everything from memory.
     fn reset(&self);

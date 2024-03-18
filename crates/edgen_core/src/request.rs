@@ -11,7 +11,7 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::MissedTickBehavior;
 use tokio::{select, spawn};
-use tracing::warn;
+use tracing::{error, warn};
 
 use crate::settings::{DevicePolicy, SETTINGS};
 
@@ -200,6 +200,25 @@ impl RequestManager {
             .ok_or(QueueError::NoSuchDevice)?
             .notify_free()
     }
+
+    pub fn all_devices() -> Vec<Device> {
+        memonitor::list_all_devices()
+            .iter()
+            .map(|device| match device.backend_name() {
+                memonitor::CPU_NAME => Device::CPU,
+                memonitor::VULKAN_NAME => Device::Vulkan(device.local_id()),
+                &_ => unimplemented!(),
+            })
+            .collect()
+    }
+
+    pub fn register_users(&self, users: Vec<(Device, Box<dyn ResourceUser>)>) {
+        for (device, user) in users {
+            if let Some(queue) = self.queues.get(&device) {
+                queue.register_user(user);
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -212,7 +231,7 @@ pub enum Device {
 }
 
 struct Queue {
-    tx: UnboundedSender<QueueWaiter>,
+    tx: UnboundedSender<QueueItem>,
     free_tx: UnboundedSender<()>,
     thread: JoinHandle<()>,
     transient_memory: Arc<AtomicUsize>,
@@ -241,7 +260,7 @@ impl Queue {
 
     async fn enqueue(&self, required_memory: usize) -> Result<Ticket, QueueError> {
         let (os_tx, os_rx) = oneshot::channel();
-        let waiter = QueueWaiter::Normal {
+        let waiter = QueueItem::Normal {
             required_memory,
             signal_tx: os_tx,
         };
@@ -270,6 +289,12 @@ impl Queue {
             .send(())
             .map_err(|e| QueueError::Closed(e.to_string()))
     }
+
+    fn register_user(&self, user: Box<dyn ResourceUser>) {
+        if let Err(e) = self.tx.send(QueueItem::RegisterUser(user)) {
+            error!("Failed to register resource user: {e}")
+        }
+    }
 }
 
 impl Drop for Queue {
@@ -279,14 +304,15 @@ impl Drop for Queue {
 }
 
 async fn run_queue(
-    mut rx: UnboundedReceiver<QueueWaiter>,
+    mut rx: UnboundedReceiver<QueueItem>,
     mut free_rx: UnboundedReceiver<()>,
     device_id: usize,
     transient_memory: Arc<AtomicUsize>,
 ) {
+    let mut users = vec![];
     while let Some(request) = rx.recv().await {
         match request {
-            QueueWaiter::Normal {
+            QueueItem::Normal {
                 required_memory,
                 signal_tx,
             } => {
@@ -296,33 +322,57 @@ async fn run_queue(
                 let mut interval = tokio::time::interval(Duration::from_millis(2000));
                 interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-                while memonitor::list_all_devices()[device_id]
+                let mut available = memonitor::list_all_devices()[device_id]
                     .current_memory_stats()
                     .available
-                    - transient_memory.load(Ordering::SeqCst)
-                    < required_memory
-                {
+                    - transient_memory.load(Ordering::SeqCst);
+                while available < required_memory {
                     if signal_tx.is_closed() {
                         break;
+                    }
+
+                    let mut ordered_ids: Vec<(usize, usize)> = users
+                        .iter()
+                        .map(|user: &Box<dyn ResourceUser>| user.allocs())
+                        .enumerate()
+                        .collect();
+                    // Sort by decreasing allocation count
+                    ordered_ids.sort_by(|a, b| b.1.cmp(&a.1));
+
+                    let mut freed = 0;
+                    for (id, _) in ordered_ids {
+                        if required_memory - available < freed {
+                            break;
+                        }
+                        freed += users[id]
+                            .request_memory(required_memory - available - freed)
+                            .await;
                     }
 
                     select! {
                         Some(_) = free_rx.recv() => {},
                         _ = interval.tick() => {},
                     }
+
+                    available = memonitor::list_all_devices()[device_id]
+                        .current_memory_stats()
+                        .available
+                        - transient_memory.load(Ordering::SeqCst);
                 }
                 let _ = signal_tx.send(());
             }
-            QueueWaiter::Close => break,
+            QueueItem::RegisterUser(user) => users.push(user),
+            QueueItem::Close => break,
         }
     }
 }
 
-enum QueueWaiter {
+enum QueueItem {
     Normal {
         required_memory: usize,
         signal_tx: oneshot::Sender<()>,
     },
+    RegisterUser(Box<dyn ResourceUser>),
     Close,
 }
 
@@ -388,4 +438,11 @@ impl Drop for TicketContent {
             transient_memory.fetch_sub(*ticket_memory, Ordering::SeqCst);
         }
     }
+}
+
+#[async_trait::async_trait]
+pub trait ResourceUser: Send {
+    fn allocs(&self) -> usize;
+
+    async fn request_memory(&self, memory: usize) -> usize;
 }

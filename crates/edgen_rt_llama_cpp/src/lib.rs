@@ -13,6 +13,7 @@
 use std::mem::take;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
@@ -27,9 +28,9 @@ use llama_cpp::{
 };
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::task::JoinHandle;
-use tokio::time::{interval, MissedTickBehavior};
+use tokio::time::{interval, Instant, MissedTickBehavior};
 use tokio::{fs, select, spawn};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use edgen_core::cleanup_interval;
 use edgen_core::llm::{
@@ -37,7 +38,9 @@ use edgen_core::llm::{
     LLMEndpoint, LLMEndpointError, ASSISTANT_TAG, SYSTEM_TAG, TOOL_TAG, USER_TAG,
 };
 use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, PerishableWriteGuard};
-use edgen_core::request::{Device, Passport, Request, Ticket, REQUEST_QUEUE};
+use edgen_core::request::{
+    Device, Passport, Request, RequestManager, ResourceUser, Ticket, REQUEST_QUEUE,
+};
 use edgen_core::settings::SETTINGS;
 
 // TODO this should be in settings
@@ -58,18 +61,18 @@ impl LlamaCppEndpoint {
     /// loaded, first initialise it and add it to the `models` collection.
     async fn get(
         &self,
-        model_path: impl AsRef<Path>,
+        model_path: impl AsRef<Path> + Send,
         device: Device,
-    ) -> dashmap::mapref::one::Ref<ModelKey, UnloadingModel> {
+    ) -> Result<dashmap::mapref::one::Ref<ModelKey, UnloadingModel>, LLMEndpointError> {
         let key = ModelKey::new(&model_path, device);
 
         if !self.models.contains_key(&key) {
-            let model = UnloadingModel::new(model_path, device).await;
+            let model = UnloadingModel::new(model_path, device).await?;
             self.models.insert(key.clone(), model);
         }
 
         // PANIC SAFETY: Just inserted the element if it isn't already inside the map, so must be present in the map
-        self.models.get(&key).unwrap()
+        Ok(self.models.get(&key).unwrap())
     }
 }
 
@@ -82,7 +85,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
         args: CompletionArgs,
         ticket: Ticket,
     ) -> Result<String, LLMEndpointError> {
-        let model = self.get(model_path, ticket.device()).await;
+        let model = self.get(model_path, ticket.device()).await?;
         model.chat_completions(prompt, args, ticket).await
     }
 
@@ -93,7 +96,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
         args: CompletionArgs,
         ticket: Ticket,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
-        let model = self.get(model_path, ticket.device()).await;
+        let model = self.get(model_path, ticket.device()).await?;
         model.stream_chat_completions(prompt, args, ticket).await
     }
 
@@ -102,7 +105,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
         model_path: impl AsRef<Path> + Send,
         inputs: Vec<String>,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
-        let model = self.get(model_path, Device::CPU).await;
+        let model = self.get(model_path, Device::CPU).await?;
         model.embeddings(inputs).await
     }
 
@@ -131,7 +134,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
         } else {
             match device {
                 Device::CPU if LlamaParams::default().use_mmap => {
-                    let model = self.get(model_path, device).await;
+                    let model = self.get(model_path, device).await?;
                     model.requirements_of(prompt, args).await
                 }
                 Device::Any => {
@@ -147,7 +150,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
                         })
                         .await?;
                     if device_pick == Device::CPU && use_mmap {
-                        let model = self.get(model_path, Device::CPU).await;
+                        let model = self.get(model_path, Device::CPU).await?;
                         model.requirements_of(prompt, args).await
                     } else {
                         Ok(Passport::new(Request::Model(size), device))
@@ -159,6 +162,18 @@ impl LLMEndpoint for LlamaCppEndpoint {
                 )),
             }
         }
+    }
+
+    fn resource_users(&self) -> Vec<(Device, Box<dyn ResourceUser>)> {
+        let mut ret = vec![];
+        for device in RequestManager::all_devices() {
+            let resource_user = LlamaResourceUser {
+                device,
+                models: self.models.clone(),
+            };
+            ret.push((device, Box::new(resource_user) as Box<dyn ResourceUser>));
+        }
+        ret
     }
 
     fn reset(&self) {
@@ -228,6 +243,71 @@ async fn file_size(path: impl AsRef<Path> + Send) -> Result<usize, LLMEndpointEr
     }
 }
 
+struct LlamaResourceUser {
+    device: Device,
+    models: Arc<DashMap<ModelKey, UnloadingModel>>,
+}
+
+#[async_trait::async_trait]
+impl ResourceUser for LlamaResourceUser {
+    fn allocs(&self) -> usize {
+        self.models
+            .iter()
+            .filter(|model| model.key().device == self.device)
+            .map(|model| {
+                let m = if model.key().device == Device::CPU && LlamaParams::default().use_mmap {
+                    0
+                } else {
+                    1
+                };
+                model.sessions() + m
+            })
+            .reduce(|a, b| a + b)
+            .unwrap_or(0)
+    }
+
+    async fn request_memory(&self, memory: usize) -> usize {
+        let mut droppable: Vec<(ModelKey, Instant)> = self
+            .models
+            .iter()
+            .filter(|model| {
+                model.key().device == self.device
+                    // Filter models that only have sessions in flight
+                    && !(model.sessions() > 0 && model.droppable_sessions() == 0)
+            })
+            .map(|model| (model.key().clone(), model.created()))
+            .collect();
+
+        // Sort by oldest to most recent
+        droppable.sort_by(|a, b| a.1.cmp(&b.1));
+
+        let mut freed = 0;
+        for (key, _) in droppable {
+            if memory < freed {
+                break;
+            }
+
+            if let Some(model) = self.models.get(&key) {
+                if !(model.key().device == Device::CPU && LlamaParams::default().use_mmap)
+                    && model.sessions() == 0
+                {
+                    freed = model.size();
+                    model.unload().await;
+                } else {
+                    freed += model.request_memory(memory - freed).await;
+                }
+            }
+        }
+
+        info!(
+            "Llama backend has freed {freed} bytes from {:?}",
+            self.device
+        );
+
+        freed
+    }
+}
+
 /// A [`LlamaModel`] (as well as its associated [`LlamaSession`]s) that unloads itself from memory after not being used
 /// for a period of time.
 struct UnloadingModel {
@@ -237,6 +317,9 @@ struct UnloadingModel {
     sessions: Arc<DashMap<SessionId, UnloadingSession>>,
     maintenance_thread: JoinHandle<()>,
     finished_tx: UnboundedSender<(SessionId, UnloadingSession)>,
+    sessions_in_flight: Arc<AtomicUsize>,
+    created: Instant,
+    size: usize,
 }
 
 impl UnloadingModel {
@@ -244,7 +327,10 @@ impl UnloadingModel {
     ///
     /// This function is lazy and does not actually load the model into system memory, the model must be accessed in
     /// order to be loaded.
-    async fn new(model_path: impl AsRef<Path>, device: Device) -> Self {
+    async fn new(
+        model_path: impl AsRef<Path> + Send,
+        device: Device,
+    ) -> Result<Self, LLMEndpointError> {
         let sessions: Arc<DashMap<SessionId, UnloadingSession>> = Default::default();
         let (tx, mut rx) = unbounded_channel();
 
@@ -274,19 +360,54 @@ impl UnloadingModel {
             }))
             .await;
 
-        Self {
+        Ok(Self {
             model,
             path: model_path.as_ref().to_path_buf(),
             device,
             sessions,
             maintenance_thread,
             finished_tx: tx,
-        }
+            sessions_in_flight: Arc::new(AtomicUsize::new(0)),
+            created: Instant::now(),
+            size: file_size(model_path).await?,
+        })
     }
 
     /// Returns **`true`** if this model is currently loaded in system memory, **`false`** otherwise.
     async fn loaded(&self) -> bool {
         self.model.is_alive().await
+    }
+
+    async fn unload(&self) {
+        self.model.kill().await;
+    }
+
+    async fn request_memory(&self, memory: usize) -> usize {
+        let mut droppable: Vec<(SessionId, Instant)> = self
+            .sessions
+            .iter()
+            .map(|session| (session.key().clone(), session.created()))
+            .collect();
+
+        droppable.sort_by(|a, b| a.1.cmp(&b.1));
+
+        let mut freed = 0;
+        for (key, _) in droppable {
+            if memory < freed {
+                break;
+            }
+
+            if let Some(session) = self.sessions.get(&key) {
+                if let Ok(size) = session.size().await {
+                    freed += size;
+                    session.unload().await;
+                } else {
+                    warn!("Session is already uninitialised")
+                }
+            }
+        }
+
+        freed
     }
 
     async fn requirements_of(
@@ -339,6 +460,8 @@ impl UnloadingModel {
 
         if args.one_shot {
             info!("Allocating one-shot LLM session");
+            let _in_flight_ref = InFlightRef::new(&self.sessions_in_flight);
+
             let params = from_completion_args(args).await;
             let res = {
                 let mut session = model_guard
@@ -364,7 +487,7 @@ impl UnloadingModel {
             let (session, mut id, new_context) = self.take_chat_session(prompt, args).await?;
 
             let (_session_signal, handle) = {
-                let (session_signal, mut session_guard) = session.get_or_init(ticket).await?;
+                let (session_signal, mut session_guard) = session.get_or_init(Some(ticket)).await?;
 
                 session_guard
                     .advance_context_async(new_context)
@@ -396,6 +519,7 @@ impl UnloadingModel {
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
         let (model_signal, model_guard) = self.get_or_init().await?;
 
+        let in_flight_ref = InFlightRef::new(&self.sessions_in_flight);
         if args.one_shot {
             info!("Allocating one-shot LLM session");
             let params = from_completion_args(args).await;
@@ -406,8 +530,15 @@ impl UnloadingModel {
             ticket.consume();
 
             Ok(Box::new(
-                CompletionStream::new_oneshot(session, prompt, model_signal, self.device, sampler)
-                    .await?,
+                CompletionStream::new_oneshot(
+                    session,
+                    prompt,
+                    model_signal,
+                    self.device,
+                    sampler,
+                    in_flight_ref,
+                )
+                .await?,
             ))
         } else {
             let (session, id, new_context) = self.take_chat_session(prompt, args).await?;
@@ -416,13 +547,24 @@ impl UnloadingModel {
             let tx = self.finished_tx.clone();
 
             Ok(Box::new(
-                CompletionStream::new(session, id, new_context, model_signal, sampler, tx, ticket)
-                    .await?,
+                CompletionStream::new(
+                    session,
+                    id,
+                    new_context,
+                    model_signal,
+                    sampler,
+                    tx,
+                    in_flight_ref,
+                    ticket,
+                )
+                .await?,
             ))
         }
     }
 
     async fn embeddings(&self, inputs: Vec<String>) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
+        info!("Allocating one-shot LLM embeddings session");
+        let _in_flight_ref = InFlightRef::new(&self.sessions_in_flight);
         let threads = SETTINGS.read().await.read().await.auto_threads(false);
         let mut params = EmbeddingsParams::default();
         params.n_threads = threads;
@@ -455,6 +597,7 @@ impl UnloadingModel {
         self.model
             .get_or_try_init(move || async move {
                 info!("Loading {} into memory", path.to_string_lossy());
+
                 let mut args = LlamaParams::default();
 
                 if device == Device::CPU {
@@ -469,6 +612,22 @@ impl UnloadingModel {
             })
             .await
     }
+
+    fn sessions(&self) -> usize {
+        self.sessions.len() + self.sessions_in_flight.load(Ordering::SeqCst)
+    }
+
+    fn droppable_sessions(&self) -> usize {
+        self.sessions.len()
+    }
+
+    fn created(&self) -> Instant {
+        self.created
+    }
+
+    fn size(&self) -> usize {
+        self.size
+    }
 }
 
 impl Drop for UnloadingModel {
@@ -481,6 +640,7 @@ struct UnloadingSession {
     session: Perishable<LlamaSession>,
     params: SessionParams,
     model: LlamaModel,
+    created: Instant,
 }
 
 impl UnloadingSession {
@@ -499,6 +659,7 @@ impl UnloadingSession {
             session,
             params,
             model,
+            created: Instant::now(),
         }
     }
 
@@ -507,11 +668,15 @@ impl UnloadingSession {
         self.session.is_alive().await
     }
 
+    async fn unload(&self) {
+        self.session.kill().await;
+    }
+
     /// Helper function to acquire a write guard to a [`LlamaSession`] (and its associated
     /// [`ActiveSignal`]).
     async fn get_or_init(
         &self,
-        mut ticket: Ticket,
+        ticket: Option<Ticket>,
     ) -> Result<(ActiveSignal, PerishableWriteGuard<LlamaSession>), LLMEndpointError> {
         let params = self.params.clone();
         let model = self.model.clone();
@@ -524,8 +689,19 @@ impl UnloadingSession {
                     .map_err(move |e| LLMEndpointError::SessionCreationFailed(e.to_string()))
             })
             .await;
-        ticket.consume();
+        if let Some(mut ticket) = ticket {
+            ticket.consume();
+        }
         res
+    }
+
+    fn created(&self) -> Instant {
+        self.created
+    }
+
+    async fn size(&self) -> Result<usize, LLMEndpointError> {
+        let (_signal, session) = self.get_or_init(None).await?;
+        Ok(session.async_memory_size().await)
     }
 }
 
@@ -657,6 +833,25 @@ fn find_any(text: &str, patterns: &[&str]) -> Option<usize> {
     }
 }
 
+struct InFlightRef {
+    allocations: Arc<AtomicUsize>,
+}
+
+impl InFlightRef {
+    fn new(allocations: &Arc<AtomicUsize>) -> Self {
+        allocations.fetch_add(1, Ordering::SeqCst);
+        Self {
+            allocations: allocations.clone(),
+        }
+    }
+}
+
+impl Drop for InFlightRef {
+    fn drop(&mut self) {
+        self.allocations.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 /// A [`Stream`] of [`Token`]s returned by a [`LlamaCppSession::stream_complete`] call.
 struct CompletionStream {
     /// Handle to the model completions handle.
@@ -670,6 +865,8 @@ struct CompletionStream {
 
     /// A sender used to send both `session` and `session_id` once generation is completion
     finished_tx: Option<UnboundedSender<(SessionId, UnloadingSession)>>,
+
+    _in_flight_ref: InFlightRef,
 
     /// The object signaling that `model` is currently active.
     _model_signal: ActiveSignal,
@@ -697,10 +894,11 @@ impl CompletionStream {
         model_signal: ActiveSignal,
         sampler: StandardSampler,
         finished_tx: UnboundedSender<(SessionId, UnloadingSession)>,
+        in_flight_ref: InFlightRef,
         ticket: Ticket,
     ) -> Result<Self, LLMEndpointError> {
         let (session_signal, handle) = {
-            let (session_signal, mut session_guard) = session.get_or_init(ticket).await?;
+            let (session_signal, mut session_guard) = session.get_or_init(Some(ticket)).await?;
 
             session_guard
                 .advance_context_async(new_context)
@@ -719,6 +917,7 @@ impl CompletionStream {
             session: SessionOption::Perishable(session),
             session_id: Some(session_id),
             finished_tx: Some(finished_tx),
+            _in_flight_ref: in_flight_ref,
             _model_signal: model_signal,
             _session_signal: Some(session_signal),
         })
@@ -730,6 +929,7 @@ impl CompletionStream {
         model_signal: ActiveSignal,
         device: Device,
         sampler: StandardSampler,
+        in_flight_ref: InFlightRef,
     ) -> Result<Self, LLMEndpointError> {
         session
             .advance_context_async(new_context)
@@ -742,6 +942,7 @@ impl CompletionStream {
             session: SessionOption::OneShot { session, device },
             session_id: None,
             finished_tx: None,
+            _in_flight_ref: in_flight_ref,
             _model_signal: model_signal,
             _session_signal: None,
         })
