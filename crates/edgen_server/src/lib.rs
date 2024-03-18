@@ -489,7 +489,7 @@ mod tests {
 
         let sound = include_bytes!("../resources/frost.wav");
         let mp = multipart::MultipartForm::new()
-            .add_text("model", "ignore")
+            .add_text("model", "default")
             .add_part(
                 "file",
                 multipart::Part::bytes(sound.as_slice()).file_name(&"frost.wav"),

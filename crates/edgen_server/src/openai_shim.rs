@@ -37,6 +37,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use edgen_core::llm::{CompletionArgs, LLMEndpointError};
+use edgen_core::settings;
 use edgen_core::settings::SETTINGS;
 use edgen_core::whisper::WhisperEndpointError;
 
@@ -587,31 +588,15 @@ responses(
 pub async fn chat_completions(
     Json(req): Json<CreateChatCompletionRequest<'_>>,
 ) -> Result<impl IntoResponse, ChatCompletionError> {
-    // For MVP1, the model string in the request is *always* ignored.
-    let model_name = SETTINGS
-        .read()
-        .await
-        .read()
-        .await
-        .chat_completions_model_name
-        .trim()
-        .to_string();
-    let repo = SETTINGS
-        .read()
-        .await
-        .read()
-        .await
-        .chat_completions_model_repo
-        .trim()
-        .to_string();
-    let dir = SETTINGS
-        .read()
-        .await
-        .read()
-        .await
-        .chat_completions_models_dir
-        .trim()
-        .to_string();
+    let params = get_chat_completions_model_params(req.model.as_ref()).await;
+    if let Err(error) = params {
+        return Err(ChatCompletionError::ProhibitedName {
+            model_name: req.model.to_string(),
+            reason: Cow::Borrowed(error),
+        });
+    }
+
+    let (model_name, repo, dir) = params.unwrap();
 
     if model_name.is_empty() {
         return Err(ChatCompletionError::ProhibitedName {
@@ -706,6 +691,93 @@ pub async fn chat_completions(
     };
 
     Ok(response)
+}
+
+async fn get_chat_completions_model_params(
+    name: &str,
+) -> Result<(String, String, String), &'static str> {
+    async fn default_trio() -> (String, String, String) {
+        (
+            settings::chat_completions_name().await,
+            settings::chat_completions_repo().await,
+            settings::chat_completions_dir().await,
+        )
+    }
+    if name.is_empty() {
+        return Ok(default_trio().await);
+    }
+    if name.to_ascii_lowercase() == "default" {
+        return Ok(default_trio().await);
+    }
+    get_model_params(name, &settings::chat_completions_dir().await)
+}
+
+async fn get_audio_transcriptions_model_params(
+    name: &str,
+) -> Result<(String, String, String), &'static str> {
+    async fn default_trio() -> (String, String, String) {
+        (
+            settings::audio_transcriptions_name().await,
+            settings::audio_transcriptions_repo().await,
+            settings::audio_transcriptions_dir().await,
+        )
+    }
+    if name.is_empty() {
+        return Ok(default_trio().await);
+    }
+    if name.to_ascii_lowercase() == "default" {
+        return Ok(default_trio().await);
+    }
+    get_model_params(name, &settings::audio_transcriptions_dir().await)
+}
+
+fn get_model_params(name: &str, dir: &str) -> Result<(String, String, String), &'static str> {
+    match parse_model_param(name) {
+        Ok((owner, repo, name)) => Ok((name, owner + "/" + &repo, dir.to_string())),
+        Err(_) => Ok((name.to_string(), "".to_string(), dir.to_string())),
+    }
+}
+
+fn parse_model_param(model: &str) -> Result<(String, String, String), ParseError> {
+    let vs = model.split("/").collect::<Vec<&str>>();
+    let l = vs.len();
+    if l < 3 {
+        return Err(ParseError::MissingSeparator);
+    } else if l > 3 {
+        return Err(ParseError::TooManySeparators);
+    }
+
+    let owner = vs[0].to_string();
+    if owner.is_empty() {
+        return Err(ParseError::NoOwner);
+    }
+
+    let repo = vs[1].to_string();
+    if repo.is_empty() {
+        return Err(ParseError::NoRepo);
+    }
+
+    let name = vs[2].to_string();
+    if name.is_empty() {
+        return Err(ParseError::NoModel);
+    }
+
+    Ok((owner, repo, name))
+}
+
+/// Error Parsing the model parameter
+#[derive(Debug, Clone)]
+pub enum ParseError {
+    /// Expected are three fields separated by '/'; fewer fields were provided.
+    MissingSeparator,
+    /// Expected are three fields separated by '/'; more than three fields were provided.
+    TooManySeparators,
+    /// No model name was provided.
+    NoModel,
+    /// No repo owner was provided.
+    NoOwner,
+    /// No repo was provided.
+    NoRepo,
 }
 
 /// A request to generate embeddings for one or more pieces of text.
@@ -961,33 +1033,16 @@ responses(
 pub async fn create_transcription(
     req: TypedMultipart<CreateTranscriptionRequest>,
 ) -> Result<impl IntoResponse, TranscriptionError> {
-    // For MVP1, the model string in the request is *always* ignored.
-    let model_name = SETTINGS
-        .read()
-        .await
-        .read()
-        .await
-        .audio_transcriptions_model_name
-        .trim()
-        .to_string();
-    let repo = SETTINGS
-        .read()
-        .await
-        .read()
-        .await
-        .audio_transcriptions_model_repo
-        .trim()
-        .to_string();
-    let dir = SETTINGS
-        .read()
-        .await
-        .read()
-        .await
-        .audio_transcriptions_models_dir
-        .trim()
-        .to_string();
+    let params = get_audio_transcriptions_model_params(req.model.as_ref()).await;
+    if let Err(error) = params {
+        return Err(TranscriptionError::ProhibitedName {
+            model_name: req.model.to_string(),
+            reason: Cow::Borrowed(error),
+        });
+    }
 
-    // invalid
+    let (model_name, repo, dir) = params.unwrap();
+
     if model_name.is_empty() {
         return Err(TranscriptionError::ProhibitedName {
             model_name,
@@ -1066,6 +1121,127 @@ impl IntoResponse for TranscriptionError {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    async fn init_settings_for_test() {
+        SETTINGS
+            .write()
+            .await
+            .init()
+            .await
+            .expect("Failed to initialise settings");
+    }
+
+    #[tokio::test]
+    async fn default_chat_model_name() {
+        init_settings_for_test().await;
+        assert_eq!(
+            get_chat_completions_model_params("default").await,
+            Ok((
+                settings::chat_completions_name().await,
+                settings::chat_completions_repo().await,
+                settings::chat_completions_dir().await,
+            )),
+            "unexpected model triple",
+        );
+    }
+
+    #[tokio::test]
+    async fn default_audio_model_name() {
+        init_settings_for_test().await;
+        assert_eq!(
+            get_audio_transcriptions_model_params("default").await,
+            Ok((
+                settings::audio_transcriptions_name().await,
+                settings::audio_transcriptions_repo().await,
+                settings::audio_transcriptions_dir().await,
+            )),
+            "unexpected model triple",
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_chat_model_name() {
+        init_settings_for_test().await;
+        assert_eq!(
+            get_chat_completions_model_params("default").await,
+            Ok((
+                settings::chat_completions_name().await,
+                settings::chat_completions_repo().await,
+                settings::chat_completions_dir().await,
+            )),
+            "unexpected model triple",
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_audio_model_name() {
+        init_settings_for_test().await;
+        assert_eq!(
+            get_audio_transcriptions_model_params("default").await,
+            Ok((
+                settings::audio_transcriptions_name().await,
+                settings::audio_transcriptions_repo().await,
+                settings::audio_transcriptions_dir().await,
+            )),
+            "unexpected model triple",
+        );
+    }
+
+    #[tokio::test]
+    async fn custom_chat_model_name() {
+        init_settings_for_test().await;
+        assert_eq!(
+            get_chat_completions_model_params("TheFake/TheFakeRepo/fake-model.gguf").await,
+            Ok((
+                "fake-model.gguf".to_string(),
+                "TheFake/TheFakeRepo".to_string(),
+                settings::chat_completions_dir().await,
+            )),
+            "unexpected model triple",
+        );
+    }
+
+    #[tokio::test]
+    async fn custom_audio_model_name() {
+        init_settings_for_test().await;
+        assert_eq!(
+            get_audio_transcriptions_model_params("TheFake/TheFakeRepo/fake-model.gguf").await,
+            Ok((
+                "fake-model.gguf".to_string(),
+                "TheFake/TheFakeRepo".to_string(),
+                settings::audio_transcriptions_dir().await,
+            )),
+            "unexpected model triple",
+        );
+    }
+
+    #[tokio::test]
+    async fn custom_no_repo_chat_model_name() {
+        init_settings_for_test().await;
+        assert_eq!(
+            get_chat_completions_model_params("fake-model.gguf").await,
+            Ok((
+                "fake-model.gguf".to_string(),
+                "".to_string(),
+                settings::chat_completions_dir().await,
+            )),
+            "unexpected model triple",
+        );
+    }
+
+    #[tokio::test]
+    async fn custom_no_repo_audio_model_name() {
+        init_settings_for_test().await;
+        assert_eq!(
+            get_audio_transcriptions_model_params("fake-model.gguf").await,
+            Ok((
+                "fake-model.gguf".to_string(),
+                "".to_string(),
+                settings::audio_transcriptions_dir().await,
+            )),
+            "unexpected model triple",
+        );
+    }
 
     #[test]
     fn deserialize_chat_completion() {
