@@ -26,7 +26,19 @@ Generate text from text. {{ className: 'lead' }}
 
     <Properties>
       <Property name="model" type="string">
-        The model used for chat completions. **WARNING**: currently, this attribute is **ignored** and the **default model is used**.
+        The model used for chat completions.
+        <ul>
+            <li>
+                If the model name is "default", the chat model from the configuration is used (see [Documentation &raquo; Configuration](/documentation/configuration) for details).
+            </li>
+            <li>
+                If the model name follows the format repo-owner/repo-name/model-name, the indicated model is used and, if it is not present, it will be downloaded from [huggingface](https://huggingface.co/). If it cannot be downloaded, Edgen responds with an error. Example: "TheBloke/neural-chat-7B-v3-3-GGUF/neural-chat-7b-v3-3.Q4_K_M.gguf".
+            </li>
+            <li>
+                If the model name contains just a file name, e.g.: "my-model.bin", Edgen will try using the file of this name in the data directory as defined in the configuration. If the the file does not exist there, Edgen responds with an error.
+            </li>
+        </ul>
+
       </Property>
     </Properties>
 

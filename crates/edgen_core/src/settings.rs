@@ -119,6 +119,90 @@ pub async fn audio_transcriptions_dir() -> String {
         .to_string()
 }
 
+/// Helper to get the embeddings model directory.
+pub async fn embeddings_dir() -> String {
+    SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .embeddings_models_dir
+        .trim()
+        .to_string()
+}
+
+/// Helper to get the chat completions model name.
+pub async fn chat_completions_name() -> String {
+    SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .chat_completions_model_name
+        .trim()
+        .to_string()
+}
+
+/// Helper to get the audio transcriptions model name.
+pub async fn audio_transcriptions_name() -> String {
+    SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .audio_transcriptions_model_name
+        .trim()
+        .to_string()
+}
+
+/// Helper to get the embeddings model name.
+pub async fn embeddings_name() -> String {
+    SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .embeddings_model_name
+        .trim()
+        .to_string()
+}
+
+/// Helper to get the chat completions repo.
+pub async fn chat_completions_repo() -> String {
+    SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .chat_completions_model_repo
+        .trim()
+        .to_string()
+}
+
+/// Helper to get the audio transcriptions model repo.
+pub async fn audio_transcriptions_repo() -> String {
+    SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .audio_transcriptions_model_repo
+        .trim()
+        .to_string()
+}
+
+/// Helper to get the embeddings model repo.
+pub async fn embeddings_repo() -> String {
+    SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .embeddings_model_repo
+        .trim()
+        .to_string()
+}
+
 #[derive(Error, Debug, Serialize)]
 pub enum SettingsError {
     #[error("failed to read the settings file: {0}")]
