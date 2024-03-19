@@ -28,6 +28,8 @@ pub enum QueueError {
     Unfulfillable,
     #[error("no device in the system is present that can fulfill the requirements")]
     NoSuchDevice,
+    #[error("must enqueue with a specific device")]
+    Unspecified,
 }
 
 /// An object for orchestrating the execution of several parallel requests.
@@ -79,6 +81,10 @@ impl RequestManager {
     ///
     /// A [`Ticket`] necessary to call a generation function.
     pub async fn enqueue(&self, requirements: Passport) -> Result<Ticket, QueueError> {
+        if requirements.device == Device::Any {
+            return Err(QueueError::Unspecified);
+        }
+
         let required_memory = match requirements.request {
             Request::Model(required_memory) => (required_memory as f64 * 1.1) as usize,
             Request::Regular(required_memory) => (required_memory as f64 * 1.05) as usize,
@@ -90,20 +96,7 @@ impl RequestManager {
             }
         };
 
-        let queue = if requirements.device == Device::Any {
-            let mut capable_devices = Vec::with_capacity(self.queues.len());
-            for device in &self.queues {
-                if required_memory < device.max_memory {
-                    capable_devices.push(*device.key());
-                }
-            }
-            if capable_devices.is_empty() {
-                return Err(QueueError::Unfulfillable);
-            }
-
-            // TODO decide device based on current policy
-            self.queues.get(&capable_devices[0]).unwrap().clone()
-        } else {
+        let queue = {
             // Unwrap should never fail
             let queue = self.queues.get(&requirements.device).unwrap();
             if queue.max_memory < required_memory {
@@ -450,7 +443,6 @@ async fn run_queue(
                 let _ = signal_tx.send(());
             }
             QueueItem::RegisterUser(user) => users.push(user),
-            QueueItem::Close => break,
         }
     }
 }
@@ -459,13 +451,15 @@ async fn run_queue(
 enum QueueItem {
     /// A standard generation request to be executed.
     Normal {
+        /// The estimated amount of memory the request needs to allocate.
         required_memory: usize,
+
+        /// A oneshot channel used to signal the item has been through the queue.
         signal_tx: oneshot::Sender<()>,
     },
+
     /// A request to register a new resource user.
     RegisterUser(Box<dyn ResourceUser>),
-    /// A request to close the queue.
-    Close,
 }
 
 #[derive(Debug)]
@@ -475,6 +469,7 @@ enum QueueItem {
 pub struct Passport {
     /// A basic description of the request.
     request: Request,
+
     /// The device the request should be executed on.
     device: Device,
 }
@@ -492,8 +487,10 @@ pub enum Request {
     /// A complex request that may require multiple allocations, where estimating some allocations depend on some
     /// resource already being allocated.
     Model(usize),
+
     /// A normal request.
     Regular(usize),
+
     /// A request that does not require any allocations.
     Free,
 }
@@ -505,6 +502,7 @@ pub enum Request {
 pub struct Ticket {
     /// The inner contents of the ticket.
     content: Option<TicketContent>,
+
     /// The device the request executes on.
     device: Device,
 }
@@ -532,10 +530,16 @@ impl Drop for Ticket {
 /// The inner content of a [`Ticket`].
 #[derive(Debug)]
 enum TicketContent {
+    /// A normal ticket.
     Regular {
+        /// The estimated memory necessary for this ticket's request.
         ticket_memory: usize,
+
+        /// A reference to a queue's transient memory counter.
         transient_memory: Arc<AtomicUsize>,
     },
+
+    /// No resource allocations are necessary for this ticket's request.
     Free,
 }
 
