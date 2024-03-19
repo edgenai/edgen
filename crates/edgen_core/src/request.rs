@@ -15,6 +15,7 @@ use tracing::{error, warn};
 
 use crate::settings::{DevicePolicy, SETTINGS};
 
+/// Global request manager.
 pub static REQUEST_QUEUE: Lazy<RequestManager> = Lazy::new(RequestManager::new);
 
 #[derive(Serialize, Error, Debug)]
@@ -29,17 +30,27 @@ pub enum QueueError {
     NoSuchDevice,
 }
 
+/// An object for orchestrating the execution of several parallel requests.
+///
+/// Each request should be submitted to a queue, with a queue existing for each backend device. Request execution
+/// is throttled if the memory limit of a device is reached, to avoid *OOM* errors.
 pub struct RequestManager {
+    /// The collection of queues, each mapped to a device.
     queues: DashMap<Device, Arc<Queue>>,
 }
 
 impl RequestManager {
+    /// Create a new request manager.
     fn new() -> Self {
         memonitor::init();
 
         let queues = DashMap::new();
 
         for hw_device in memonitor::list_all_devices().iter() {
+            if let memonitor::DeviceKind::GPU(memonitor::GPUKind::Integrated) = hw_device.kind() {
+                continue;
+            }
+
             let device = match hw_device.backend_name() {
                 memonitor::CPU_NAME => Device::CPU,
                 memonitor::VULKAN_NAME => Device::Vulkan(hw_device.local_id()),
@@ -59,6 +70,14 @@ impl RequestManager {
         Self { queues }
     }
 
+    /// Enqueue a request in its appropriate queue, given its requirements.
+    ///
+    /// This functions will only return once the request has reached the end of the queue, when it is safe to execute
+    /// the request without running out of memory.
+    ///
+    /// # Returns
+    ///
+    /// A [`Ticket`] necessary to call a generation function.
     pub async fn enqueue(&self, requirements: Passport) -> Result<Ticket, QueueError> {
         let required_memory = match requirements.request {
             Request::Model(required_memory) => (required_memory as f64 * 1.1) as usize,
@@ -97,6 +116,8 @@ impl RequestManager {
         queue.enqueue(required_memory).await
     }
 
+    /// Given a function that calculates the allocation requirements for each device, return a device based on the
+    /// configured device selection policy.
     pub async fn pick_device(
         &self,
         local_size: impl Fn(Device) -> usize,
@@ -157,6 +178,11 @@ impl RequestManager {
                         break;
                     }
                 }
+
+                if device == Device::Any {
+                    return Err(QueueError::Unfulfillable);
+                }
+                warn!("{:?}", device);
                 device
             }
             DevicePolicy::AlwaysDevice {
@@ -194,6 +220,7 @@ impl RequestManager {
         Ok(device)
     }
 
+    /// Notify a queue that some resource has been freed.
     pub fn notify_free(&self, device: &Device) -> Result<(), QueueError> {
         self.queues
             .get(device)
@@ -201,6 +228,7 @@ impl RequestManager {
             .notify_free()
     }
 
+    /// List every device found.
     pub fn all_devices() -> Vec<Device> {
         memonitor::list_all_devices()
             .iter()
@@ -212,6 +240,7 @@ impl RequestManager {
             .collect()
     }
 
+    /// Register all the provided resource users in the appropriate queues.
     pub fn register_users(&self, users: Vec<(Device, Box<dyn ResourceUser>)>) {
         for (device, user) in users {
             if let Some(queue) = self.queues.get(&device) {
@@ -221,6 +250,9 @@ impl RequestManager {
     }
 }
 
+/// An abstraction over a backend device.
+///
+/// A backend in this context, is a device API, like Vulkan, CUDA or Metal.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Device {
     CPU,
@@ -230,6 +262,49 @@ pub enum Device {
     Any,
 }
 
+impl Device {
+    /// Return the device's id relative to its backend (matches the CUDA device index, Vulkan's order of finding
+    /// devices, etc).
+    pub fn id(&self) -> usize {
+        match self {
+            Device::Vulkan(id) => *id,
+            Device::Cuda(id) => *id,
+            Device::Metal(id) => *id,
+            _ => 0,
+        }
+    }
+
+    /// Return the name of a device provided its id in the backend, the backend name and a default name for the case
+    /// where the backend wasn't found.
+    fn get_name(local_id: usize, backend_name: &str, default_name: &str) -> String {
+        let mut name = default_name.to_string();
+        for backend in memonitor::list_backends().iter() {
+            if backend.name() == backend_name {
+                let id = backend.device_ids()[local_id];
+                name = memonitor::list_all_devices()[id].name().to_string();
+                break;
+            }
+        }
+        name
+    }
+
+    /// Return the name of the device.
+    pub fn name(&self) -> String {
+        match self {
+            Device::CPU => memonitor::list_all_devices()[0].name().to_string(),
+            Device::Vulkan(local_id) => {
+                Self::get_name(*local_id, memonitor::VULKAN_NAME, "VULKAN_NOT_FOUND")
+            }
+            Device::Cuda(local_id) => Self::get_name(*local_id, "TODO", "CUDA_NOT_FOUND"),
+            Device::Metal(local_id) => Self::get_name(*local_id, "TODO", "METAL_NOT_FOUND"),
+            Device::Any => "NONE".to_string(),
+        }
+    }
+}
+
+/// A request queue for a device.
+///
+/// Request execution is throttled if the memory limit of the queue's device is reached, to avoid *OOM* errors.
 struct Queue {
     tx: UnboundedSender<QueueItem>,
     free_tx: UnboundedSender<()>,
@@ -241,6 +316,8 @@ struct Queue {
 }
 
 impl Queue {
+    /// Create a new request queue given a device, the device's index for [`memonitor::list_all_devices`] and the
+    /// device's memory capacity.
     fn new(device: Device, device_id: usize, max_memory: usize) -> Self {
         let (tx, rx) = unbounded_channel();
         let (free_tx, free_rx) = unbounded_channel();
@@ -258,6 +335,14 @@ impl Queue {
         }
     }
 
+    /// Enqueue a request.
+    ///
+    /// This function will only return once the request has reached the end of the queue, when it is safe to be
+    /// executed without running out of memory.
+    ///
+    /// # Returns
+    ///
+    /// A [`Ticket`] necessary to call a generation function.
     async fn enqueue(&self, required_memory: usize) -> Result<Ticket, QueueError> {
         let (os_tx, os_rx) = oneshot::channel();
         let waiter = QueueItem::Normal {
@@ -284,12 +369,14 @@ impl Queue {
         Ok(ticket)
     }
 
+    /// Notify the queue that a resource has been freed on its device.
     fn notify_free(&self) -> Result<(), QueueError> {
         self.free_tx
             .send(())
             .map_err(|e| QueueError::Closed(e.to_string()))
     }
 
+    /// Register a resource user for this device.
     fn register_user(&self, user: Box<dyn ResourceUser>) {
         if let Err(e) = self.tx.send(QueueItem::RegisterUser(user)) {
             error!("Failed to register resource user: {e}")
@@ -303,6 +390,7 @@ impl Drop for Queue {
     }
 }
 
+/// The main loop for a queue.
 async fn run_queue(
     mut rx: UnboundedReceiver<QueueItem>,
     mut free_rx: UnboundedReceiver<()>,
@@ -367,45 +455,67 @@ async fn run_queue(
     }
 }
 
+/// The objects passed into [`Queue`]s.
 enum QueueItem {
+    /// A standard generation request to be executed.
     Normal {
         required_memory: usize,
         signal_tx: oneshot::Sender<()>,
     },
+    /// A request to register a new resource user.
     RegisterUser(Box<dyn ResourceUser>),
+    /// A request to close the queue.
     Close,
 }
 
 #[derive(Debug)]
+/// The requirements to execute a request.
+///
+/// This should be acquired by querying a generation endpoint.
 pub struct Passport {
+    /// A basic description of the request.
     request: Request,
+    /// The device the request should be executed on.
     device: Device,
 }
 
 impl Passport {
+    /// Create a new passport containing a requests requirements.
     pub fn new(request: Request, device: Device) -> Self {
         Self { request, device }
     }
 }
 
+/// A basic description of a request.
 #[derive(Debug, Eq, PartialEq)]
 pub enum Request {
+    /// A complex request that may require multiple allocations, where estimating some allocations depend on some
+    /// resource already being allocated.
     Model(usize),
+    /// A normal request.
     Regular(usize),
+    /// A request that does not require any allocations.
     Free,
 }
 
+/// A "ticket" that allows a request to be executed.
+///
+/// This object should be required as an argument for all generations functions.
 #[derive(Debug)]
 pub struct Ticket {
+    /// The inner contents of the ticket.
     content: Option<TicketContent>,
+    /// The device the request executes on.
     device: Device,
 }
 
 impl Ticket {
+    /// Consume the ticket, signaling that the required resources for the request have been allocated.
     pub fn consume(&mut self) -> bool {
         self.content.take().is_some()
     }
 
+    /// Return the device this ticket is valid for.
     pub fn device(&self) -> Device {
         self.device
     }
@@ -419,6 +529,7 @@ impl Drop for Ticket {
     }
 }
 
+/// The inner content of a [`Ticket`].
 #[derive(Debug)]
 enum TicketContent {
     Regular {
@@ -440,9 +551,22 @@ impl Drop for TicketContent {
     }
 }
 
+/// A resource user, which can coordinate with the request manager.
 #[async_trait::async_trait]
 pub trait ResourceUser: Send {
+    /// This user's current number of allocations.
     fn allocs(&self) -> usize;
 
+    /// Request that the user frees some memory.
+    ///
+    /// The user is not forced to free anything, but it should whenever it can.
+    ///
+    /// # Parameters
+    ///
+    /// * `memory` - The minimum amount of memory to be freed.
+    ///
+    /// # Returns
+    ///
+    /// The amount of memory the user was able to free.
     async fn request_memory(&self, memory: usize) -> usize;
 }

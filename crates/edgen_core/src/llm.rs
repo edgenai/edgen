@@ -104,6 +104,7 @@ pub trait LLMEndpoint {
         args: &CompletionArgs,
     ) -> Result<Passport, LLMEndpointError>;
 
+    /// Return a [`ResourceUser`] for each [`Device`] the endpoint is capable of using.
     fn resource_users(&self) -> Vec<(Device, Box<dyn ResourceUser>)>;
 
     /// Unloads everything from memory.
@@ -126,7 +127,9 @@ pub fn inactive_llm_session_ttl() -> Duration {
 
 /// Default LLM context settings retrieved from [`default_context_settings`].
 pub struct ContextSettings {
+    /// The number of threads a process should use.
     pub threads: u32,
+    /// The size of a context (where applicable).
     pub size: u32,
 }
 

@@ -208,9 +208,15 @@ impl Drop for LlamaCppEndpoint {
     }
 }
 
+/// A hashable key used to identify a model instance.
+///
+/// To be used as the key in a map collection.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 struct ModelKey {
+    /// The path string of the model.
     path: String,
+
+    /// The device where the model is loaded.
     device: Device,
 }
 
@@ -223,6 +229,7 @@ impl ModelKey {
     }
 }
 
+/// Return the size of a file, given its path, retrieved from its metadata.
 async fn file_size(path: impl AsRef<Path> + Send) -> Result<usize, LLMEndpointError> {
     if path.as_ref().is_file() {
         let model_file = fs::File::open(path)
@@ -243,8 +250,12 @@ async fn file_size(path: impl AsRef<Path> + Send) -> Result<usize, LLMEndpointEr
     }
 }
 
+/// A resource user for this backend.
 struct LlamaResourceUser {
+    /// The device managed/used by the user.
     device: Device,
+
+    /// A reference to the map with all models the Llama backend has currently loaded.
     models: Arc<DashMap<ModelKey, UnloadingModel>>,
 }
 
@@ -311,14 +322,31 @@ impl ResourceUser for LlamaResourceUser {
 /// A [`LlamaModel`] (as well as its associated [`LlamaSession`]s) that unloads itself from memory after not being used
 /// for a period of time.
 struct UnloadingModel {
+    /// This model's [`Perishable`] inner [`LlamaModel`].
     model: Perishable<LlamaModel>,
+
+    /// The path to the models file.
     path: PathBuf,
+
+    /// The device where the model is loaded in.
     device: Device,
+
+    /// A map storing this model's idle sessions.
     sessions: Arc<DashMap<SessionId, UnloadingSession>>,
+
+    /// The background thread which cleans up old sessions and reinserts sessions coming from streams.
     maintenance_thread: JoinHandle<()>,
+
+    /// The sender used by streams to insert sessions back into the model's session collection.
     finished_tx: UnboundedSender<(SessionId, UnloadingSession)>,
+
+    /// The current number of sessions in flight owned by the model.
     sessions_in_flight: Arc<AtomicUsize>,
+
+    /// The instant when the model was created.
     created: Instant,
+
+    /// The size of the model, in bytes.
     size: usize,
 }
 
@@ -378,10 +406,15 @@ impl UnloadingModel {
         self.model.is_alive().await
     }
 
+    /// Unload this model from memory.
     async fn unload(&self) {
         self.model.kill().await;
     }
 
+    /// Request for resource to be freed by the model.
+    ///
+    /// The model's sessions are sorted by oldest to newest and freed in order until either the memory target is met,
+    /// or there are no more sessions to be freed.
     async fn request_memory(&self, memory: usize) -> usize {
         let mut droppable: Vec<(SessionId, Instant)> = self
             .sessions
@@ -410,6 +443,7 @@ impl UnloadingModel {
         freed
     }
 
+    /// Estimate and return the resources required to compute a request, given its arguments.
     async fn requirements_of(
         &self,
         prompt: &str,
@@ -562,6 +596,7 @@ impl UnloadingModel {
         }
     }
 
+    /// Compute and return embeddings vectors for the provided vector of inputs.
     async fn embeddings(&self, inputs: Vec<String>) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
         info!("Allocating one-shot LLM embeddings session");
         let _in_flight_ref = InFlightRef::new(&self.sessions_in_flight);
@@ -596,13 +631,18 @@ impl UnloadingModel {
 
         self.model
             .get_or_try_init(move || async move {
-                info!("Loading {} into memory", path.to_string_lossy());
+                info!(
+                    "Loading {} into \"{}\"'s memory",
+                    path.to_string_lossy(),
+                    device.name()
+                );
 
                 let mut args = LlamaParams::default();
 
                 if device == Device::CPU {
                     args.n_gpu_layers = 0;
                 } else {
+                    args.main_gpu = device.id() as u32;
                     args.n_gpu_layers = i32::MAX as u32;
                 }
 
@@ -613,18 +653,22 @@ impl UnloadingModel {
             .await
     }
 
+    /// Return the total amount of sessions currently owned by the model.
     fn sessions(&self) -> usize {
         self.sessions.len() + self.sessions_in_flight.load(Ordering::SeqCst)
     }
 
+    /// Return the amount of sessions currently owned by the model, that can be dropped (are not in flight).
     fn droppable_sessions(&self) -> usize {
         self.sessions.len()
     }
 
+    /// Return the instant when the model was created.
     fn created(&self) -> Instant {
         self.created
     }
 
+    /// Return the size in bytes of the model.
     fn size(&self) -> usize {
         self.size
     }
@@ -636,14 +680,26 @@ impl Drop for UnloadingModel {
     }
 }
 
+/// A Llama session that automatically unloads itself from memory after some time.
+///
+/// If the session gets unloaded before a request that would match is submitted, all of the request's context will
+/// have to be processed again.
 struct UnloadingSession {
+    /// This sessions [`Perishable`] inner [`LlamaSession`].
     session: Perishable<LlamaSession>,
+
+    /// The parameter used to create the session.
     params: SessionParams,
+
+    /// The model that owns this session.
     model: LlamaModel,
+
+    /// The instant when the session was created.
     created: Instant,
 }
 
 impl UnloadingSession {
+    /// Create a new unloading session.
     async fn new(args: CompletionArgs, model: LlamaModel, device: Device) -> Self {
         let session = Perishable::with_ttl(inactive_llm_session_ttl());
         session
@@ -668,6 +724,7 @@ impl UnloadingSession {
         self.session.is_alive().await
     }
 
+    /// Unload this session from memory.
     async fn unload(&self) {
         self.session.kill().await;
     }
@@ -695,16 +752,19 @@ impl UnloadingSession {
         res
     }
 
+    /// Return the instant when the session was created.
     fn created(&self) -> Instant {
         self.created
     }
 
+    /// Return the current size of this session in memory.
     async fn size(&self) -> Result<usize, LLMEndpointError> {
         let (_signal, session) = self.get_or_init(None).await?;
         Ok(session.async_memory_size().await)
     }
 }
 
+/// Return a [`SessionParams`] converted from a [`CompletionArgs`].
 async fn from_completion_args(args: CompletionArgs) -> SessionParams {
     let mut params = SessionParams::default();
     let default_settings = default_context_settings().await;
@@ -833,11 +893,18 @@ fn find_any(text: &str, patterns: &[&str]) -> Option<usize> {
     }
 }
 
+/// Small helper object used to keep track of session references.
+///
+/// Upon creation, the provided counter is incremented once, and upon dropping the counter is decremented once.
 struct InFlightRef {
+    /// The inner counter to increment and decrement.
     allocations: Arc<AtomicUsize>,
 }
 
 impl InFlightRef {
+    /// Create a new reference.
+    ///
+    /// Will increment the provided counter once.
     fn new(allocations: &Arc<AtomicUsize>) -> Self {
         allocations.fetch_add(1, Ordering::SeqCst);
         Self {
@@ -866,6 +933,7 @@ struct CompletionStream {
     /// A sender used to send both `session` and `session_id` once generation is completion
     finished_tx: Option<UnboundedSender<(SessionId, UnloadingSession)>>,
 
+    /// A reference signaling that there is a session in flight.
     _in_flight_ref: InFlightRef,
 
     /// The object signaling that `model` is currently active.
@@ -878,15 +946,18 @@ struct CompletionStream {
 impl CompletionStream {
     /// Constructs a new [`CompletionStream`].
     ///
+    /// Once the stream finishes, the respective session is sent back to its owning model.
+    ///
     /// ## Arguments
     /// * `session` - The session used to generate completions.
     /// * `session_id` - The [`SessionId`] associated with `session`.
     /// * `new_context` - The context used to advance the session.
-    /// * `model` - The [`LlamaModel`] that `session` is associated with.
     /// * `model_signal` - The `model`'s associated [`ActiveSignal`].
-    /// * `sample` - The [`StandardSampler`] used to generate completions.
-    /// * `end_token` - An [`UnboundedSender`] used to send both `session` and `session` once
+    /// * `sampler` - The [`StandardSampler`] used to generate completions.
+    /// * `finished_tx` - An [`UnboundedSender`] used to send both `session` and `session_id` once
     /// generation finishes.
+    /// * `in_flight_ref` - The reference used to signal that there is a session in flight.
+    /// * `ticket` - The ticket necessary for generation.
     async fn new(
         session: UnloadingSession,
         mut session_id: SessionId,
@@ -923,6 +994,15 @@ impl CompletionStream {
         })
     }
 
+    /// Constructs a new [`CompletionStream`].
+    ///
+    /// ## Arguments
+    /// * `session` - The session used to generate completions.
+    /// * `new_context` - The context used to advance the session.
+    /// * `model_signal` - The `model`'s associated [`ActiveSignal`].
+    /// * `device` - The device where `session` is loaded in.
+    /// * `sampler` - The [`StandardSampler`] used to generate completions.
+    /// * `in_flight_ref` - The reference used to signal that there is a session in flight.
     async fn new_oneshot(
         mut session: LlamaSession,
         new_context: &str,
@@ -991,18 +1071,28 @@ impl Drop for CompletionStream {
     }
 }
 
+/// A type which may contain an isolated session, an unloading session to be sent back to a model, or nothing.
 #[derive(Default)]
 enum SessionOption {
+    /// An isolated session.
     OneShot {
+        /// The session's handle.
         session: LlamaSession,
+
+        /// The device where `session` is loaded in.
         device: Device,
     },
+
+    /// An unloading session that should be sent back to a model.
     Perishable(UnloadingSession),
+
+    /// Nothing.
     #[default]
     None,
 }
 
 impl SessionOption {
+    /// Return the options value and replace it with [`SessionOption::None`].
     fn take(&mut self) -> Self {
         take(self)
     }
