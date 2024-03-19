@@ -38,7 +38,6 @@ use uuid::Uuid;
 
 use edgen_core::llm::{CompletionArgs, LLMEndpointError};
 use edgen_core::settings;
-use edgen_core::settings::SETTINGS;
 use edgen_core::whisper::WhisperEndpointError;
 
 use crate::llm::embeddings;
@@ -731,6 +730,23 @@ async fn get_audio_transcriptions_model_params(
     get_model_params(name, &settings::audio_transcriptions_dir().await)
 }
 
+async fn get_embeddings_model_params(name: &str) -> Result<(String, String, String), &'static str> {
+    async fn default_trio() -> (String, String, String) {
+        (
+            settings::embeddings_name().await,
+            settings::embeddings_repo().await,
+            settings::embeddings_dir().await,
+        )
+    }
+    if name.is_empty() {
+        return Ok(default_trio().await);
+    }
+    if name.to_ascii_lowercase() == "default" {
+        return Ok(default_trio().await);
+    }
+    get_model_params(name, &settings::embeddings_dir().await)
+}
+
 fn get_model_params(name: &str, dir: &str) -> Result<(String, String, String), &'static str> {
     match parse_model_param(name) {
         Ok((owner, repo, name)) => Ok((name, owner + "/" + &repo, dir.to_string())),
@@ -873,31 +889,15 @@ responses(
 pub async fn create_embeddings(
     Json(req): Json<CreateEmbeddingsRequest<'_>>,
 ) -> Result<impl IntoResponse, ChatCompletionError> {
-    // For MVP1, the model string in the request is *always* ignored.
-    let model_name = SETTINGS
-        .read()
-        .await
-        .read()
-        .await
-        .embeddings_model_name
-        .trim()
-        .to_string();
-    let repo = SETTINGS
-        .read()
-        .await
-        .read()
-        .await
-        .embeddings_model_repo
-        .trim()
-        .to_string();
-    let dir = SETTINGS
-        .read()
-        .await
-        .read()
-        .await
-        .embeddings_models_dir
-        .trim()
-        .to_string();
+    let params = get_embeddings_model_params(req.model.as_ref()).await;
+    if let Err(error) = params {
+        return Err(ChatCompletionError::ProhibitedName {
+            model_name: req.model.to_string(),
+            reason: Cow::Borrowed(error),
+        });
+    }
+
+    let (model_name, repo, dir) = params.unwrap();
 
     if model_name.is_empty() {
         return Err(ChatCompletionError::ProhibitedName {
@@ -1121,6 +1121,7 @@ impl IntoResponse for TranscriptionError {
 #[cfg(test)]
 mod test {
     use super::*;
+    use edgen_core::settings::SETTINGS;
 
     async fn init_settings_for_test() {
         SETTINGS
@@ -1160,10 +1161,24 @@ mod test {
     }
 
     #[tokio::test]
+    async fn default_embeddings_model_name() {
+        init_settings_for_test().await;
+        assert_eq!(
+            get_embeddings_model_params("default").await,
+            Ok((
+                settings::embeddings_name().await,
+                settings::embeddings_repo().await,
+                settings::embeddings_dir().await,
+            )),
+            "unexpected model triple",
+        );
+    }
+
+    #[tokio::test]
     async fn empty_chat_model_name() {
         init_settings_for_test().await;
         assert_eq!(
-            get_chat_completions_model_params("default").await,
+            get_chat_completions_model_params("").await,
             Ok((
                 settings::chat_completions_name().await,
                 settings::chat_completions_repo().await,
@@ -1177,11 +1192,25 @@ mod test {
     async fn empty_audio_model_name() {
         init_settings_for_test().await;
         assert_eq!(
-            get_audio_transcriptions_model_params("default").await,
+            get_audio_transcriptions_model_params("").await,
             Ok((
                 settings::audio_transcriptions_name().await,
                 settings::audio_transcriptions_repo().await,
                 settings::audio_transcriptions_dir().await,
+            )),
+            "unexpected model triple",
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_embeddings_model_name() {
+        init_settings_for_test().await;
+        assert_eq!(
+            get_embeddings_model_params("").await,
+            Ok((
+                settings::embeddings_name().await,
+                settings::embeddings_repo().await,
+                settings::embeddings_dir().await,
             )),
             "unexpected model triple",
         );
@@ -1216,6 +1245,20 @@ mod test {
     }
 
     #[tokio::test]
+    async fn custom_embeddings_model_name() {
+        init_settings_for_test().await;
+        assert_eq!(
+            get_embeddings_model_params("TheFake/TheFakeRepo/fake-model.gguf").await,
+            Ok((
+                "fake-model.gguf".to_string(),
+                "TheFake/TheFakeRepo".to_string(),
+                settings::embeddings_dir().await,
+            )),
+            "unexpected model triple",
+        );
+    }
+
+    #[tokio::test]
     async fn custom_no_repo_chat_model_name() {
         init_settings_for_test().await;
         assert_eq!(
@@ -1238,6 +1281,20 @@ mod test {
                 "fake-model.gguf".to_string(),
                 "".to_string(),
                 settings::audio_transcriptions_dir().await,
+            )),
+            "unexpected model triple",
+        );
+    }
+
+    #[tokio::test]
+    async fn custom_no_repo_embeddings_model_name() {
+        init_settings_for_test().await;
+        assert_eq!(
+            get_embeddings_model_params("fake-model.gguf").await,
+            Ok((
+                "fake-model.gguf".to_string(),
+                "".to_string(),
+                settings::embeddings_dir().await,
             )),
             "unexpected model triple",
         );
