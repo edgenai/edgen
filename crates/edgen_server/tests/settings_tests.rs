@@ -43,6 +43,15 @@ fn fake_test() {
 // - SCENARIO 5:
 //   + Reset configuration
 //   + Model files shall not be downloaded
+// - SCENARIO 6:
+//   + Use custom huggingface model (not present)
+//   + Model files shall be downloaded
+// - SCENARIO 7:
+//   + Use custom huggingface model (present)
+//   + Model files shall not be downloaded
+// - SCENARIO 8:
+//   + Use custom user-managed model (present)
+//   + Model files shall not be downloaded
 fn test_battery() {
     common::with_save_edgen(|| {
         // make sure everything is right
@@ -76,12 +85,12 @@ fn test_battery() {
         );
 
         // test ai endpoint and download
-        test_ai_endpoint_with_download(common::Endpoint::ChatCompletions);
-        test_ai_endpoint_with_download(common::Endpoint::AudioTranscriptions);
+        test_ai_endpoint_with_download(common::Endpoint::ChatCompletions, "default");
+        test_ai_endpoint_with_download(common::Endpoint::AudioTranscriptions, "default");
 
         // we have downloaded, we should not download again
-        test_ai_endpoint_no_download(common::Endpoint::ChatCompletions);
-        test_ai_endpoint_no_download(common::Endpoint::AudioTranscriptions);
+        test_ai_endpoint_no_download(common::Endpoint::ChatCompletions, "default");
+        test_ai_endpoint_no_download(common::Endpoint::AudioTranscriptions, "default");
 
         // ================================
         common::test_message("SCENARIO 3");
@@ -118,13 +127,13 @@ fn test_battery() {
             &new_audio_transcriptions_dir,
         );
 
-        test_ai_endpoint_with_download(common::Endpoint::ChatCompletions);
-        test_ai_endpoint_with_download(common::Endpoint::AudioTranscriptions);
+        test_ai_endpoint_with_download(common::Endpoint::ChatCompletions, "default");
+        test_ai_endpoint_with_download(common::Endpoint::AudioTranscriptions, "default");
 
         assert!(path::Path::new(&my_models_dir).exists());
 
-        test_ai_endpoint_no_download(common::Endpoint::ChatCompletions);
-        test_ai_endpoint_no_download(common::Endpoint::AudioTranscriptions);
+        test_ai_endpoint_no_download(common::Endpoint::ChatCompletions, "default");
+        test_ai_endpoint_no_download(common::Endpoint::AudioTranscriptions, "default");
 
         // ================================
         common::test_message("SCENARIO 4");
@@ -132,13 +141,13 @@ fn test_battery() {
         remove_dir_all(&my_models_dir).unwrap();
         assert!(!path::Path::new(&my_models_dir).exists());
 
-        test_ai_endpoint_with_download(common::Endpoint::ChatCompletions);
-        test_ai_endpoint_with_download(common::Endpoint::AudioTranscriptions);
+        test_ai_endpoint_with_download(common::Endpoint::ChatCompletions, "default");
+        test_ai_endpoint_with_download(common::Endpoint::AudioTranscriptions, "default");
 
         assert!(path::Path::new(&my_models_dir).exists());
 
-        test_ai_endpoint_no_download(common::Endpoint::ChatCompletions);
-        test_ai_endpoint_no_download(common::Endpoint::AudioTranscriptions);
+        test_ai_endpoint_no_download(common::Endpoint::ChatCompletions, "default");
+        test_ai_endpoint_no_download(common::Endpoint::AudioTranscriptions, "default");
 
         // ================================
         common::test_message("SCENARIO 5");
@@ -160,8 +169,37 @@ fn test_battery() {
         remove_dir_all(&my_models_dir).unwrap();
         assert!(!path::Path::new(&my_models_dir).exists());
 
-        test_ai_endpoint_no_download(common::Endpoint::ChatCompletions);
-        test_ai_endpoint_no_download(common::Endpoint::AudioTranscriptions);
+        test_ai_endpoint_no_download(common::Endpoint::ChatCompletions, "default");
+        test_ai_endpoint_no_download(common::Endpoint::AudioTranscriptions, "default");
+
+        // ================================
+        common::test_message("SCENARIO 6");
+        // ================================
+        let chat_model = "TheBloke/phi-2-GGUF/phi-2.Q2_K.gguf";
+        let audio_model = "distil-whisper/distil-medium.en/ggml-medium-32-2.en.bin";
+
+        test_ai_endpoint_with_download(common::Endpoint::ChatCompletions, chat_model);
+        test_ai_endpoint_with_download(common::Endpoint::AudioTranscriptions, audio_model);
+
+        // ================================
+        common::test_message("SCENARIO 7");
+        // ================================
+        test_ai_endpoint_no_download(common::Endpoint::ChatCompletions, chat_model);
+        test_ai_endpoint_no_download(common::Endpoint::AudioTranscriptions, audio_model);
+
+        // ================================
+        common::test_message("SCENARIO 8");
+        // ================================
+        let source = "models--TheBloke--phi-2-GGUF/blobs";
+        common::copy_model(source, ".phi-2.Q2_K.gguf", "chat/completions");
+        test_ai_endpoint_no_download(common::Endpoint::ChatCompletions, ".phi-2.Q2_K.gguf");
+
+        let source = "models--distil-whisper--distil-medium.en/blobs";
+        common::copy_model(source, ".ggml-medium-32-2.en.bin", "audio/transcriptions");
+        test_ai_endpoint_no_download(
+            common::Endpoint::AudioTranscriptions,
+            ".ggml-medium-32-2.en.bin",
+        );
     })
 }
 
@@ -213,15 +251,15 @@ fn test_config_reset() {
     std::thread::sleep(std::time::Duration::from_secs(4));
 }
 
-fn test_ai_endpoint_with_download(endpoint: common::Endpoint) {
-    test_ai_endpoint(endpoint, true);
+fn test_ai_endpoint_with_download(endpoint: common::Endpoint, model: &str) {
+    test_ai_endpoint(endpoint, model, true);
 }
 
-fn test_ai_endpoint_no_download(endpoint: common::Endpoint) {
-    test_ai_endpoint(endpoint, false);
+fn test_ai_endpoint_no_download(endpoint: common::Endpoint, model: &str) {
+    test_ai_endpoint(endpoint, model, false);
 }
 
-fn test_ai_endpoint(endpoint: common::Endpoint, download: bool) {
+fn test_ai_endpoint(endpoint: common::Endpoint, model: &str, download: bool) {
     let (statep, body) = match endpoint {
         common::Endpoint::ChatCompletions => {
             common::test_message(&format!(
@@ -235,7 +273,7 @@ fn test_ai_endpoint(endpoint: common::Endpoint, download: bool) {
                     common::COMPLETIONS_URL,
                     common::STATUS_URL,
                 ]),
-                common::CHAT_COMPLETIONS_BODY.to_string(),
+                common::chat_completions_custom_body(model),
             )
         }
         common::Endpoint::AudioTranscriptions => {
@@ -254,7 +292,7 @@ fn test_ai_endpoint(endpoint: common::Endpoint, download: bool) {
             )
         }
     };
-    let handle = common::spawn_request(endpoint, body);
+    let handle = common::spawn_request(endpoint, &body, model);
     if download {
         common::assert_download(&statep);
     } else {

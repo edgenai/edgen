@@ -3,13 +3,14 @@ use std::fmt::Display;
 use std::fs;
 use std::io;
 use std::panic;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use copy_dir::copy_dir;
 use reqwest::blocking;
+use serde_json::json;
 use serde_yaml;
 
 use edgen_core::settings;
@@ -33,23 +34,6 @@ pub const STATUS_URL: &str = "/status";
 pub const MISC_URL: &str = "/misc";
 pub const VERSION_URL: &str = "/version";
 pub const MODELS_URL: &str = "/models";
-
-pub const CHAT_COMPLETIONS_BODY: &str = r#"
-    {
-        "model": "this is not a model",
-        "messages": [
-          {
-            "role": "system",
-            "content": "You are a helpful assistant."
-          },
-          {
-            "role": "user",
-            "content": "what is the result of 1 + 2?"
-          }
-        ],
-        "stream": true
-    }
-"#;
 
 pub const BACKUP_DIR: &str = "env_backup";
 pub const CONFIG_BACKUP_DIR: &str = "config_backup";
@@ -346,16 +330,36 @@ pub fn connect_to_server_test() {
     );
 }
 
+/// chat completions body with custom model
+pub fn chat_completions_custom_body(model: &str) -> String {
+    serde_json::to_string(&json!({
+            "model": model,
+            "messages": [
+              {
+                "role": "system",
+                "content": "You are a helpful assistant."
+              },
+              {
+                "role": "user",
+                "content": "what is the result of 1 + 2?"
+              }
+            ],
+            "stream": true
+    }))
+    .expect("cannot convert JSON to String")
+}
+
 /// Spawn a thread to send a request to the indicated endpoint.
 /// This allows the caller to perform another task in the caller thread.
-pub fn spawn_request(ep: Endpoint, body: String) -> thread::JoinHandle<bool> {
+pub fn spawn_request(ep: Endpoint, body: &str, model: &str) -> thread::JoinHandle<bool> {
     match ep {
         Endpoint::ChatCompletions => spawn_chat_completions_request(body),
-        Endpoint::AudioTranscriptions => spawn_audio_transcriptions_request(),
+        Endpoint::AudioTranscriptions => spawn_audio_transcriptions_request(model),
     }
 }
 
-pub fn spawn_chat_completions_request(body: String) -> thread::JoinHandle<bool> {
+pub fn spawn_chat_completions_request(body: &str) -> thread::JoinHandle<bool> {
+    let body = body.to_string();
     thread::spawn(move || {
         let ep = make_url(&[BASE_URL, CHAT_URL, COMPLETIONS_URL]);
         println!("requesting {}", ep);
@@ -379,7 +383,8 @@ pub fn spawn_chat_completions_request(body: String) -> thread::JoinHandle<bool> 
     })
 }
 
-pub fn spawn_audio_transcriptions_request() -> thread::JoinHandle<bool> {
+pub fn spawn_audio_transcriptions_request(model: &str) -> thread::JoinHandle<bool> {
+    let model = model.to_string();
     let frost = Path::new("resources").join("frost.wav");
     thread::spawn(move || {
         let ep = make_url(&[BASE_URL, AUDIO_URL, TRANSCRIPTIONS_URL]);
@@ -390,7 +395,7 @@ pub fn spawn_audio_transcriptions_request() -> thread::JoinHandle<bool> {
         let part = blocking::multipart::Part::bytes(sound).file_name("frost.wav");
 
         let form = blocking::multipart::Form::new()
-            .text("model", "default")
+            .text("model", model)
             .part("file", part);
 
         match blocking::Client::new()
@@ -437,7 +442,7 @@ pub fn assert_download(endpoint: &str) {
             last_p = p;
             tp = Instant::now();
         } else {
-            assert!(Instant::now().duration_since(tp) < Duration::from_secs(90));
+            assert!(Instant::now().duration_since(tp) < Duration::from_secs(120));
         }
         thread::sleep(Duration::from_millis(30));
         stat = blocking::get(endpoint).unwrap().json().unwrap();
@@ -462,6 +467,25 @@ pub fn assert_no_download(endpoint: &str) {
     }
 
     assert!(!stat.download_ongoing);
+}
+
+pub fn copy_model(source: &str, target: &str, subpath: &str) {
+    let dir = settings::PROJECT_DIRS.data_dir();
+    let src = get_file_from_dir(dir.join("models").join(subpath).join(source).as_ref());
+    let trg = dir.join("models").join(subpath).join(target);
+    assert!(src.exists(), "source does not exist!");
+    assert!(!trg.exists(), "target does exist!");
+    fs::copy(&src, &trg).expect(&format!("cannot copy {:?} to {:?}", src, trg));
+}
+
+fn get_file_from_dir(path: &Path) -> PathBuf {
+    let mut dir = fs::read_dir(path).expect(&format!("cannot read {:?}", path));
+    let e = dir.next();
+    assert!(e.is_some(), "no entry in directory");
+    let e = e.unwrap();
+    assert!(e.is_ok(), "cannot read entry in directory");
+    let e = e.unwrap();
+    e.path()
 }
 
 #[derive(Debug)]

@@ -113,7 +113,7 @@ fn test_list_models() {
 
     let v = res
         .json::<ModelList>()
-        .expect("cannot converto to model list")
+        .expect("cannot convert to model list")
         .data;
 
     assert_eq!(v.len(), 3);

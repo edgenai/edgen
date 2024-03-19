@@ -134,9 +134,9 @@ pub async fn set_chat_completions_download(ongoing: bool) {
 /// Set audio transcriptions download ongoing
 pub async fn set_audio_transcriptions_download(ongoing: bool) {
     if ongoing {
-        info!("starting chat completions model download");
+        info!("starting audio transcriptions model download");
     } else {
-        info!("chat completions model download finished");
+        info!("audio transcriptions model download finished");
     };
     set_download(EP_AUDIO_TRANSCRIPTIONS, ongoing).await;
 }
