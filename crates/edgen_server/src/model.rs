@@ -102,45 +102,22 @@ impl Model {
         } else {
             None
         };
-        let progress_handle = match ep {
-            Endpoint::ChatCompletions => {
-                status::observe_chat_completions_progress(&self.dir, size, download).await
-            }
-            Endpoint::AudioTranscriptions => {
-                status::observe_audio_transcriptions_progress(&self.dir, size, download).await
-            }
-            Endpoint::Embeddings => todo!(),
-        };
+
+        let progress_handle = observe_download(ep, &self.dir, size, download).await;
 
         let name = self.name.clone();
         let download_handle = tokio::spawn(async move {
             if download {
-                match ep {
-                    Endpoint::ChatCompletions => status::set_chat_completions_download(true).await,
-                    Endpoint::AudioTranscriptions => {
-                        status::set_audio_transcriptions_download(true).await
-                    }
-                    Endpoint::Embeddings => todo!(),
-                }
-            };
+                report_start_of_download(ep).await;
+            }
 
             let path = api
                 .get(&name)
                 .map_err(move |e| ModelError::API(e.to_string()));
 
             if download {
-                match ep {
-                    Endpoint::ChatCompletions => {
-                        status::set_chat_completions_progress(100).await;
-                        status::set_chat_completions_download(false).await;
-                    }
-                    Endpoint::AudioTranscriptions => {
-                        status::set_audio_transcriptions_progress(100).await;
-                        status::set_audio_transcriptions_download(false).await;
-                    }
-                    Endpoint::Embeddings => todo!(),
-                }
-            };
+                report_end_of_download(ep).await;
+            }
 
             return path;
         });
@@ -182,6 +159,45 @@ impl Model {
         }
 
         Err(ModelError::NotPreloaded)
+    }
+}
+
+async fn observe_download(
+    ep: Endpoint,
+    dir: &PathBuf,
+    size: Option<u64>,
+    download: bool,
+) -> tokio::task::JoinHandle<()> {
+    match ep {
+        Endpoint::ChatCompletions => {
+            status::observe_chat_completions_progress(dir, size, download).await
+        }
+        Endpoint::AudioTranscriptions => {
+            status::observe_audio_transcriptions_progress(dir, size, download).await
+        }
+        Endpoint::Embeddings => todo!(),
+    }
+}
+
+async fn report_start_of_download(ep: Endpoint) {
+    match ep {
+        Endpoint::ChatCompletions => status::set_chat_completions_download(true).await,
+        Endpoint::AudioTranscriptions => status::set_audio_transcriptions_download(true).await,
+        Endpoint::Embeddings => todo!(),
+    }
+}
+
+async fn report_end_of_download(ep: Endpoint) {
+    match ep {
+        Endpoint::ChatCompletions => {
+            status::set_chat_completions_progress(100).await;
+            status::set_chat_completions_download(false).await;
+        }
+        Endpoint::AudioTranscriptions => {
+            status::set_audio_transcriptions_progress(100).await;
+            status::set_audio_transcriptions_download(false).await;
+        }
+        Endpoint::Embeddings => todo!(),
     }
 }
 

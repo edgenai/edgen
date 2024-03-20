@@ -48,10 +48,7 @@ fn test_modelmanager() {
 
         common::set_model_dir(Endpoint::ChatCompletions, &new_chat_completions_dir);
 
-        common::set_model_dir(
-            Endpoint::AudioTranscriptions,
-            &new_audio_transcriptions_dir,
-        );
+        common::set_model_dir(Endpoint::AudioTranscriptions, &new_audio_transcriptions_dir);
 
         make_dirs();
 

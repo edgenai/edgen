@@ -124,10 +124,7 @@ fn test_battery() {
 
         common::set_model_dir(Endpoint::ChatCompletions, &new_chat_completions_dir);
 
-        common::set_model_dir(
-            Endpoint::AudioTranscriptions,
-            &new_audio_transcriptions_dir,
-        );
+        common::set_model_dir(Endpoint::AudioTranscriptions, &new_audio_transcriptions_dir);
 
         test_ai_endpoint_with_download(Endpoint::ChatCompletions, "default");
         test_ai_endpoint_with_download(Endpoint::AudioTranscriptions, "default");
@@ -198,10 +195,7 @@ fn test_battery() {
 
         let source = "models--distil-whisper--distil-medium.en/blobs";
         common::copy_model(source, ".ggml-medium-32-2.en.bin", "audio/transcriptions");
-        test_ai_endpoint_no_download(
-            Endpoint::AudioTranscriptions,
-            ".ggml-medium-32-2.en.bin",
-        );
+        test_ai_endpoint_no_download(Endpoint::AudioTranscriptions, ".ggml-medium-32-2.en.bin");
     })
 }
 
