@@ -40,7 +40,6 @@ use openai_shim as audio;
 pub mod misc;
 
 pub mod cli;
-pub mod error;
 pub mod graceful_shutdown;
 mod llm;
 mod model;
@@ -48,6 +47,7 @@ pub mod model_man;
 pub mod openai_shim;
 mod routes;
 pub mod status;
+pub mod types;
 pub mod util;
 mod whisper;
 
@@ -93,7 +93,7 @@ mod whisper;
 struct ApiDoc;
 
 /// Result for main functions
-pub type EdgenResult = Result<(), error::EdgenError>;
+pub type EdgenResult = Result<(), types::EdgenError>;
 
 /// Main entry point for the server process
 pub fn start(command: &cli::TopLevel) -> EdgenResult {
@@ -187,7 +187,7 @@ async fn start_server(args: &cli::Serve) -> EdgenResult {
     Ok(())
 }
 
-async fn run_server(args: &cli::Serve) -> Result<bool, error::EdgenError> {
+async fn run_server(args: &cli::Serve) -> Result<bool, types::EdgenError> {
     status::set_chat_completions_active_model(
         &SETTINGS
             .read()
@@ -227,7 +227,7 @@ async fn run_server(args: &cli::Serve) -> Result<bool, error::EdgenError> {
 
     for uri in &uri_vector {
         let listener = match uri {
-            uri if uri.starts_with("unix://") => Err(error::EdgenError::GenericError(
+            uri if uri.starts_with("unix://") => Err(types::EdgenError::GenericError(
                 "unix:// URIs are not supported".to_string(),
             )),
             uri if uri.starts_with("http://") => {
@@ -239,7 +239,7 @@ async fn run_server(args: &cli::Serve) -> Result<bool, error::EdgenError> {
 
                 Ok(tokio::net::TcpListener::bind(addr).await?)
             }
-            _ => Err(error::EdgenError::GenericError(format!(
+            _ => Err(types::EdgenError::GenericError(format!(
                 "Unsupported URI schema: {uri}. unix://, http://, and ws:// are supported."
             ))),
         }?;

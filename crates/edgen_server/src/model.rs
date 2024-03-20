@@ -18,6 +18,7 @@ use tracing::warn;
 use utoipa::ToSchema;
 
 use crate::status;
+use crate::types::Endpoint;
 
 #[derive(Serialize, Error, ToSchema, Debug, PartialEq)]
 pub enum ModelError {
@@ -75,7 +76,7 @@ impl Model {
     }
 
     /// Checks if a file of the model is already present locally, and if not, downloads it.
-    pub async fn preload(&mut self) -> Result<(), ModelError> {
+    pub async fn preload(&mut self, ep: Endpoint) -> Result<(), ModelError> {
         if self.path.is_file() {
             self.preloaded = true;
             return Ok(());
@@ -101,22 +102,25 @@ impl Model {
         } else {
             None
         };
-        let progress_handle = match self.kind {
-            ModelKind::LLM => {
+        let progress_handle = match ep {
+            Endpoint::ChatCompletions => {
                 status::observe_chat_completions_progress(&self.dir, size, download).await
             }
-            ModelKind::Whisper => {
+            Endpoint::AudioTranscriptions => {
                 status::observe_audio_transcriptions_progress(&self.dir, size, download).await
             }
+            Endpoint::Embeddings => todo!(),
         };
 
         let name = self.name.clone();
-        let kind = self.kind.clone();
         let download_handle = tokio::spawn(async move {
             if download {
-                match kind {
-                    ModelKind::LLM => status::set_chat_completions_download(true).await,
-                    ModelKind::Whisper => status::set_audio_transcriptions_download(true).await,
+                match ep {
+                    Endpoint::ChatCompletions => status::set_chat_completions_download(true).await,
+                    Endpoint::AudioTranscriptions => {
+                        status::set_audio_transcriptions_download(true).await
+                    }
+                    Endpoint::Embeddings => todo!(),
                 }
             };
 
@@ -125,15 +129,16 @@ impl Model {
                 .map_err(move |e| ModelError::API(e.to_string()));
 
             if download {
-                match kind {
-                    ModelKind::LLM => {
+                match ep {
+                    Endpoint::ChatCompletions => {
                         status::set_chat_completions_progress(100).await;
                         status::set_chat_completions_download(false).await;
                     }
-                    ModelKind::Whisper => {
+                    Endpoint::AudioTranscriptions => {
                         status::set_audio_transcriptions_progress(100).await;
                         status::set_audio_transcriptions_download(false).await;
                     }
+                    Endpoint::Embeddings => todo!(),
                 }
             };
 
@@ -236,7 +241,9 @@ mod test {
         let repo = "dummy";
         let dir = PathBuf::from("resources");
         let mut m = Model::new(ModelKind::LLM, model, repo, &dir);
-        m.preload().await.expect("model preload failed");
+        m.preload(Endpoint::ChatCompletions)
+            .await
+            .expect("model preload failed");
         assert_eq!(
             m,
             Model {

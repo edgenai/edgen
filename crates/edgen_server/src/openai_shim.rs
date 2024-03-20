@@ -42,6 +42,7 @@ use edgen_core::whisper::WhisperEndpointError;
 
 use crate::llm::embeddings;
 use crate::model::{Model, ModelError, ModelKind};
+use crate::types::Endpoint;
 
 /// The plaintext or image content of a [`ChatMessage`] within a [`CreateChatCompletionRequest`].
 ///
@@ -613,7 +614,7 @@ pub async fn chat_completions(
     let mut model = Model::new(ModelKind::LLM, &model_name, &repo, &PathBuf::from(&dir));
 
     model
-        .preload()
+        .preload(Endpoint::ChatCompletions)
         .await
         .map_err(move |_| ChatCompletionError::NoSuchModel {
             model_name: model_name.to_string(),
@@ -915,7 +916,7 @@ pub async fn create_embeddings(
     let mut model = Model::new(ModelKind::LLM, &model_name, &repo, &PathBuf::from(&dir));
 
     model
-        .preload()
+        .preload(Endpoint::Embeddings)
         .await
         .map_err(move |_| ChatCompletionError::NoSuchModel {
             model_name: model_name.to_string(),
@@ -1058,7 +1059,7 @@ pub async fn create_transcription(
 
     let mut model = Model::new(ModelKind::Whisper, &model_name, &repo, &PathBuf::from(&dir));
 
-    model.preload().await?;
+    model.preload(Endpoint::AudioTranscriptions).await?;
 
     let (text, session) = crate::whisper::create_transcription(
         &req.file.contents,
