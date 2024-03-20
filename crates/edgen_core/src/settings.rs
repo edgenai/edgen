@@ -303,9 +303,14 @@ impl SettingsParams {
 impl Default for SettingsParams {
     fn default() -> Self {
         let data_dir = PROJECT_DIRS.data_dir();
-        let chat_completions_dir = data_dir.join(Path::new("models/chat/completions"));
-        let audio_transcriptions_dir = data_dir.join(Path::new("models/audio/transcriptions"));
-        let embeddings_dir = data_dir.join(Path::new("models/embeddings"));
+        let chat_completions_dir =
+            data_dir.join(&join_path_components(&["models", "chat", "completions"]));
+        let audio_transcriptions_dir = data_dir.join(&join_path_components(&[
+            "models",
+            "audio",
+            "transcriptions",
+        ]));
+        let embeddings_dir = data_dir.join(&join_path_components(&["models", "embeddings"]));
 
         let chat_completions_str = chat_completions_dir.into_os_string().into_string().unwrap();
         let audio_transcriptions_str = audio_transcriptions_dir
@@ -337,6 +342,10 @@ impl Default for SettingsParams {
             max_request_size: 1024 * 1014 * 100, // 100 MB
         }
     }
+}
+
+fn join_path_components(comps: &[&str]) -> PathBuf {
+    comps.iter().collect::<PathBuf>()
 }
 
 pub struct SettingsInner {
@@ -632,12 +641,50 @@ impl DerefMut for StaticSettings {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsString;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
 
     use crate::settings::*;
 
     const TEST_FILE: &str = "tfile";
+
+    #[test]
+    fn test_join_path_components() {
+        for i in 0..4 {
+            let (have, expected) = if i == 0 {
+                (
+                    join_path_components(&["path", "to", "my", "file.ext"]).into_os_string(),
+                    #[cfg(target_family = "windows")]
+                    OsString::from("path\\to\\my\\file.ext"),
+                    #[cfg(not(target_family = "windows"))]
+                    OsString::from("path/to/my/file.ext"),
+                )
+            } else if i == 1 {
+                (
+                    #[cfg(target_family = "windows")]
+                    join_path_components(&["c:\\absolute", "path", "to", "my", "file.ext"])
+                        .into_os_string(),
+                    #[cfg(not(target_family = "windows"))]
+                    join_path_components(&["/absolute", "path", "to", "my", "file.ext"])
+                        .into_os_string(),
+                    #[cfg(target_family = "windows")]
+                    OsString::from("c:\\absolute\\path\\to\\my\\file.ext"),
+                    #[cfg(not(target_family = "windows"))]
+                    OsString::from("/absolute/path/to/my/file.ext"),
+                )
+            } else if i == 2 {
+                (
+                    join_path_components(&["file.ext"]).into_os_string(),
+                    OsString::from("file.ext"),
+                )
+            } else {
+                (OsString::from(""), OsString::from(""))
+            };
+            println!("Path from components: {:?}", have);
+            assert_eq!(have, expected);
+        }
+    }
 
     // Trying to avoid doing too many disk writes in unit tests by performing every test using the
     // same file.
