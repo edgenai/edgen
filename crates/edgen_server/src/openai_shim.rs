@@ -624,7 +624,8 @@ pub async fn chat_completions(
     // at the moment we care only about the top hit.
     // we can, alternatively, consider all matches and go through them
     // until one backend succeeds.
-    let kind = MODEL_PATTERNS.get_top_model_kind(&model_name, &[ModelKind::LLM]);
+    let kind =
+        MODEL_PATTERNS.get_top_model_kind(&model_name, &[ModelKind::LLM, ModelKind::ChatFaker]);
     if let Err(error) = kind {
         return Err(ChatCompletionError::UnknownModelKind {
             model_name: req.model.to_string(),
@@ -662,30 +663,39 @@ pub async fn chat_completions(
 
     let fp = format!("edgen-{}", cargo_crate_version!());
     let response = if stream_response {
-        let completions_stream =
-            crate::llm::chat_completion_stream(model, args)
-                .await?
-                .map(move |chunk| {
-                    Event::default().json_data(ChatCompletionChunk {
-                        id: Uuid::new_v4().to_string().into(),
-                        choices: tiny_vec![ChatCompletionChunkChoice {
-                            index: 0,
-                            finish_reason: None,
-                            delta: ChatCompletionChunkDelta {
-                                content: Some(Cow::Owned(chunk)),
-                                role: None,
-                            },
-                        }],
-                        created: OffsetDateTime::now_utc().unix_timestamp(),
-                        model: Cow::Borrowed("main"),
-                        system_fingerprint: Cow::Borrowed(&fp), // use macro for version
-                        object: Cow::Borrowed("text_completion"),
-                    })
-                });
-
+        let completions_stream = {
+            let result = match model.kind {
+                ModelKind::LLM => crate::llm::chat_completion_stream(model, args).await?,
+                ModelKind::ChatFaker => {
+                    crate::chat_faker::chat_completion_stream(model, args).await?
+                }
+                _ => panic!("we should never get here"),
+            };
+            result.map(move |chunk| {
+                Event::default().json_data(ChatCompletionChunk {
+                    id: Uuid::new_v4().to_string().into(),
+                    choices: tiny_vec![ChatCompletionChunkChoice {
+                        index: 0,
+                        finish_reason: None,
+                        delta: ChatCompletionChunkDelta {
+                            content: Some(Cow::Owned(chunk)),
+                            role: None,
+                        },
+                    }],
+                    created: OffsetDateTime::now_utc().unix_timestamp(),
+                    model: Cow::Borrowed("main"),
+                    system_fingerprint: Cow::Borrowed(&fp), // use macro for version
+                    object: Cow::Borrowed("text_completion"),
+                })
+            })
+        };
         ChatCompletionResponse::Stream(Sse::new(completions_stream))
     } else {
-        let content_str = crate::llm::chat_completion(model, args).await?;
+        let content_str = match model.kind {
+            ModelKind::LLM => crate::llm::chat_completion(model, args).await?,
+            ModelKind::ChatFaker => crate::chat_faker::chat_completion(model, args).await?,
+            _ => panic!("we should never get here"),
+        };
         let response = ChatCompletion {
             id: Uuid::new_v4().to_string().into(),
             choices: vec![ChatCompletionChoice {

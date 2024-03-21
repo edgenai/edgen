@@ -46,6 +46,7 @@ pub enum ModelError {
 pub enum ModelKind {
     LLM,
     Whisper,
+    ChatFaker,
 }
 
 #[derive(Debug, PartialEq)]
@@ -57,6 +58,7 @@ enum ModelQuantization {
 pub struct ModelPatterns {
     pub llama: Vec<String>,
     pub whisper: Vec<String>,
+    pub chat_faker: Vec<String>,
 }
 
 impl ModelPatterns {
@@ -64,6 +66,7 @@ impl ModelPatterns {
         let mut m = serde_yaml::from_str::<ModelPatterns>(yaml)?;
         m.llama = m.llama.iter().map(|s| s.to_lowercase()).collect();
         m.whisper = m.whisper.iter().map(|s| s.to_lowercase()).collect();
+        m.chat_faker = m.chat_faker.iter().map(|s| s.to_lowercase()).collect();
         Ok(m)
     }
 
@@ -73,7 +76,10 @@ impl ModelPatterns {
     // If all fail, the endpoint returns an error response.
     #[allow(dead_code)]
     pub fn get_model_kinds(&self, model_name: &str) -> Vec<ModelKind> {
-        self.get_accepted_model_kinds(model_name, &[ModelKind::LLM, ModelKind::Whisper])
+        self.get_accepted_model_kinds(
+            model_name,
+            &[ModelKind::LLM, ModelKind::Whisper, ModelKind::ChatFaker],
+        )
     }
 
     // note that the order of accepted kinds passed in
@@ -101,6 +107,7 @@ impl ModelPatterns {
             let list = match kind {
                 ModelKind::LLM => &self.llama,
                 ModelKind::Whisper => &self.whisper,
+                ModelKind::ChatFaker => &self.chat_faker,
             };
             find_model_kind(list, kind, &n, &mut v);
         }
@@ -124,7 +131,7 @@ fn make_model_patterns() -> ModelPatterns {
 #[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub struct Model {
-    kind: ModelKind,
+    pub kind: ModelKind,
     quantization: ModelQuantization,
     name: String,
     repo: String,

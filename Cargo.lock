@@ -1395,6 +1395,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "edgen_rt_chat_faker"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "dashmap",
+ "derive_more",
+ "edgen_core",
+ "futures",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "edgen_rt_llama_cpp"
 version = "0.1.0"
 dependencies = [
@@ -1438,6 +1452,7 @@ dependencies = [
  "dashmap",
  "derive_more",
  "edgen_core",
+ "edgen_rt_chat_faker",
  "edgen_rt_llama_cpp",
  "edgen_rt_whisper_cpp",
  "either",

@@ -39,6 +39,7 @@ use openai_shim as audio;
 #[macro_use]
 pub mod misc;
 
+mod chat_faker;
 pub mod cli;
 pub mod graceful_shutdown;
 mod llm;
@@ -335,7 +336,7 @@ mod tests {
     fn completion_streaming_request() -> String {
         r#"
             {
-                "model": "gpt-3.5-turbo",
+                "model": "chat-faker-model.fake",
                 "stream": true,
                 "messages": [
                     {
@@ -351,7 +352,7 @@ mod tests {
     fn completion_request() -> String {
         r#"
             {
-                "model": "gpt-3.5-turbo",
+                "model": "fake-model.fake",
                 "messages": [
                     {
                         "role": "system",
@@ -359,7 +360,7 @@ mod tests {
                     },
                     {
                         "role": "user",
-                        "content": "Hello!"
+                        "content": "What is the capital of Portugal?"
                     }
                 ]
             }
@@ -413,7 +414,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
+    // #[ignore]
     // TODO This test should pass with non-streaming completions!
     // TODO this is hanging inside LlamaModel::load_from_file_async
     async fn test_axum_completions() {
@@ -433,8 +434,17 @@ mod tests {
             .await;
 
         response.assert_status_ok();
-        let _completion: openai_shim::ChatCompletion = from_str(&response.text()).unwrap();
-        // assert something with completions
+        let mut answer = String::new();
+        let completion: serde_json::Value = from_str(&response.text()).unwrap();
+        if let serde_json::Value::Array(choices) = &completion["choices"] {
+            for choice in choices {
+                if let serde_json::Value::String(piece) = &choice["message"]["content"] {
+                    answer += &piece;
+                }
+            }
+        }
+        println!("answer: {}", answer);
+        assert_eq!(answer, "The capital of Portugal is Lisbon.", "wrong answer");
     }
 
     #[tokio::test]
