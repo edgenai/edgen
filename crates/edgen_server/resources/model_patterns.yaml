@@ -1,0 +1,45 @@
+llama: [
+    chat,
+    phi,
+    TinyLlama,
+    zephyr,
+    nomic-embed,
+    mistral,
+    mixtral,
+    GPT,
+    MPT,
+    gemma,
+    mamba,
+    command-R,
+    falcon,
+    vigogne,
+    koala,
+    baichuan,
+    aquila,
+    starcoder,
+    refact,
+    persimmon,
+    bloom,
+    yi,
+    stableLM,
+    deepseek,
+    qwen,
+    plamo-13b,
+    orion,
+    internLM2,
+    codeshell,
+    llava,
+    bakllava,
+    obsidian,
+    ShareGPT4V,
+    MobileLVM
+]
+
+whisper: [
+    distil,
+    whisper
+]
+
+TensorRT: []
+
+candle: []

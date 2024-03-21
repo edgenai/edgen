@@ -12,7 +12,8 @@
 
 use std::path::PathBuf;
 
-use serde_derive::Serialize;
+use once_cell::sync::Lazy;
+use serde_derive::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::warn;
 use utoipa::ToSchema;
@@ -20,12 +21,18 @@ use utoipa::ToSchema;
 use crate::status;
 use crate::types::Endpoint;
 
+// TODO: load it dynamically!
+pub static MODEL_PATTERNS_FILE: &'static str = include_str!("../resources/model_patterns.yaml");
+pub static MODEL_PATTERNS: Lazy<ModelPatterns> = Lazy::new(make_model_patterns);
+
 #[derive(Serialize, Error, ToSchema, Debug, PartialEq)]
 pub enum ModelError {
     #[error("the provided model file name does does not exist, or isn't a file: ({0})")]
     FileNotFound(String),
     #[error("no repository is available for the specified model: ({0:?})")]
     UnknownModel(ModelKind),
+    #[error("unknown model kind for model: ({0:?})")]
+    UnknownKind(String),
     #[error("error checking remote repository: ({0})")]
     API(String),
     /// error resulting from tokio::JoinError
@@ -35,7 +42,7 @@ pub enum ModelError {
     NotPreloaded,
 }
 
-#[derive(Serialize, ToSchema, Debug, Clone, PartialEq)]
+#[derive(Serialize, ToSchema, Debug, Clone, PartialEq, Eq)]
 pub enum ModelKind {
     LLM,
     Whisper,
@@ -44,6 +51,74 @@ pub enum ModelKind {
 #[derive(Debug, PartialEq)]
 enum ModelQuantization {
     Default,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ModelPatterns {
+    pub llama: Vec<String>,
+    pub whisper: Vec<String>,
+}
+
+impl ModelPatterns {
+    pub fn new(yaml: &str) -> Result<ModelPatterns, serde_yaml::Error> {
+        let mut m = serde_yaml::from_str::<ModelPatterns>(yaml)?;
+        m.llama = m.llama.iter().map(|s| s.to_lowercase()).collect();
+        m.whisper = m.whisper.iter().map(|s| s.to_lowercase()).collect();
+        Ok(m)
+    }
+
+    // we don't use this at the moment. Instead, endpoints request the top kind
+    // and when it fails return an error. An alternative approach would get
+    // all matching kinds and try one after the other until one succeeds.
+    // If all fail, the endpoint returns an error response.
+    #[allow(dead_code)]
+    pub fn get_model_kinds(&self, model_name: &str) -> Vec<ModelKind> {
+        self.get_accepted_model_kinds(model_name, &[ModelKind::LLM, ModelKind::Whisper])
+    }
+
+    // note that the order of accepted kinds passed in
+    // decides which one is the top kind.
+    pub fn get_top_model_kind(
+        &self,
+        model_name: &str,
+        accepted: &[ModelKind],
+    ) -> Result<ModelKind, ModelError> {
+        let v = self.get_accepted_model_kinds(model_name, accepted);
+        if v.is_empty() {
+            return Err(ModelError::UnknownKind(model_name.to_string()));
+        }
+        Ok(v[0].clone())
+    }
+
+    pub fn get_accepted_model_kinds(
+        &self,
+        model_name: &str,
+        accepted: &[ModelKind],
+    ) -> Vec<ModelKind> {
+        let mut v = vec![];
+        let n = model_name.to_lowercase();
+        for kind in accepted {
+            let list = match kind {
+                ModelKind::LLM => &self.llama,
+                ModelKind::Whisper => &self.whisper,
+            };
+            find_model_kind(list, kind, &n, &mut v);
+        }
+        v
+    }
+}
+
+fn find_model_kind(ps: &[String], r: &ModelKind, n: &str, v: &mut Vec<ModelKind>) {
+    for p in ps {
+        if n.contains(p) {
+            v.push(r.clone());
+            break;
+        }
+    }
+}
+
+fn make_model_patterns() -> ModelPatterns {
+    ModelPatterns::new(MODEL_PATTERNS_FILE).unwrap()
 }
 
 #[allow(dead_code)]
@@ -273,6 +348,59 @@ mod test {
             }
         );
         assert_eq!(m.file_path(), Ok(m.path));
+    }
+
+    #[test]
+    fn get_model_kinds() {
+        let yaml = "
+            llama: [
+                 chat, phi, TinyLlama, GPT, multi-model
+            ]
+
+            whisper: [
+                 distil,
+                 whisper,
+                 multi-model
+            ]
+            ";
+        println!("{}", yaml);
+        let m = ModelPatterns::new(yaml).expect("cannot parse model patterns");
+        println!("{:?}", m);
+        assert_eq!(
+            m.llama,
+            ["chat", "phi", "tinyllama", "gpt", "multi-model"],
+            "unexpected list of model patterns for llama"
+        );
+        assert_eq!(
+            m.whisper,
+            ["distil", "whisper", "multi-model"],
+            "unexpected list of model patterns for whisper"
+        );
+        assert_eq!(
+            m.get_model_kinds("TheBloke/neural-chat-7B-v3-3-GGUF"),
+            &[ModelKind::LLM],
+            "expected model to be Llama"
+        );
+        assert_eq!(
+            m.get_model_kinds("distil-whisper/distil-small.en"),
+            &[ModelKind::Whisper],
+            "expected model to be Whisper"
+        );
+        assert_eq!(
+            m.get_model_kinds("my-chat-bot.bin"),
+            &[ModelKind::LLM],
+            "expected model to be Llama"
+        );
+        assert_eq!(
+            m.get_model_kinds("my-poor-model.bin"),
+            &[],
+            "expected model to be nothing"
+        );
+        assert_eq!(
+            m.get_model_kinds("my-versatile-multi-model.bin"),
+            &[ModelKind::LLM, ModelKind::Whisper],
+            "expected model to be nothing"
+        );
     }
 
     #[tokio::test]

@@ -41,7 +41,7 @@ use edgen_core::settings;
 use edgen_core::whisper::WhisperEndpointError;
 
 use crate::llm::embeddings;
-use crate::model::{Model, ModelError, ModelKind};
+use crate::model::{Model, ModelError, ModelKind, MODEL_PATTERNS};
 use crate::types::Endpoint;
 
 /// The plaintext or image content of a [`ChatMessage`] within a [`CreateChatCompletionRequest`].
@@ -510,6 +510,16 @@ pub enum ChatCompletionError {
         model_name: String,
     },
 
+    /// The provided model could not be found on the local system.
+    #[error("unknown model kind: {model_name}, {reason}")]
+    UnknownModelKind {
+        /// The name of the model.
+        model_name: String,
+
+        /// A human-readable error message.
+        reason: Cow<'static, str>,
+    },
+
     /// The provided model name contains prohibited characters.
     #[error("model {model_name} could not be fetched from the system: {reason}")]
     ProhibitedName {
@@ -611,7 +621,18 @@ pub async fn chat_completions(
         });
     }
 
-    let mut model = Model::new(ModelKind::LLM, &model_name, &repo, &PathBuf::from(&dir));
+    // at the moment we care only about the top hit.
+    // we can, alternatively, consider all matches and go through them
+    // until one backend succeeds.
+    let kind = MODEL_PATTERNS.get_top_model_kind(&model_name, &[ModelKind::LLM]);
+    if let Err(error) = kind {
+        return Err(ChatCompletionError::UnknownModelKind {
+            model_name: req.model.to_string(),
+            reason: Cow::Owned(error.to_string()),
+        });
+    }
+
+    let mut model = Model::new(kind.unwrap(), &model_name, &repo, &PathBuf::from(&dir));
 
     model
         .preload(Endpoint::ChatCompletions)
@@ -913,7 +934,14 @@ pub async fn create_embeddings(
         });
     }
 
-    let mut model = Model::new(ModelKind::LLM, &model_name, &repo, &PathBuf::from(&dir));
+    let kind = MODEL_PATTERNS.get_top_model_kind(&model_name, &[ModelKind::LLM]);
+    if let Err(error) = kind {
+        return Err(ChatCompletionError::UnknownModelKind {
+            model_name: req.model.to_string(),
+            reason: Cow::Owned(error.to_string()),
+        });
+    }
+    let mut model = Model::new(kind.unwrap(), &model_name, &repo, &PathBuf::from(&dir));
 
     model
         .preload(Endpoint::Embeddings)
@@ -1057,7 +1085,15 @@ pub async fn create_transcription(
         });
     }
 
-    let mut model = Model::new(ModelKind::Whisper, &model_name, &repo, &PathBuf::from(&dir));
+    let kind = MODEL_PATTERNS.get_top_model_kind(&model_name, &[ModelKind::Whisper]);
+    if let Err(error) = kind {
+        return Err(TranscriptionError::UnknownModelKind {
+            model_name: req.model.to_string(),
+            reason: Cow::Owned(error.to_string()),
+        });
+    }
+
+    let mut model = Model::new(kind.unwrap(), &model_name, &repo, &PathBuf::from(&dir));
 
     model.preload(Endpoint::AudioTranscriptions).await?;
 
@@ -1088,6 +1124,16 @@ pub enum TranscriptionError {
     NoSuchModel {
         /// The name of the model.
         model_name: String,
+    },
+
+    /// The provided model could not be found on the local system.
+    #[error("unknown model kind: {model_name}, {reason}")]
+    UnknownModelKind {
+        /// The name of the model.
+        model_name: String,
+
+        /// A human-readable error message.
+        reason: Cow<'static, str>,
     },
 
     /// The provided model name contains prohibited characters.
