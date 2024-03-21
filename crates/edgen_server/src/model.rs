@@ -369,6 +369,8 @@ mod test {
                  whisper,
                  multi-model
             ]
+
+            chat_faker: []
             ";
         println!("{}", yaml);
         let m = ModelPatterns::new(yaml).expect("cannot parse model patterns");
