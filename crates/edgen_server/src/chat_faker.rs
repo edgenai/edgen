@@ -10,6 +10,8 @@
  * limitations under the License.
  */
 
+//! Endpoint for the chat faker model RT
+
 use futures::Stream;
 use once_cell::sync::Lazy;
 
@@ -73,6 +75,8 @@ pub async fn embeddings(
         .await
 }
 
+// Not needed. Just for completeness.
+#[allow(dead_code)]
 pub async fn reset_environment() {
     ENDPOINT.reset()
 }

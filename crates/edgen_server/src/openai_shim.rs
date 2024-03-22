@@ -40,7 +40,8 @@ use edgen_core::llm::{CompletionArgs, LLMEndpointError};
 use edgen_core::settings;
 use edgen_core::whisper::WhisperEndpointError;
 
-use crate::llm::embeddings;
+use crate::chat_faker;
+use crate::llm;
 use crate::model::{Model, ModelError, ModelKind, MODEL_PATTERNS};
 use crate::types::Endpoint;
 
@@ -51,7 +52,7 @@ use crate::types::Endpoint;
 /// See [the documentation for creating chat completions][openai] for more details.
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/chat/create
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "type")]
 pub enum ContentPart<'a> {
     /// Plain text.
@@ -94,7 +95,7 @@ impl<'a> Display for ContentPart<'a> {
 /// See [the documentation for creating chat completions][openai] for more details.
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/chat/create
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AssistantFunctionStub<'a> {
     /// The name of the function from the assistant's point of view.
     pub name: Cow<'a, str>,
@@ -106,7 +107,7 @@ pub struct AssistantFunctionStub<'a> {
 /// A description of a function that an assistant called.
 ///
 /// This is included in [`ChatMessage`]s when the `tool_calls` field is present.
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AssistantToolCall<'a> {
     /// A unique identifier for the invocation of this function.
     pub id: Cow<'a, str>,
@@ -129,7 +130,7 @@ pub struct AssistantToolCall<'a> {
 /// See [the documentation for creating chat completions][openai] for more details.
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/chat/create
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "role")]
 pub enum ChatMessage<'a> {
     /// A message from the system. This is typically used to set the initial system prompt; for
@@ -185,7 +186,7 @@ pub enum ChatMessage<'a> {
 /// See [the documentation for creating chat completions][openai] for more details.
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/chat/create
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct FunctionStub<'a> {
     /// A human-readable description of what the tool does.
     pub description: Option<Cow<'a, str>>,
@@ -209,7 +210,7 @@ pub struct FunctionStub<'a> {
 /// See [the documentation for creating chat completions][openai] for more details.
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/chat/create
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "type")]
 #[non_exhaustive]
 pub enum ToolStub<'a> {
@@ -225,7 +226,7 @@ pub enum ToolStub<'a> {
 ///
 /// This implements [`Display`] to generate a transcript of the chat messages compatible with most
 /// LLaMa-based models.
-#[derive(Serialize, Deserialize, Default, Deref, DerefMut, From, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, Default, Deref, DerefMut, From, ToSchema)]
 pub struct ChatMessages<'a>(
     #[deref]
     #[deref_mut]
@@ -286,7 +287,7 @@ impl<'a> Display for ChatMessages<'a> {
 ///
 /// [chat_completions]: fn.chat_completions.html
 /// [openai]: https://platform.openai.com/docs/api-reference/chat/create
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreateChatCompletionRequest<'a> {
     /// The messages that have been sent in the dialogue so far.
     #[serde(default)]
@@ -384,7 +385,7 @@ pub struct CreateChatCompletionRequest<'a> {
 /// See [the documentation for creating chat completions][openai] for more details.
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/chat/create
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ChatCompletionChoice<'a> {
     /// The plaintext of the generated message.
     pub message: ChatMessage<'a>,
@@ -406,7 +407,7 @@ pub struct ChatCompletionChoice<'a> {
 /// See [the documentation for creating chat completions][openai] for more details.
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/completions/object
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ChatCompletionUsage {
     /// The number of generated tokens.
     pub completion_tokens: u32,
@@ -420,7 +421,7 @@ pub struct ChatCompletionUsage {
 }
 
 /// A fully generated chat completion.
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ChatCompletion<'a> {
     /// A unique identifier for this completion.
     pub id: Cow<'a, str>,
@@ -445,7 +446,7 @@ pub struct ChatCompletion<'a> {
 }
 
 /// A delta-encoded difference for an ongoing, stream-mode chat completion.
-#[derive(Serialize, Deserialize, Default, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, Default, ToSchema)]
 pub struct ChatCompletionChunkDelta<'a> {
     /// If present, new content added to the end of the completion stream.
     pub content: Option<Cow<'a, str>>,
@@ -455,7 +456,7 @@ pub struct ChatCompletionChunkDelta<'a> {
 }
 
 /// A chunk of a stream-mode chat completion.
-#[derive(Serialize, Deserialize, Default, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, Default, ToSchema)]
 pub struct ChatCompletionChunkChoice<'a> {
     /// The delta-encoded difference to append to the completion stream.
     pub delta: ChatCompletionChunkDelta<'a>,
@@ -473,7 +474,7 @@ pub struct ChatCompletionChunkChoice<'a> {
 }
 
 /// A chunk generated in streaming mode from a [`CreateChatCompletionRequest`].
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ChatCompletionChunk<'a> {
     /// A unique identifier for this chunk.
     pub id: Cow<'a, str>,
@@ -665,10 +666,8 @@ pub async fn chat_completions(
     let response = if stream_response {
         let completions_stream = {
             let result = match model.kind {
-                ModelKind::LLM => crate::llm::chat_completion_stream(model, args).await?,
-                ModelKind::ChatFaker => {
-                    crate::chat_faker::chat_completion_stream(model, args).await?
-                }
+                ModelKind::LLM => llm::chat_completion_stream(model, args).await?,
+                ModelKind::ChatFaker => chat_faker::chat_completion_stream(model, args).await?,
                 _ => panic!("we should never get here"),
             };
             result.map(move |chunk| {
@@ -692,7 +691,7 @@ pub async fn chat_completions(
         ChatCompletionResponse::Stream(Sse::new(completions_stream))
     } else {
         let content_str = match model.kind {
-            ModelKind::LLM => crate::llm::chat_completion(model, args).await?,
+            ModelKind::LLM => llm::chat_completion(model, args).await?,
             ModelKind::ChatFaker => crate::chat_faker::chat_completion(model, args).await?,
             _ => panic!("we should never get here"),
         };
@@ -836,7 +835,7 @@ pub enum ParseError {
 ///
 /// [embeddings]: fn.create_embeddings.html
 /// [openai]: https://platform.openai.com/docs/api-reference/embeddings/create
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreateEmbeddingsRequest<'a> {
     /// The text input to embed as either a string or an array of strings.
     #[serde(with = "either::serde_untagged")]
@@ -856,7 +855,7 @@ pub struct CreateEmbeddingsRequest<'a> {
 }
 
 /// The return type of [`create_embeddings`].
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct EmbeddingsResponse {
     /// Always `"list"`.
     pub object: String,
@@ -876,7 +875,7 @@ pub struct EmbeddingsResponse {
 /// See [the documentation for creating transcriptions][openai] for more details.
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/embeddings/object
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct Embedding {
     /// Always `"embedding"`.
     pub object: String,
@@ -889,7 +888,7 @@ pub struct Embedding {
 }
 
 /// The usage statistics of the request.
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct EmbeddingsUsage {
     // TODO doc
     /// ???
@@ -964,7 +963,11 @@ pub async fn create_embeddings(
         move |s| vec![s.to_string()],
         move |v| v.iter().map(move |s| s.to_string()).collect(),
     );
-    let mut res = embeddings(model, input).await?;
+    let mut res = match model.kind {
+        ModelKind::LLM => llm::embeddings(model, input).await?,
+        ModelKind::ChatFaker => chat_faker::embeddings(model, input).await?,
+        _ => todo!(),
+    };
 
     Ok(Json(EmbeddingsResponse {
         object: "list".to_string(),
@@ -1040,7 +1043,7 @@ pub struct CreateTranscriptionRequest {
 }
 
 /// The return type of [`create_transcription`].
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct TranscriptionResponse {
     /// The transcribed text of the audio.
     pub text: String,
