@@ -194,8 +194,12 @@ fn test_battery() {
         test_ai_endpoint_no_download(Endpoint::ChatCompletions, ".phi-2.Q2_K.gguf");
 
         let source = "models--distil-whisper--distil-medium.en/blobs";
-        common::copy_model(source, ".whisper-medium-32-2.en.bin", "audio/transcriptions");
-        test_ai_endpoint_no_download(Endpoint::AudioTranscriptions, ".ggml-medium-32-2.en.bin");
+        common::copy_model(
+            source,
+            ".whisper-medium-32-2.en.bin",
+            "audio/transcriptions",
+        );
+        test_ai_endpoint_no_download(Endpoint::AudioTranscriptions, ".whisper-medium-32-2.en.bin");
     })
 }
 

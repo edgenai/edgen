@@ -571,6 +571,124 @@ where
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct ModelId {
+    kind_param: String,
+    name: String,
+    repo: String,
+    dir: String,
+}
+
+async fn get_chat_completions_model_params(name: &str) -> Result<ModelId, &'static str> {
+    async fn default_quartet() -> ModelId {
+        let name = settings::chat_completions_name().await;
+        let repo = settings::chat_completions_repo().await;
+        ModelId {
+            kind_param: format!("{}/{}", repo, name),
+            name: name,
+            repo: repo,
+            dir: settings::chat_completions_dir().await,
+        }
+    }
+    if name.is_empty() || name.to_ascii_lowercase() == "default" {
+        return Ok(default_quartet().await);
+    }
+    get_model_params(name, &settings::chat_completions_dir().await)
+}
+
+async fn get_audio_transcriptions_model_params(name: &str) -> Result<ModelId, &'static str> {
+    async fn default_quartet() -> ModelId {
+        let name = settings::audio_transcriptions_name().await;
+        let repo = settings::audio_transcriptions_repo().await;
+        ModelId {
+            kind_param: format!("{}/{}", repo, name),
+            name: name,
+            repo: repo,
+            dir: settings::audio_transcriptions_dir().await,
+        }
+    }
+    if name.is_empty() || name.to_ascii_lowercase() == "default" {
+        return Ok(default_quartet().await);
+    }
+    get_model_params(name, &settings::audio_transcriptions_dir().await)
+}
+
+async fn get_embeddings_model_params(name: &str) -> Result<ModelId, &'static str> {
+    async fn default_quartet() -> ModelId {
+        let name = settings::embeddings_name().await;
+        let repo = settings::embeddings_repo().await;
+        ModelId {
+            kind_param: format!("{}/{}", repo, name),
+            name: name,
+            repo: repo,
+            dir: settings::embeddings_dir().await,
+        }
+    }
+    if name.is_empty() || name.to_ascii_lowercase() == "default" {
+        return Ok(default_quartet().await);
+    }
+    get_model_params(name, &settings::embeddings_dir().await)
+}
+
+fn get_model_params(model_name: &str, dir: &str) -> Result<ModelId, &'static str> {
+    match parse_model_param(model_name) {
+        Ok((owner, repo, name)) => Ok(ModelId {
+            kind_param: model_name.to_string(),
+            name: name,
+            repo: owner + "/" + &repo,
+            dir: dir.to_string(),
+        }),
+        Err(_) => Ok(ModelId {
+            kind_param: model_name.to_string(),
+            name: model_name.to_string(),
+            repo: "".to_string(),
+            dir: dir.to_string(),
+        }),
+    }
+}
+
+fn parse_model_param(model: &str) -> Result<(String, String, String), ParseError> {
+    let vs = model.split("/").collect::<Vec<&str>>();
+    let l = vs.len();
+    if l < 3 {
+        return Err(ParseError::MissingSeparator);
+    } else if l > 3 {
+        return Err(ParseError::TooManySeparators);
+    }
+
+    let owner = vs[0].to_string();
+    if owner.is_empty() {
+        return Err(ParseError::NoOwner);
+    }
+
+    let repo = vs[1].to_string();
+    if repo.is_empty() {
+        return Err(ParseError::NoRepo);
+    }
+
+    let name = vs[2].to_string();
+    if name.is_empty() {
+        return Err(ParseError::NoModel);
+    }
+
+    Ok((owner, repo, name))
+}
+
+/// Error Parsing the model parameter
+#[derive(Debug, Clone)]
+pub enum ParseError {
+    /// Expected are three fields separated by '/'; fewer fields were provided.
+    MissingSeparator,
+    /// Expected are three fields separated by '/'; more than three fields were provided.
+    TooManySeparators,
+    /// No model name was provided.
+    NoModel,
+    /// No repo owner was provided.
+    NoOwner,
+    /// No repo was provided.
+    NoRepo,
+}
+
 /// POST `/v1/chat/completions`: generate chat completions for the provided context, optionally
 /// streaming those completions in real-time.
 ///
@@ -607,17 +725,17 @@ pub async fn chat_completions(
         });
     }
 
-    let (kind_param, model_name, repo, dir) = params.unwrap();
+    let params = params.unwrap();
 
-    if model_name.is_empty() {
+    if params.name.is_empty() {
         return Err(ChatCompletionError::ProhibitedName {
-            model_name: model_name,
+            model_name: req.model.to_string(),
             reason: Cow::Borrowed("Empty model name in config"),
         });
     }
-    if dir.is_empty() {
+    if params.dir.is_empty() {
         return Err(ChatCompletionError::ProhibitedName {
-            model_name: dir,
+            model_name: req.model.to_string(),
             reason: Cow::Borrowed("Empty model directory in config"),
         });
     }
@@ -625,8 +743,8 @@ pub async fn chat_completions(
     // at the moment we care only about the top hit.
     // we can, alternatively, consider all matches and go through them
     // until one backend succeeds.
-    let kind =
-        MODEL_PATTERNS.get_top_model_kind(&kind_param, &[ModelKind::LLM, ModelKind::ChatFaker]);
+    let kind = MODEL_PATTERNS
+        .get_top_model_kind(&params.kind_param, &[ModelKind::LLM, ModelKind::ChatFaker]);
     if let Err(error) = kind {
         return Err(ChatCompletionError::UnknownModelKind {
             model_name: req.model.to_string(),
@@ -634,13 +752,18 @@ pub async fn chat_completions(
         });
     }
 
-    let mut model = Model::new(kind.unwrap(), &model_name, &repo, &PathBuf::from(&dir));
+    let mut model = Model::new(
+        kind.unwrap(),
+        &params.name,
+        &params.repo,
+        &PathBuf::from(&params.dir),
+    );
 
     model
         .preload(Endpoint::ChatCompletions)
         .await
         .map_err(move |_| ChatCompletionError::NoSuchModel {
-            model_name: model_name.to_string(),
+            model_name: params.name.to_string(),
         })?;
 
     let untokenized_context = format!("{}<|ASSISTANT|>", req.messages);
@@ -721,125 +844,6 @@ pub async fn chat_completions(
     };
 
     Ok(response)
-}
-
-async fn get_chat_completions_model_params(
-    name: &str,
-) -> Result<(String, String, String, String), &'static str> {
-    async fn default_quartet() -> (String, String, String, String) {
-        let name = settings::chat_completions_name().await;
-        let repo = settings::chat_completions_repo().await;
-        (
-            format!("{}/{}", repo, name),
-            name,
-            repo,
-            settings::chat_completions_dir().await,
-        )
-    }
-    if name.is_empty() || name.to_ascii_lowercase() == "default" {
-        return Ok(default_quartet().await);
-    }
-    get_model_params(name, &settings::chat_completions_dir().await)
-}
-
-async fn get_audio_transcriptions_model_params(
-    name: &str,
-) -> Result<(String, String, String, String), &'static str> {
-    async fn default_quartet() -> (String, String, String, String) {
-        let name = settings::audio_transcriptions_name().await;
-        let repo = settings::audio_transcriptions_repo().await;
-        (
-            format!("{}/{}", repo, name),
-            name,
-            repo,
-            settings::audio_transcriptions_dir().await,
-        )
-    }
-    if name.is_empty() || name.to_ascii_lowercase() == "default" {
-        return Ok(default_quartet().await);
-    }
-    get_model_params(name, &settings::audio_transcriptions_dir().await)
-}
-
-async fn get_embeddings_model_params(
-    name: &str,
-) -> Result<(String, String, String, String), &'static str> {
-    async fn default_quartet() -> (String, String, String, String) {
-        let name = settings::embeddings_name().await;
-        let repo = settings::embeddings_repo().await;
-        (
-            format!("{}/{}", repo, name),
-            name,
-            repo,
-            settings::embeddings_dir().await,
-        )
-    }
-    if name.is_empty() || name.to_ascii_lowercase() == "default" {
-        return Ok(default_quartet().await);
-    }
-    get_model_params(name, &settings::embeddings_dir().await)
-}
-
-fn get_model_params(
-    model_name: &str,
-    dir: &str,
-) -> Result<(String, String, String, String), &'static str> {
-    match parse_model_param(model_name) {
-        Ok((owner, repo, name)) => Ok((
-            model_name.to_string(),
-            name,
-            owner + "/" + &repo,
-            dir.to_string(),
-        )),
-        Err(_) => Ok((
-            model_name.to_string(),
-            model_name.to_string(),
-            "".to_string(),
-            dir.to_string(),
-        )),
-    }
-}
-
-fn parse_model_param(model: &str) -> Result<(String, String, String), ParseError> {
-    let vs = model.split("/").collect::<Vec<&str>>();
-    let l = vs.len();
-    if l < 3 {
-        return Err(ParseError::MissingSeparator);
-    } else if l > 3 {
-        return Err(ParseError::TooManySeparators);
-    }
-
-    let owner = vs[0].to_string();
-    if owner.is_empty() {
-        return Err(ParseError::NoOwner);
-    }
-
-    let repo = vs[1].to_string();
-    if repo.is_empty() {
-        return Err(ParseError::NoRepo);
-    }
-
-    let name = vs[2].to_string();
-    if name.is_empty() {
-        return Err(ParseError::NoModel);
-    }
-
-    Ok((owner, repo, name))
-}
-
-/// Error Parsing the model parameter
-#[derive(Debug, Clone)]
-pub enum ParseError {
-    /// Expected are three fields separated by '/'; fewer fields were provided.
-    MissingSeparator,
-    /// Expected are three fields separated by '/'; more than three fields were provided.
-    TooManySeparators,
-    /// No model name was provided.
-    NoModel,
-    /// No repo owner was provided.
-    NoOwner,
-    /// No repo was provided.
-    NoRepo,
 }
 
 /// A request to generate embeddings for one or more pieces of text.
@@ -943,35 +947,40 @@ pub async fn create_embeddings(
         });
     }
 
-    let (kind_param, model_name, repo, dir) = params.unwrap();
+    let params = params.unwrap();
 
-    if model_name.is_empty() {
+    if params.name.is_empty() {
         return Err(ChatCompletionError::ProhibitedName {
-            model_name,
+            model_name: req.model.to_string(),
             reason: Cow::Borrowed("Empty model name in config"),
         });
     }
-    if dir.is_empty() {
+    if params.dir.is_empty() {
         return Err(ChatCompletionError::ProhibitedName {
-            model_name: dir,
+            model_name: req.model.to_string(),
             reason: Cow::Borrowed("Empty model directory in config"),
         });
     }
 
-    let kind = MODEL_PATTERNS.get_top_model_kind(&kind_param, &[ModelKind::LLM]);
+    let kind = MODEL_PATTERNS.get_top_model_kind(&params.kind_param, &[ModelKind::LLM]);
     if let Err(error) = kind {
         return Err(ChatCompletionError::UnknownModelKind {
             model_name: req.model.to_string(),
             reason: Cow::Owned(error.to_string()),
         });
     }
-    let mut model = Model::new(kind.unwrap(), &model_name, &repo, &PathBuf::from(&dir));
+    let mut model = Model::new(
+        kind.unwrap(),
+        &params.name,
+        &params.repo,
+        &PathBuf::from(&params.dir),
+    );
 
     model
         .preload(Endpoint::Embeddings)
         .await
         .map_err(move |_| ChatCompletionError::NoSuchModel {
-            model_name: model_name.to_string(),
+            model_name: params.name.to_string(),
         })?;
 
     let input = req.input.either(
@@ -1098,22 +1107,22 @@ pub async fn create_transcription(
         });
     }
 
-    let (kind_param, model_name, repo, dir) = params.unwrap();
+    let params = params.unwrap();
 
-    if model_name.is_empty() {
+    if params.name.is_empty() {
         return Err(TranscriptionError::ProhibitedName {
-            model_name,
+            model_name: req.model.to_string(),
             reason: Cow::Borrowed("Empty model name in config"),
         });
     }
-    if dir.is_empty() {
+    if params.dir.is_empty() {
         return Err(TranscriptionError::ProhibitedName {
-            model_name: dir,
+            model_name: req.model.to_string(),
             reason: Cow::Borrowed("Empty model directory in config"),
         });
     }
 
-    let kind = MODEL_PATTERNS.get_top_model_kind(&kind_param, &[ModelKind::Whisper]);
+    let kind = MODEL_PATTERNS.get_top_model_kind(&params.kind_param, &[ModelKind::Whisper]);
     if let Err(error) = kind {
         return Err(TranscriptionError::UnknownModelKind {
             model_name: req.model.to_string(),
@@ -1121,7 +1130,12 @@ pub async fn create_transcription(
         });
     }
 
-    let mut model = Model::new(kind.unwrap(), &model_name, &repo, &PathBuf::from(&dir));
+    let mut model = Model::new(
+        kind.unwrap(),
+        &params.name,
+        &params.repo,
+        &PathBuf::from(&params.dir),
+    );
 
     model.preload(Endpoint::AudioTranscriptions).await?;
 
@@ -1214,12 +1228,12 @@ mod test {
         let repo = settings::chat_completions_repo().await;
         assert_eq!(
             get_chat_completions_model_params("default").await,
-            Ok((
-                format!("{}/{}", repo, name),
-                name,
-                repo,
-                settings::chat_completions_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: format!("{}/{}", repo, name),
+                name: name,
+                repo: repo,
+                dir: settings::chat_completions_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1231,12 +1245,12 @@ mod test {
         let repo = settings::audio_transcriptions_repo().await;
         assert_eq!(
             get_audio_transcriptions_model_params("default").await,
-            Ok((
-                format!("{}/{}", repo, name),
-                name,
-                repo,
-                settings::audio_transcriptions_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: format!("{}/{}", repo, name),
+                name: name,
+                repo: repo,
+                dir: settings::audio_transcriptions_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1248,12 +1262,12 @@ mod test {
         let repo = settings::embeddings_repo().await;
         assert_eq!(
             get_embeddings_model_params("default").await,
-            Ok((
-                format!("{}/{}", repo, name),
-                name,
-                repo,
-                settings::embeddings_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: format!("{}/{}", repo, name),
+                name: name,
+                repo: repo,
+                dir: settings::embeddings_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1265,12 +1279,12 @@ mod test {
         let repo = settings::chat_completions_repo().await;
         assert_eq!(
             get_chat_completions_model_params("").await,
-            Ok((
-                format!("{}/{}", repo, name),
-                name,
-                repo,
-                settings::chat_completions_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: format!("{}/{}", repo, name),
+                name: name,
+                repo: repo,
+                dir: settings::chat_completions_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1282,12 +1296,12 @@ mod test {
         let repo = settings::audio_transcriptions_repo().await;
         assert_eq!(
             get_audio_transcriptions_model_params("").await,
-            Ok((
-                format!("{}/{}", repo, name),
-                name,
-                repo,
-                settings::audio_transcriptions_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: format!("{}/{}", repo, name),
+                name: name,
+                repo: repo,
+                dir: settings::audio_transcriptions_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1299,12 +1313,12 @@ mod test {
         let repo = settings::embeddings_repo().await;
         assert_eq!(
             get_embeddings_model_params("").await,
-            Ok((
-                format!("{}/{}", repo, name),
-                name,
-                repo,
-                settings::embeddings_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: format!("{}/{}", repo, name),
+                name: name,
+                repo: repo,
+                dir: settings::embeddings_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1314,12 +1328,12 @@ mod test {
         init_settings_for_test().await;
         assert_eq!(
             get_chat_completions_model_params("TheFake/TheFakeRepo/fake-model.gguf").await,
-            Ok((
-                "TheFake/TheFakeRepo/fake-model.gguf".to_string(),
-                "fake-model.gguf".to_string(),
-                "TheFake/TheFakeRepo".to_string(),
-                settings::chat_completions_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: "TheFake/TheFakeRepo/fake-model.gguf".to_string(),
+                name: "fake-model.gguf".to_string(),
+                repo: "TheFake/TheFakeRepo".to_string(),
+                dir: settings::chat_completions_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1329,12 +1343,12 @@ mod test {
         init_settings_for_test().await;
         assert_eq!(
             get_audio_transcriptions_model_params("TheFake/TheFakeRepo/fake-model.gguf").await,
-            Ok((
-                "TheFake/TheFakeRepo/fake-model.gguf".to_string(),
-                "fake-model.gguf".to_string(),
-                "TheFake/TheFakeRepo".to_string(),
-                settings::audio_transcriptions_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: "TheFake/TheFakeRepo/fake-model.gguf".to_string(),
+                name: "fake-model.gguf".to_string(),
+                repo: "TheFake/TheFakeRepo".to_string(),
+                dir: settings::audio_transcriptions_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1344,12 +1358,12 @@ mod test {
         init_settings_for_test().await;
         assert_eq!(
             get_embeddings_model_params("TheFake/TheFakeRepo/fake-model.gguf").await,
-            Ok((
-                "TheFake/TheFakeRepo/fake-model.gguf".to_string(),
-                "fake-model.gguf".to_string(),
-                "TheFake/TheFakeRepo".to_string(),
-                settings::embeddings_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: "TheFake/TheFakeRepo/fake-model.gguf".to_string(),
+                name: "fake-model.gguf".to_string(),
+                repo: "TheFake/TheFakeRepo".to_string(),
+                dir: settings::embeddings_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1359,12 +1373,12 @@ mod test {
         init_settings_for_test().await;
         assert_eq!(
             get_chat_completions_model_params("fake-model.gguf").await,
-            Ok((
-                "fake-model.gguf".to_string(),
-                "fake-model.gguf".to_string(),
-                "".to_string(),
-                settings::chat_completions_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: "fake-model.gguf".to_string(),
+                name: "fake-model.gguf".to_string(),
+                repo: "".to_string(),
+                dir: settings::chat_completions_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1374,12 +1388,12 @@ mod test {
         init_settings_for_test().await;
         assert_eq!(
             get_audio_transcriptions_model_params("fake-model.gguf").await,
-            Ok((
-                "fake-model.gguf".to_string(),
-                "fake-model.gguf".to_string(),
-                "".to_string(),
-                settings::audio_transcriptions_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: "fake-model.gguf".to_string(),
+                name: "fake-model.gguf".to_string(),
+                repo: "".to_string(),
+                dir: settings::audio_transcriptions_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1389,12 +1403,12 @@ mod test {
         init_settings_for_test().await;
         assert_eq!(
             get_embeddings_model_params("fake-model.gguf").await,
-            Ok((
-                "fake-model.gguf".to_string(),
-                "fake-model.gguf".to_string(),
-                "".to_string(),
-                settings::embeddings_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: "fake-model.gguf".to_string(),
+                name: "fake-model.gguf".to_string(),
+                repo: "".to_string(),
+                dir: settings::embeddings_dir().await,
+            }),
             "unexpected model triple",
         );
     }
