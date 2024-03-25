@@ -683,7 +683,7 @@ pub async fn chat_completions(
                     }],
                     created: OffsetDateTime::now_utc().unix_timestamp(),
                     model: Cow::Borrowed("main"),
-                    system_fingerprint: Cow::Borrowed(&fp), // use macro for version
+                    system_fingerprint: Cow::Borrowed(&fp),
                     object: Cow::Borrowed("text_completion"),
                 })
             })

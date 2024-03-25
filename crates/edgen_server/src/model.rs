@@ -10,19 +10,21 @@
  * limitations under the License.
  */
 
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 
 use once_cell::sync::Lazy;
 use serde_derive::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::warn;
+use tracing::{info, warn};
 use utoipa::ToSchema;
+
+use edgen_core::settings;
 
 use crate::status;
 use crate::types::Endpoint;
 
-// TODO: load it dynamically!
-pub static MODEL_PATTERNS_FILE: &'static str = include_str!("../resources/model_patterns.yaml");
 pub static MODEL_PATTERNS: Lazy<ModelPatterns> = Lazy::new(make_model_patterns);
 
 #[derive(Serialize, Error, ToSchema, Debug, PartialEq)]
@@ -62,6 +64,7 @@ pub struct ModelPatterns {
 }
 
 impl ModelPatterns {
+    #[cfg(test)]
     pub fn new(yaml: &str) -> Result<ModelPatterns, serde_yaml::Error> {
         let mut m = serde_yaml::from_str::<ModelPatterns>(yaml)?;
         m.llama = m.llama.iter().map(|s| s.to_lowercase()).collect();
@@ -124,8 +127,80 @@ fn find_model_kind(ps: &[String], r: &ModelKind, n: &str, v: &mut Vec<ModelKind>
     }
 }
 
+impl Default for ModelPatterns {
+    fn default() -> Self {
+        Self {
+            llama: vec!["gguf".to_string()],
+            whisper: vec!["distil".to_string(), "whisper".to_string()],
+            chat_faker: vec!["fake".to_string()],
+        }
+    }
+}
+
 fn make_model_patterns() -> ModelPatterns {
-    ModelPatterns::new(MODEL_PATTERNS_FILE).unwrap()
+    let data_dir = settings::PROJECT_DIRS.data_dir();
+    let model_dir = data_dir.join("models");
+    let model_patterns_file = model_dir.join("model_patterns.yaml");
+    if model_patterns_file.exists() {
+        info!("Loading existing model patterns file");
+        read_model_file_and_parse(model_patterns_file.as_path())
+    } else {
+        info!("Creating new model patterns file");
+        create_model_patterns_file(&model_patterns_file.as_path());
+        ModelPatterns::default()
+    }
+}
+
+fn read_model_file_and_parse(path: &Path) -> ModelPatterns {
+    match File::open(path) {
+        Ok(mut file) => {
+            let mut s = String::new();
+            match file.read_to_string(&mut s) {
+                Ok(_) => serde_yaml::from_str::<ModelPatterns>(&s).unwrap_or_else(|error| {
+                    warn!(
+                        "Cannot parse model patterns file: {:?}, using default",
+                        error
+                    );
+                    ModelPatterns::default()
+                }),
+                Err(error) => {
+                    warn!(
+                        "Cannot read model patterns file: {:?}, using default",
+                        error
+                    );
+                    ModelPatterns::default()
+                }
+            }
+        }
+        Err(error) => {
+            warn!(
+                "Cannot read model patterns file: {:?}, using default",
+                error
+            );
+            ModelPatterns::default()
+        }
+    }
+}
+
+fn create_model_patterns_file(path: &Path) {
+    match File::create(path) {
+        Ok(ref mut file) => {
+            let model_patterns = serde_yaml::to_string(&ModelPatterns::default())
+                .expect("Cannot create yaml file from default model patterns");
+            if let Err(error) = file.write_all(model_patterns.as_bytes()) {
+                warn!(
+                    "Cannot write model patterns file: {:?}, using default",
+                    error
+                );
+            }
+        }
+        Err(error) => {
+            warn!(
+                "Cannot create model patterns file: {:?}, using default",
+                error
+            );
+        }
+    }
 }
 
 #[allow(dead_code)]
