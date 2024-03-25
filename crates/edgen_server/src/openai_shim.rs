@@ -607,7 +607,7 @@ pub async fn chat_completions(
         });
     }
 
-    let (model_name, repo, dir) = params.unwrap();
+    let (kind_param, model_name, repo, dir) = params.unwrap();
 
     if model_name.is_empty() {
         return Err(ChatCompletionError::ProhibitedName {
@@ -626,7 +626,7 @@ pub async fn chat_completions(
     // we can, alternatively, consider all matches and go through them
     // until one backend succeeds.
     let kind =
-        MODEL_PATTERNS.get_top_model_kind(&model_name, &[ModelKind::LLM, ModelKind::ChatFaker]);
+        MODEL_PATTERNS.get_top_model_kind(&kind_param, &[ModelKind::LLM, ModelKind::ChatFaker]);
     if let Err(error) = kind {
         return Err(ChatCompletionError::UnknownModelKind {
             model_name: req.model.to_string(),
@@ -725,63 +725,78 @@ pub async fn chat_completions(
 
 async fn get_chat_completions_model_params(
     name: &str,
-) -> Result<(String, String, String), &'static str> {
-    async fn default_trio() -> (String, String, String) {
+) -> Result<(String, String, String, String), &'static str> {
+    async fn default_quartet() -> (String, String, String, String) {
+        let name = settings::chat_completions_name().await;
+        let repo = settings::chat_completions_repo().await;
         (
-            settings::chat_completions_name().await,
-            settings::chat_completions_repo().await,
+            format!("{}/{}", repo, name),
+            name,
+            repo,
             settings::chat_completions_dir().await,
         )
     }
-    if name.is_empty() {
-        return Ok(default_trio().await);
-    }
-    if name.to_ascii_lowercase() == "default" {
-        return Ok(default_trio().await);
+    if name.is_empty() || name.to_ascii_lowercase() == "default" {
+        return Ok(default_quartet().await);
     }
     get_model_params(name, &settings::chat_completions_dir().await)
 }
 
 async fn get_audio_transcriptions_model_params(
     name: &str,
-) -> Result<(String, String, String), &'static str> {
-    async fn default_trio() -> (String, String, String) {
+) -> Result<(String, String, String, String), &'static str> {
+    async fn default_quartet() -> (String, String, String, String) {
+        let name = settings::audio_transcriptions_name().await;
+        let repo = settings::audio_transcriptions_repo().await;
         (
-            settings::audio_transcriptions_name().await,
-            settings::audio_transcriptions_repo().await,
+            format!("{}/{}", repo, name),
+            name,
+            repo,
             settings::audio_transcriptions_dir().await,
         )
     }
-    if name.is_empty() {
-        return Ok(default_trio().await);
-    }
-    if name.to_ascii_lowercase() == "default" {
-        return Ok(default_trio().await);
+    if name.is_empty() || name.to_ascii_lowercase() == "default" {
+        return Ok(default_quartet().await);
     }
     get_model_params(name, &settings::audio_transcriptions_dir().await)
 }
 
-async fn get_embeddings_model_params(name: &str) -> Result<(String, String, String), &'static str> {
-    async fn default_trio() -> (String, String, String) {
+async fn get_embeddings_model_params(
+    name: &str,
+) -> Result<(String, String, String, String), &'static str> {
+    async fn default_quartet() -> (String, String, String, String) {
+        let name = settings::embeddings_name().await;
+        let repo = settings::embeddings_repo().await;
         (
-            settings::embeddings_name().await,
-            settings::embeddings_repo().await,
+            format!("{}/{}", repo, name),
+            name,
+            repo,
             settings::embeddings_dir().await,
         )
     }
-    if name.is_empty() {
-        return Ok(default_trio().await);
-    }
-    if name.to_ascii_lowercase() == "default" {
-        return Ok(default_trio().await);
+    if name.is_empty() || name.to_ascii_lowercase() == "default" {
+        return Ok(default_quartet().await);
     }
     get_model_params(name, &settings::embeddings_dir().await)
 }
 
-fn get_model_params(name: &str, dir: &str) -> Result<(String, String, String), &'static str> {
-    match parse_model_param(name) {
-        Ok((owner, repo, name)) => Ok((name, owner + "/" + &repo, dir.to_string())),
-        Err(_) => Ok((name.to_string(), "".to_string(), dir.to_string())),
+fn get_model_params(
+    model_name: &str,
+    dir: &str,
+) -> Result<(String, String, String, String), &'static str> {
+    match parse_model_param(model_name) {
+        Ok((owner, repo, name)) => Ok((
+            model_name.to_string(),
+            name,
+            owner + "/" + &repo,
+            dir.to_string(),
+        )),
+        Err(_) => Ok((
+            model_name.to_string(),
+            model_name.to_string(),
+            "".to_string(),
+            dir.to_string(),
+        )),
     }
 }
 
@@ -928,7 +943,7 @@ pub async fn create_embeddings(
         });
     }
 
-    let (model_name, repo, dir) = params.unwrap();
+    let (kind_param, model_name, repo, dir) = params.unwrap();
 
     if model_name.is_empty() {
         return Err(ChatCompletionError::ProhibitedName {
@@ -943,7 +958,7 @@ pub async fn create_embeddings(
         });
     }
 
-    let kind = MODEL_PATTERNS.get_top_model_kind(&model_name, &[ModelKind::LLM]);
+    let kind = MODEL_PATTERNS.get_top_model_kind(&kind_param, &[ModelKind::LLM]);
     if let Err(error) = kind {
         return Err(ChatCompletionError::UnknownModelKind {
             model_name: req.model.to_string(),
@@ -1083,7 +1098,7 @@ pub async fn create_transcription(
         });
     }
 
-    let (model_name, repo, dir) = params.unwrap();
+    let (kind_param, model_name, repo, dir) = params.unwrap();
 
     if model_name.is_empty() {
         return Err(TranscriptionError::ProhibitedName {
@@ -1098,7 +1113,7 @@ pub async fn create_transcription(
         });
     }
 
-    let kind = MODEL_PATTERNS.get_top_model_kind(&model_name, &[ModelKind::Whisper]);
+    let kind = MODEL_PATTERNS.get_top_model_kind(&kind_param, &[ModelKind::Whisper]);
     if let Err(error) = kind {
         return Err(TranscriptionError::UnknownModelKind {
             model_name: req.model.to_string(),
@@ -1195,11 +1210,14 @@ mod test {
     #[tokio::test]
     async fn default_chat_model_name() {
         init_settings_for_test().await;
+        let name = settings::chat_completions_name().await;
+        let repo = settings::chat_completions_repo().await;
         assert_eq!(
             get_chat_completions_model_params("default").await,
             Ok((
-                settings::chat_completions_name().await,
-                settings::chat_completions_repo().await,
+                format!("{}/{}", repo, name),
+                name,
+                repo,
                 settings::chat_completions_dir().await,
             )),
             "unexpected model triple",
@@ -1209,11 +1227,14 @@ mod test {
     #[tokio::test]
     async fn default_audio_model_name() {
         init_settings_for_test().await;
+        let name = settings::audio_transcriptions_name().await;
+        let repo = settings::audio_transcriptions_repo().await;
         assert_eq!(
             get_audio_transcriptions_model_params("default").await,
             Ok((
-                settings::audio_transcriptions_name().await,
-                settings::audio_transcriptions_repo().await,
+                format!("{}/{}", repo, name),
+                name,
+                repo,
                 settings::audio_transcriptions_dir().await,
             )),
             "unexpected model triple",
@@ -1223,11 +1244,14 @@ mod test {
     #[tokio::test]
     async fn default_embeddings_model_name() {
         init_settings_for_test().await;
+        let name = settings::embeddings_name().await;
+        let repo = settings::embeddings_repo().await;
         assert_eq!(
             get_embeddings_model_params("default").await,
             Ok((
-                settings::embeddings_name().await,
-                settings::embeddings_repo().await,
+                format!("{}/{}", repo, name),
+                name,
+                repo,
                 settings::embeddings_dir().await,
             )),
             "unexpected model triple",
@@ -1237,11 +1261,14 @@ mod test {
     #[tokio::test]
     async fn empty_chat_model_name() {
         init_settings_for_test().await;
+        let name = settings::chat_completions_name().await;
+        let repo = settings::chat_completions_repo().await;
         assert_eq!(
             get_chat_completions_model_params("").await,
             Ok((
-                settings::chat_completions_name().await,
-                settings::chat_completions_repo().await,
+                format!("{}/{}", repo, name),
+                name,
+                repo,
                 settings::chat_completions_dir().await,
             )),
             "unexpected model triple",
@@ -1251,11 +1278,14 @@ mod test {
     #[tokio::test]
     async fn empty_audio_model_name() {
         init_settings_for_test().await;
+        let name = settings::audio_transcriptions_name().await;
+        let repo = settings::audio_transcriptions_repo().await;
         assert_eq!(
             get_audio_transcriptions_model_params("").await,
             Ok((
-                settings::audio_transcriptions_name().await,
-                settings::audio_transcriptions_repo().await,
+                format!("{}/{}", repo, name),
+                name,
+                repo,
                 settings::audio_transcriptions_dir().await,
             )),
             "unexpected model triple",
@@ -1265,11 +1295,14 @@ mod test {
     #[tokio::test]
     async fn empty_embeddings_model_name() {
         init_settings_for_test().await;
+        let name = settings::embeddings_name().await;
+        let repo = settings::embeddings_repo().await;
         assert_eq!(
             get_embeddings_model_params("").await,
             Ok((
-                settings::embeddings_name().await,
-                settings::embeddings_repo().await,
+                format!("{}/{}", repo, name),
+                name,
+                repo,
                 settings::embeddings_dir().await,
             )),
             "unexpected model triple",
@@ -1282,6 +1315,7 @@ mod test {
         assert_eq!(
             get_chat_completions_model_params("TheFake/TheFakeRepo/fake-model.gguf").await,
             Ok((
+                "TheFake/TheFakeRepo/fake-model.gguf".to_string(),
                 "fake-model.gguf".to_string(),
                 "TheFake/TheFakeRepo".to_string(),
                 settings::chat_completions_dir().await,
@@ -1296,6 +1330,7 @@ mod test {
         assert_eq!(
             get_audio_transcriptions_model_params("TheFake/TheFakeRepo/fake-model.gguf").await,
             Ok((
+                "TheFake/TheFakeRepo/fake-model.gguf".to_string(),
                 "fake-model.gguf".to_string(),
                 "TheFake/TheFakeRepo".to_string(),
                 settings::audio_transcriptions_dir().await,
@@ -1310,6 +1345,7 @@ mod test {
         assert_eq!(
             get_embeddings_model_params("TheFake/TheFakeRepo/fake-model.gguf").await,
             Ok((
+                "TheFake/TheFakeRepo/fake-model.gguf".to_string(),
                 "fake-model.gguf".to_string(),
                 "TheFake/TheFakeRepo".to_string(),
                 settings::embeddings_dir().await,
@@ -1325,6 +1361,7 @@ mod test {
             get_chat_completions_model_params("fake-model.gguf").await,
             Ok((
                 "fake-model.gguf".to_string(),
+                "fake-model.gguf".to_string(),
                 "".to_string(),
                 settings::chat_completions_dir().await,
             )),
@@ -1339,6 +1376,7 @@ mod test {
             get_audio_transcriptions_model_params("fake-model.gguf").await,
             Ok((
                 "fake-model.gguf".to_string(),
+                "fake-model.gguf".to_string(),
                 "".to_string(),
                 settings::audio_transcriptions_dir().await,
             )),
@@ -1352,6 +1390,7 @@ mod test {
         assert_eq!(
             get_embeddings_model_params("fake-model.gguf").await,
             Ok((
+                "fake-model.gguf".to_string(),
                 "fake-model.gguf".to_string(),
                 "".to_string(),
                 settings::embeddings_dir().await,

@@ -363,8 +363,7 @@ pub fn spawn_chat_completions_request(body: &str) -> thread::JoinHandle<bool> {
             }
             Ok(v) => {
                 println!("Got {:?}", v);
-                assert!(v.status().is_success());
-                true
+                v.status().is_success()
             }
         }
     })
@@ -397,8 +396,7 @@ pub fn spawn_audio_transcriptions_request(model: &str) -> thread::JoinHandle<boo
             }
             Ok(v) => {
                 println!("Got {:?}", v);
-                assert!(v.status().is_success());
-                true
+                v.status().is_success()
             }
         }
     })
