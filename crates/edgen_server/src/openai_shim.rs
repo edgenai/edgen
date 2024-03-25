@@ -40,8 +40,10 @@ use edgen_core::llm::{CompletionArgs, LLMEndpointError};
 use edgen_core::settings;
 use edgen_core::whisper::WhisperEndpointError;
 
-use crate::llm::embeddings;
-use crate::model::{Model, ModelError, ModelKind};
+use crate::chat_faker;
+use crate::llm;
+use crate::model::{Model, ModelError, ModelKind, MODEL_PATTERNS};
+use crate::types::Endpoint;
 
 /// The plaintext or image content of a [`ChatMessage`] within a [`CreateChatCompletionRequest`].
 ///
@@ -50,7 +52,7 @@ use crate::model::{Model, ModelError, ModelKind};
 /// See [the documentation for creating chat completions][openai] for more details.
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/chat/create
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "type")]
 pub enum ContentPart<'a> {
     /// Plain text.
@@ -93,7 +95,7 @@ impl<'a> Display for ContentPart<'a> {
 /// See [the documentation for creating chat completions][openai] for more details.
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/chat/create
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AssistantFunctionStub<'a> {
     /// The name of the function from the assistant's point of view.
     pub name: Cow<'a, str>,
@@ -105,7 +107,7 @@ pub struct AssistantFunctionStub<'a> {
 /// A description of a function that an assistant called.
 ///
 /// This is included in [`ChatMessage`]s when the `tool_calls` field is present.
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AssistantToolCall<'a> {
     /// A unique identifier for the invocation of this function.
     pub id: Cow<'a, str>,
@@ -128,7 +130,7 @@ pub struct AssistantToolCall<'a> {
 /// See [the documentation for creating chat completions][openai] for more details.
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/chat/create
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "role")]
 pub enum ChatMessage<'a> {
     /// A message from the system. This is typically used to set the initial system prompt; for
@@ -184,7 +186,7 @@ pub enum ChatMessage<'a> {
 /// See [the documentation for creating chat completions][openai] for more details.
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/chat/create
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct FunctionStub<'a> {
     /// A human-readable description of what the tool does.
     pub description: Option<Cow<'a, str>>,
@@ -208,7 +210,7 @@ pub struct FunctionStub<'a> {
 /// See [the documentation for creating chat completions][openai] for more details.
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/chat/create
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "type")]
 #[non_exhaustive]
 pub enum ToolStub<'a> {
@@ -224,7 +226,7 @@ pub enum ToolStub<'a> {
 ///
 /// This implements [`Display`] to generate a transcript of the chat messages compatible with most
 /// LLaMa-based models.
-#[derive(Serialize, Deserialize, Default, Deref, DerefMut, From, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, Default, Deref, DerefMut, From, ToSchema)]
 pub struct ChatMessages<'a>(
     #[deref]
     #[deref_mut]
@@ -285,7 +287,7 @@ impl<'a> Display for ChatMessages<'a> {
 ///
 /// [chat_completions]: fn.chat_completions.html
 /// [openai]: https://platform.openai.com/docs/api-reference/chat/create
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreateChatCompletionRequest<'a> {
     /// The messages that have been sent in the dialogue so far.
     #[serde(default)]
@@ -383,7 +385,7 @@ pub struct CreateChatCompletionRequest<'a> {
 /// See [the documentation for creating chat completions][openai] for more details.
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/chat/create
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ChatCompletionChoice<'a> {
     /// The plaintext of the generated message.
     pub message: ChatMessage<'a>,
@@ -405,7 +407,7 @@ pub struct ChatCompletionChoice<'a> {
 /// See [the documentation for creating chat completions][openai] for more details.
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/completions/object
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ChatCompletionUsage {
     /// The number of generated tokens.
     pub completion_tokens: u32,
@@ -419,7 +421,7 @@ pub struct ChatCompletionUsage {
 }
 
 /// A fully generated chat completion.
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ChatCompletion<'a> {
     /// A unique identifier for this completion.
     pub id: Cow<'a, str>,
@@ -444,7 +446,7 @@ pub struct ChatCompletion<'a> {
 }
 
 /// A delta-encoded difference for an ongoing, stream-mode chat completion.
-#[derive(Serialize, Deserialize, Default, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, Default, ToSchema)]
 pub struct ChatCompletionChunkDelta<'a> {
     /// If present, new content added to the end of the completion stream.
     pub content: Option<Cow<'a, str>>,
@@ -454,7 +456,7 @@ pub struct ChatCompletionChunkDelta<'a> {
 }
 
 /// A chunk of a stream-mode chat completion.
-#[derive(Serialize, Deserialize, Default, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, Default, ToSchema)]
 pub struct ChatCompletionChunkChoice<'a> {
     /// The delta-encoded difference to append to the completion stream.
     pub delta: ChatCompletionChunkDelta<'a>,
@@ -472,7 +474,7 @@ pub struct ChatCompletionChunkChoice<'a> {
 }
 
 /// A chunk generated in streaming mode from a [`CreateChatCompletionRequest`].
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ChatCompletionChunk<'a> {
     /// A unique identifier for this chunk.
     pub id: Cow<'a, str>,
@@ -507,6 +509,16 @@ pub enum ChatCompletionError {
     NoSuchModel {
         /// The name of the model.
         model_name: String,
+    },
+
+    /// The provided model could not be found on the local system.
+    #[error("unknown model kind: {model_name}, {reason}")]
+    UnknownModelKind {
+        /// The name of the model.
+        model_name: String,
+
+        /// A human-readable error message.
+        reason: Cow<'static, str>,
     },
 
     /// The provided model name contains prohibited characters.
@@ -559,198 +571,79 @@ where
     }
 }
 
-/// POST `/v1/chat/completions`: generate chat completions for the provided context, optionally
-/// streaming those completions in real-time.
-///
-/// See [the original OpenAI API specification][openai], which this endpoint is compatible with.
-///
-/// [openai]: https://platform.openai.com/docs/api-reference/chat/create
-///
-/// Generates completions for the given [`CreateChatCompletionRequest`] body.
-/// If `stream` is enabled, streams a number of newline-separated, JSON-encoded
-/// [`ChatCompletionChunk`]s to the client using [server-sent events][sse]. Otherwise, returns a
-/// single JSON-encoded [`ChatCompletion`].
-///
-/// [sse]: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
-///
-/// On failure, may raise a `500 Internal Server Error` with a JSON-encoded [`ChatCompletionError`]
-/// to the peer.
-#[utoipa::path(
-post,
-path = "/chat/completions",
-request_body = CreateChatCompletionRequest,
-responses(
-(status = 200, description = "OK", body = ChatCompletionResponse),
-(status = 500, description = "unexpected internal server error", body = ChatCompletionError)
-),
-)]
-pub async fn chat_completions(
-    Json(req): Json<CreateChatCompletionRequest<'_>>,
-) -> Result<impl IntoResponse, ChatCompletionError> {
-    let params = get_chat_completions_model_params(req.model.as_ref()).await;
-    if let Err(error) = params {
-        return Err(ChatCompletionError::ProhibitedName {
-            model_name: req.model.to_string(),
-            reason: Cow::Borrowed(error),
-        });
-    }
-
-    let (model_name, repo, dir) = params.unwrap();
-
-    if model_name.is_empty() {
-        return Err(ChatCompletionError::ProhibitedName {
-            model_name: model_name,
-            reason: Cow::Borrowed("Empty model name in config"),
-        });
-    }
-    if dir.is_empty() {
-        return Err(ChatCompletionError::ProhibitedName {
-            model_name: dir,
-            reason: Cow::Borrowed("Empty model directory in config"),
-        });
-    }
-
-    let mut model = Model::new(ModelKind::LLM, &model_name, &repo, &PathBuf::from(&dir));
-
-    model
-        .preload()
-        .await
-        .map_err(move |_| ChatCompletionError::NoSuchModel {
-            model_name: model_name.to_string(),
-        })?;
-
-    let untokenized_context = format!("{}<|ASSISTANT|>", req.messages);
-
-    let mut args = CompletionArgs {
-        prompt: untokenized_context,
-        seed: req.seed,
-        context_hint: req.context_hint,
-        ..Default::default()
-    };
-
-    if let Some(one_shot) = req.one_shot {
-        args.one_shot = one_shot;
-    }
-
-    if let Some(frequency_penalty) = req.frequency_penalty {
-        args.frequency_penalty = frequency_penalty;
-    }
-
-    let stream_response = req.stream.unwrap_or(false);
-
-    let fp = format!("edgen-{}", cargo_crate_version!());
-    let response = if stream_response {
-        let completions_stream =
-            crate::llm::chat_completion_stream(model, args)
-                .await?
-                .map(move |chunk| {
-                    Event::default().json_data(ChatCompletionChunk {
-                        id: Uuid::new_v4().to_string().into(),
-                        choices: tiny_vec![ChatCompletionChunkChoice {
-                            index: 0,
-                            finish_reason: None,
-                            delta: ChatCompletionChunkDelta {
-                                content: Some(Cow::Owned(chunk)),
-                                role: None,
-                            },
-                        }],
-                        created: OffsetDateTime::now_utc().unix_timestamp(),
-                        model: Cow::Borrowed("main"),
-                        system_fingerprint: Cow::Borrowed(&fp), // use macro for version
-                        object: Cow::Borrowed("text_completion"),
-                    })
-                });
-
-        ChatCompletionResponse::Stream(Sse::new(completions_stream))
-    } else {
-        let content_str = crate::llm::chat_completion(model, args).await?;
-        let response = ChatCompletion {
-            id: Uuid::new_v4().to_string().into(),
-            choices: vec![ChatCompletionChoice {
-                message: ChatMessage::Assistant {
-                    content: Some(Cow::Owned(content_str)),
-                    name: None,
-                    tool_calls: None,
-                },
-                finish_reason: None,
-                index: 0,
-            }],
-            created: OffsetDateTime::now_utc().unix_timestamp(),
-            model: Cow::Borrowed("main"),
-            object: Cow::Borrowed("text_completion"),
-            system_fingerprint: Cow::Owned(fp),
-            usage: ChatCompletionUsage {
-                completion_tokens: 0,
-                prompt_tokens: 0,
-                total_tokens: 0,
-            },
-        };
-
-        ChatCompletionResponse::Full(Json(response))
-    };
-
-    Ok(response)
+#[derive(Debug, PartialEq, Eq)]
+struct ModelId {
+    kind_param: String,
+    name: String,
+    repo: String,
+    dir: String,
 }
 
-async fn get_chat_completions_model_params(
-    name: &str,
-) -> Result<(String, String, String), &'static str> {
-    async fn default_trio() -> (String, String, String) {
-        (
-            settings::chat_completions_name().await,
-            settings::chat_completions_repo().await,
-            settings::chat_completions_dir().await,
-        )
+async fn get_chat_completions_model_params(name: &str) -> Result<ModelId, &'static str> {
+    async fn default_quartet() -> ModelId {
+        let name = settings::chat_completions_name().await;
+        let repo = settings::chat_completions_repo().await;
+        ModelId {
+            kind_param: format!("{}/{}", repo, name),
+            name: name,
+            repo: repo,
+            dir: settings::chat_completions_dir().await,
+        }
     }
-    if name.is_empty() {
-        return Ok(default_trio().await);
-    }
-    if name.to_ascii_lowercase() == "default" {
-        return Ok(default_trio().await);
+    if name.is_empty() || name.to_ascii_lowercase() == "default" {
+        return Ok(default_quartet().await);
     }
     get_model_params(name, &settings::chat_completions_dir().await)
 }
 
-async fn get_audio_transcriptions_model_params(
-    name: &str,
-) -> Result<(String, String, String), &'static str> {
-    async fn default_trio() -> (String, String, String) {
-        (
-            settings::audio_transcriptions_name().await,
-            settings::audio_transcriptions_repo().await,
-            settings::audio_transcriptions_dir().await,
-        )
+async fn get_audio_transcriptions_model_params(name: &str) -> Result<ModelId, &'static str> {
+    async fn default_quartet() -> ModelId {
+        let name = settings::audio_transcriptions_name().await;
+        let repo = settings::audio_transcriptions_repo().await;
+        ModelId {
+            kind_param: format!("{}/{}", repo, name),
+            name: name,
+            repo: repo,
+            dir: settings::audio_transcriptions_dir().await,
+        }
     }
-    if name.is_empty() {
-        return Ok(default_trio().await);
-    }
-    if name.to_ascii_lowercase() == "default" {
-        return Ok(default_trio().await);
+    if name.is_empty() || name.to_ascii_lowercase() == "default" {
+        return Ok(default_quartet().await);
     }
     get_model_params(name, &settings::audio_transcriptions_dir().await)
 }
 
-async fn get_embeddings_model_params(name: &str) -> Result<(String, String, String), &'static str> {
-    async fn default_trio() -> (String, String, String) {
-        (
-            settings::embeddings_name().await,
-            settings::embeddings_repo().await,
-            settings::embeddings_dir().await,
-        )
+async fn get_embeddings_model_params(name: &str) -> Result<ModelId, &'static str> {
+    async fn default_quartet() -> ModelId {
+        let name = settings::embeddings_name().await;
+        let repo = settings::embeddings_repo().await;
+        ModelId {
+            kind_param: format!("{}/{}", repo, name),
+            name: name,
+            repo: repo,
+            dir: settings::embeddings_dir().await,
+        }
     }
-    if name.is_empty() {
-        return Ok(default_trio().await);
-    }
-    if name.to_ascii_lowercase() == "default" {
-        return Ok(default_trio().await);
+    if name.is_empty() || name.to_ascii_lowercase() == "default" {
+        return Ok(default_quartet().await);
     }
     get_model_params(name, &settings::embeddings_dir().await)
 }
 
-fn get_model_params(name: &str, dir: &str) -> Result<(String, String, String), &'static str> {
-    match parse_model_param(name) {
-        Ok((owner, repo, name)) => Ok((name, owner + "/" + &repo, dir.to_string())),
-        Err(_) => Ok((name.to_string(), "".to_string(), dir.to_string())),
+fn get_model_params(model_name: &str, dir: &str) -> Result<ModelId, &'static str> {
+    match parse_model_param(model_name) {
+        Ok((owner, repo, name)) => Ok(ModelId {
+            kind_param: model_name.to_string(),
+            name: name,
+            repo: owner + "/" + &repo,
+            dir: dir.to_string(),
+        }),
+        Err(_) => Ok(ModelId {
+            kind_param: model_name.to_string(),
+            name: model_name.to_string(),
+            repo: "".to_string(),
+            dir: dir.to_string(),
+        }),
     }
 }
 
@@ -796,6 +689,163 @@ pub enum ParseError {
     NoRepo,
 }
 
+/// POST `/v1/chat/completions`: generate chat completions for the provided context, optionally
+/// streaming those completions in real-time.
+///
+/// See [the original OpenAI API specification][openai], which this endpoint is compatible with.
+///
+/// [openai]: https://platform.openai.com/docs/api-reference/chat/create
+///
+/// Generates completions for the given [`CreateChatCompletionRequest`] body.
+/// If `stream` is enabled, streams a number of newline-separated, JSON-encoded
+/// [`ChatCompletionChunk`]s to the client using [server-sent events][sse]. Otherwise, returns a
+/// single JSON-encoded [`ChatCompletion`].
+///
+/// [sse]: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
+///
+/// On failure, may raise a `500 Internal Server Error` with a JSON-encoded [`ChatCompletionError`]
+/// to the peer.
+#[utoipa::path(
+post,
+path = "/chat/completions",
+request_body = CreateChatCompletionRequest,
+responses(
+(status = 200, description = "OK", body = ChatCompletionResponse),
+(status = 500, description = "unexpected internal server error", body = ChatCompletionError)
+),
+)]
+pub async fn chat_completions(
+    Json(req): Json<CreateChatCompletionRequest<'_>>,
+) -> Result<impl IntoResponse, ChatCompletionError> {
+    let params = get_chat_completions_model_params(req.model.as_ref()).await;
+    if let Err(error) = params {
+        return Err(ChatCompletionError::ProhibitedName {
+            model_name: req.model.to_string(),
+            reason: Cow::Borrowed(error),
+        });
+    }
+
+    let params = params.unwrap();
+
+    if params.name.is_empty() {
+        return Err(ChatCompletionError::ProhibitedName {
+            model_name: req.model.to_string(),
+            reason: Cow::Borrowed("Empty model name in config"),
+        });
+    }
+    if params.dir.is_empty() {
+        return Err(ChatCompletionError::ProhibitedName {
+            model_name: req.model.to_string(),
+            reason: Cow::Borrowed("Empty model directory in config"),
+        });
+    }
+
+    // at the moment we care only about the top hit.
+    // we can, alternatively, consider all matches and go through them
+    // until one backend succeeds.
+    let kind = MODEL_PATTERNS
+        .get_top_model_kind(&params.kind_param, &[ModelKind::LLM, ModelKind::ChatFaker]);
+    if let Err(error) = kind {
+        return Err(ChatCompletionError::UnknownModelKind {
+            model_name: req.model.to_string(),
+            reason: Cow::Owned(error.to_string()),
+        });
+    }
+
+    let mut model = Model::new(
+        kind.unwrap(),
+        &params.name,
+        &params.repo,
+        &PathBuf::from(&params.dir),
+    );
+
+    model
+        .preload(Endpoint::ChatCompletions)
+        .await
+        .map_err(move |_| ChatCompletionError::NoSuchModel {
+            model_name: params.name.to_string(),
+        })?;
+
+    let untokenized_context = format!("{}<|ASSISTANT|>", req.messages);
+
+    let mut args = CompletionArgs {
+        prompt: untokenized_context,
+        seed: req.seed,
+        context_hint: req.context_hint,
+        ..Default::default()
+    };
+
+    if let Some(one_shot) = req.one_shot {
+        args.one_shot = one_shot;
+    }
+
+    if let Some(frequency_penalty) = req.frequency_penalty {
+        args.frequency_penalty = frequency_penalty;
+    }
+
+    let stream_response = req.stream.unwrap_or(false);
+
+    let fp = format!("edgen-{}", cargo_crate_version!());
+    let response = if stream_response {
+        let completions_stream = {
+            let result = match model.kind {
+                ModelKind::LLM => llm::chat_completion_stream(model, args).await?,
+                ModelKind::ChatFaker => chat_faker::chat_completion_stream(model, args).await?,
+                _ => panic!("we should never get here"),
+            };
+            result.map(move |chunk| {
+                Event::default().json_data(ChatCompletionChunk {
+                    id: Uuid::new_v4().to_string().into(),
+                    choices: tiny_vec![ChatCompletionChunkChoice {
+                        index: 0,
+                        finish_reason: None,
+                        delta: ChatCompletionChunkDelta {
+                            content: Some(Cow::Owned(chunk)),
+                            role: None,
+                        },
+                    }],
+                    created: OffsetDateTime::now_utc().unix_timestamp(),
+                    model: Cow::Borrowed("main"),
+                    system_fingerprint: Cow::Borrowed(&fp),
+                    object: Cow::Borrowed("text_completion"),
+                })
+            })
+        };
+        ChatCompletionResponse::Stream(Sse::new(completions_stream))
+    } else {
+        let content_str = match model.kind {
+            ModelKind::LLM => llm::chat_completion(model, args).await?,
+            ModelKind::ChatFaker => crate::chat_faker::chat_completion(model, args).await?,
+            _ => panic!("we should never get here"),
+        };
+        let response = ChatCompletion {
+            id: Uuid::new_v4().to_string().into(),
+            choices: vec![ChatCompletionChoice {
+                message: ChatMessage::Assistant {
+                    content: Some(Cow::Owned(content_str)),
+                    name: None,
+                    tool_calls: None,
+                },
+                finish_reason: None,
+                index: 0,
+            }],
+            created: OffsetDateTime::now_utc().unix_timestamp(),
+            model: Cow::Borrowed("main"),
+            object: Cow::Borrowed("text_completion"),
+            system_fingerprint: Cow::Owned(fp),
+            usage: ChatCompletionUsage {
+                completion_tokens: 0,
+                prompt_tokens: 0,
+                total_tokens: 0,
+            },
+        };
+
+        ChatCompletionResponse::Full(Json(response))
+    };
+
+    Ok(response)
+}
+
 /// A request to generate embeddings for one or more pieces of text.
 ///
 /// An `axum` handler, [`create_embeddings`][create_embeddings], is provided to handle this request.
@@ -804,7 +854,7 @@ pub enum ParseError {
 ///
 /// [embeddings]: fn.create_embeddings.html
 /// [openai]: https://platform.openai.com/docs/api-reference/embeddings/create
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreateEmbeddingsRequest<'a> {
     /// The text input to embed as either a string or an array of strings.
     #[serde(with = "either::serde_untagged")]
@@ -824,7 +874,7 @@ pub struct CreateEmbeddingsRequest<'a> {
 }
 
 /// The return type of [`create_embeddings`].
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct EmbeddingsResponse {
     /// Always `"list"`.
     pub object: String,
@@ -844,7 +894,7 @@ pub struct EmbeddingsResponse {
 /// See [the documentation for creating transcriptions][openai] for more details.
 ///
 /// [openai]: https://platform.openai.com/docs/api-reference/embeddings/object
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct Embedding {
     /// Always `"embedding"`.
     pub object: String,
@@ -857,7 +907,7 @@ pub struct Embedding {
 }
 
 /// The usage statistics of the request.
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct EmbeddingsUsage {
     // TODO doc
     /// ???
@@ -897,35 +947,51 @@ pub async fn create_embeddings(
         });
     }
 
-    let (model_name, repo, dir) = params.unwrap();
+    let params = params.unwrap();
 
-    if model_name.is_empty() {
+    if params.name.is_empty() {
         return Err(ChatCompletionError::ProhibitedName {
-            model_name,
+            model_name: req.model.to_string(),
             reason: Cow::Borrowed("Empty model name in config"),
         });
     }
-    if dir.is_empty() {
+    if params.dir.is_empty() {
         return Err(ChatCompletionError::ProhibitedName {
-            model_name: dir,
+            model_name: req.model.to_string(),
             reason: Cow::Borrowed("Empty model directory in config"),
         });
     }
 
-    let mut model = Model::new(ModelKind::LLM, &model_name, &repo, &PathBuf::from(&dir));
+    let kind = MODEL_PATTERNS.get_top_model_kind(&params.kind_param, &[ModelKind::LLM]);
+    if let Err(error) = kind {
+        return Err(ChatCompletionError::UnknownModelKind {
+            model_name: req.model.to_string(),
+            reason: Cow::Owned(error.to_string()),
+        });
+    }
+    let mut model = Model::new(
+        kind.unwrap(),
+        &params.name,
+        &params.repo,
+        &PathBuf::from(&params.dir),
+    );
 
     model
-        .preload()
+        .preload(Endpoint::Embeddings)
         .await
         .map_err(move |_| ChatCompletionError::NoSuchModel {
-            model_name: model_name.to_string(),
+            model_name: params.name.to_string(),
         })?;
 
     let input = req.input.either(
         move |s| vec![s.to_string()],
         move |v| v.iter().map(move |s| s.to_string()).collect(),
     );
-    let mut res = embeddings(model, input).await?;
+    let mut res = match model.kind {
+        ModelKind::LLM => llm::embeddings(model, input).await?,
+        ModelKind::ChatFaker => chat_faker::embeddings(model, input).await?,
+        _ => todo!(),
+    };
 
     Ok(Json(EmbeddingsResponse {
         object: "list".to_string(),
@@ -1001,7 +1067,7 @@ pub struct CreateTranscriptionRequest {
 }
 
 /// The return type of [`create_transcription`].
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct TranscriptionResponse {
     /// The transcribed text of the audio.
     pub text: String,
@@ -1041,24 +1107,37 @@ pub async fn create_transcription(
         });
     }
 
-    let (model_name, repo, dir) = params.unwrap();
+    let params = params.unwrap();
 
-    if model_name.is_empty() {
+    if params.name.is_empty() {
         return Err(TranscriptionError::ProhibitedName {
-            model_name,
+            model_name: req.model.to_string(),
             reason: Cow::Borrowed("Empty model name in config"),
         });
     }
-    if dir.is_empty() {
+    if params.dir.is_empty() {
         return Err(TranscriptionError::ProhibitedName {
-            model_name: dir,
+            model_name: req.model.to_string(),
             reason: Cow::Borrowed("Empty model directory in config"),
         });
     }
 
-    let mut model = Model::new(ModelKind::Whisper, &model_name, &repo, &PathBuf::from(&dir));
+    let kind = MODEL_PATTERNS.get_top_model_kind(&params.kind_param, &[ModelKind::Whisper]);
+    if let Err(error) = kind {
+        return Err(TranscriptionError::UnknownModelKind {
+            model_name: req.model.to_string(),
+            reason: Cow::Owned(error.to_string()),
+        });
+    }
 
-    model.preload().await?;
+    let mut model = Model::new(
+        kind.unwrap(),
+        &params.name,
+        &params.repo,
+        &PathBuf::from(&params.dir),
+    );
+
+    model.preload(Endpoint::AudioTranscriptions).await?;
 
     let (text, session) = crate::whisper::create_transcription(
         &req.file.contents,
@@ -1087,6 +1166,16 @@ pub enum TranscriptionError {
     NoSuchModel {
         /// The name of the model.
         model_name: String,
+    },
+
+    /// The provided model could not be found on the local system.
+    #[error("unknown model kind: {model_name}, {reason}")]
+    UnknownModelKind {
+        /// The name of the model.
+        model_name: String,
+
+        /// A human-readable error message.
+        reason: Cow<'static, str>,
     },
 
     /// The provided model name contains prohibited characters.
@@ -1135,13 +1224,16 @@ mod test {
     #[tokio::test]
     async fn default_chat_model_name() {
         init_settings_for_test().await;
+        let name = settings::chat_completions_name().await;
+        let repo = settings::chat_completions_repo().await;
         assert_eq!(
             get_chat_completions_model_params("default").await,
-            Ok((
-                settings::chat_completions_name().await,
-                settings::chat_completions_repo().await,
-                settings::chat_completions_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: format!("{}/{}", repo, name),
+                name: name,
+                repo: repo,
+                dir: settings::chat_completions_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1149,13 +1241,16 @@ mod test {
     #[tokio::test]
     async fn default_audio_model_name() {
         init_settings_for_test().await;
+        let name = settings::audio_transcriptions_name().await;
+        let repo = settings::audio_transcriptions_repo().await;
         assert_eq!(
             get_audio_transcriptions_model_params("default").await,
-            Ok((
-                settings::audio_transcriptions_name().await,
-                settings::audio_transcriptions_repo().await,
-                settings::audio_transcriptions_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: format!("{}/{}", repo, name),
+                name: name,
+                repo: repo,
+                dir: settings::audio_transcriptions_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1163,13 +1258,16 @@ mod test {
     #[tokio::test]
     async fn default_embeddings_model_name() {
         init_settings_for_test().await;
+        let name = settings::embeddings_name().await;
+        let repo = settings::embeddings_repo().await;
         assert_eq!(
             get_embeddings_model_params("default").await,
-            Ok((
-                settings::embeddings_name().await,
-                settings::embeddings_repo().await,
-                settings::embeddings_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: format!("{}/{}", repo, name),
+                name: name,
+                repo: repo,
+                dir: settings::embeddings_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1177,13 +1275,16 @@ mod test {
     #[tokio::test]
     async fn empty_chat_model_name() {
         init_settings_for_test().await;
+        let name = settings::chat_completions_name().await;
+        let repo = settings::chat_completions_repo().await;
         assert_eq!(
             get_chat_completions_model_params("").await,
-            Ok((
-                settings::chat_completions_name().await,
-                settings::chat_completions_repo().await,
-                settings::chat_completions_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: format!("{}/{}", repo, name),
+                name: name,
+                repo: repo,
+                dir: settings::chat_completions_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1191,13 +1292,16 @@ mod test {
     #[tokio::test]
     async fn empty_audio_model_name() {
         init_settings_for_test().await;
+        let name = settings::audio_transcriptions_name().await;
+        let repo = settings::audio_transcriptions_repo().await;
         assert_eq!(
             get_audio_transcriptions_model_params("").await,
-            Ok((
-                settings::audio_transcriptions_name().await,
-                settings::audio_transcriptions_repo().await,
-                settings::audio_transcriptions_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: format!("{}/{}", repo, name),
+                name: name,
+                repo: repo,
+                dir: settings::audio_transcriptions_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1205,13 +1309,16 @@ mod test {
     #[tokio::test]
     async fn empty_embeddings_model_name() {
         init_settings_for_test().await;
+        let name = settings::embeddings_name().await;
+        let repo = settings::embeddings_repo().await;
         assert_eq!(
             get_embeddings_model_params("").await,
-            Ok((
-                settings::embeddings_name().await,
-                settings::embeddings_repo().await,
-                settings::embeddings_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: format!("{}/{}", repo, name),
+                name: name,
+                repo: repo,
+                dir: settings::embeddings_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1221,11 +1328,12 @@ mod test {
         init_settings_for_test().await;
         assert_eq!(
             get_chat_completions_model_params("TheFake/TheFakeRepo/fake-model.gguf").await,
-            Ok((
-                "fake-model.gguf".to_string(),
-                "TheFake/TheFakeRepo".to_string(),
-                settings::chat_completions_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: "TheFake/TheFakeRepo/fake-model.gguf".to_string(),
+                name: "fake-model.gguf".to_string(),
+                repo: "TheFake/TheFakeRepo".to_string(),
+                dir: settings::chat_completions_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1235,11 +1343,12 @@ mod test {
         init_settings_for_test().await;
         assert_eq!(
             get_audio_transcriptions_model_params("TheFake/TheFakeRepo/fake-model.gguf").await,
-            Ok((
-                "fake-model.gguf".to_string(),
-                "TheFake/TheFakeRepo".to_string(),
-                settings::audio_transcriptions_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: "TheFake/TheFakeRepo/fake-model.gguf".to_string(),
+                name: "fake-model.gguf".to_string(),
+                repo: "TheFake/TheFakeRepo".to_string(),
+                dir: settings::audio_transcriptions_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1249,11 +1358,12 @@ mod test {
         init_settings_for_test().await;
         assert_eq!(
             get_embeddings_model_params("TheFake/TheFakeRepo/fake-model.gguf").await,
-            Ok((
-                "fake-model.gguf".to_string(),
-                "TheFake/TheFakeRepo".to_string(),
-                settings::embeddings_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: "TheFake/TheFakeRepo/fake-model.gguf".to_string(),
+                name: "fake-model.gguf".to_string(),
+                repo: "TheFake/TheFakeRepo".to_string(),
+                dir: settings::embeddings_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1263,11 +1373,12 @@ mod test {
         init_settings_for_test().await;
         assert_eq!(
             get_chat_completions_model_params("fake-model.gguf").await,
-            Ok((
-                "fake-model.gguf".to_string(),
-                "".to_string(),
-                settings::chat_completions_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: "fake-model.gguf".to_string(),
+                name: "fake-model.gguf".to_string(),
+                repo: "".to_string(),
+                dir: settings::chat_completions_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1277,11 +1388,12 @@ mod test {
         init_settings_for_test().await;
         assert_eq!(
             get_audio_transcriptions_model_params("fake-model.gguf").await,
-            Ok((
-                "fake-model.gguf".to_string(),
-                "".to_string(),
-                settings::audio_transcriptions_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: "fake-model.gguf".to_string(),
+                name: "fake-model.gguf".to_string(),
+                repo: "".to_string(),
+                dir: settings::audio_transcriptions_dir().await,
+            }),
             "unexpected model triple",
         );
     }
@@ -1291,11 +1403,12 @@ mod test {
         init_settings_for_test().await;
         assert_eq!(
             get_embeddings_model_params("fake-model.gguf").await,
-            Ok((
-                "fake-model.gguf".to_string(),
-                "".to_string(),
-                settings::embeddings_dir().await,
-            )),
+            Ok(ModelId {
+                kind_param: "fake-model.gguf".to_string(),
+                name: "fake-model.gguf".to_string(),
+                repo: "".to_string(),
+                dir: settings::embeddings_dir().await,
+            }),
             "unexpected model triple",
         );
     }

@@ -12,6 +12,7 @@ console-subscriber = { workspace = true }
 dashmap = { workspace = true }
 derive_more = { workspace = true }
 edgen_core = { path = "../edgen_core" }
+edgen_rt_chat_faker = { path = "../edgen_rt_chat_faker" }
 edgen_rt_llama_cpp = { path = "../edgen_rt_llama_cpp" }
 edgen_rt_whisper_cpp = { path = "../edgen_rt_whisper_cpp" }
 either = { workspace = true, features = ["serde"] }

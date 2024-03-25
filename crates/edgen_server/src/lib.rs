@@ -39,8 +39,8 @@ use openai_shim as audio;
 #[macro_use]
 pub mod misc;
 
+mod chat_faker;
 pub mod cli;
-pub mod error;
 pub mod graceful_shutdown;
 mod llm;
 mod model;
@@ -48,6 +48,7 @@ pub mod model_man;
 pub mod openai_shim;
 mod routes;
 pub mod status;
+pub mod types;
 pub mod util;
 mod whisper;
 
@@ -93,7 +94,7 @@ mod whisper;
 struct ApiDoc;
 
 /// Result for main functions
-pub type EdgenResult = Result<(), error::EdgenError>;
+pub type EdgenResult = Result<(), types::EdgenError>;
 
 /// Main entry point for the server process
 pub fn start(command: &cli::TopLevel) -> EdgenResult {
@@ -187,7 +188,7 @@ async fn start_server(args: &cli::Serve) -> EdgenResult {
     Ok(())
 }
 
-async fn run_server(args: &cli::Serve) -> Result<bool, error::EdgenError> {
+async fn run_server(args: &cli::Serve) -> Result<bool, types::EdgenError> {
     status::set_chat_completions_active_model(
         &SETTINGS
             .read()
@@ -227,7 +228,7 @@ async fn run_server(args: &cli::Serve) -> Result<bool, error::EdgenError> {
 
     for uri in &uri_vector {
         let listener = match uri {
-            uri if uri.starts_with("unix://") => Err(error::EdgenError::GenericError(
+            uri if uri.starts_with("unix://") => Err(types::EdgenError::GenericError(
                 "unix:// URIs are not supported".to_string(),
             )),
             uri if uri.starts_with("http://") => {
@@ -239,7 +240,7 @@ async fn run_server(args: &cli::Serve) -> Result<bool, error::EdgenError> {
 
                 Ok(tokio::net::TcpListener::bind(addr).await?)
             }
-            _ => Err(error::EdgenError::GenericError(format!(
+            _ => Err(types::EdgenError::GenericError(format!(
                 "Unsupported URI schema: {uri}. unix://, http://, and ws:// are supported."
             ))),
         }?;
@@ -327,15 +328,20 @@ mod tests {
     use axum_test::TestServer;
     use levenshtein;
     use serde_json::from_str;
+    use std::fs::File;
+    use std::io::Write;
+    use std::path::Path;
 
-    use crate::openai_shim::TranscriptionResponse;
+    use edgen_rt_chat_faker as chat_faker;
+
+    use crate::openai_shim::{ChatCompletion, ChatMessage, TranscriptionResponse};
 
     use super::*;
 
     fn completion_streaming_request() -> String {
         r#"
             {
-                "model": "gpt-3.5-turbo",
+                "model": "fake-model.fake",
                 "stream": true,
                 "messages": [
                     {
@@ -348,10 +354,26 @@ mod tests {
         .to_string()
     }
 
+    fn completion_long_streaming_request() -> String {
+        r#"
+            {
+                "model": "fake-model.fake",
+                "stream": true,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "answer with a long sermon."
+                    }
+                ]
+            }
+        "#
+        .to_string()
+    }
+
     fn completion_request() -> String {
         r#"
             {
-                "model": "gpt-3.5-turbo",
+                "model": "fake-model.fake",
                 "messages": [
                     {
                         "role": "system",
@@ -359,7 +381,7 @@ mod tests {
                     },
                     {
                         "role": "user",
-                        "content": "Hello!"
+                        "content": "What is the capital of Portugal?"
                     }
                 ]
             }
@@ -384,15 +406,38 @@ mod tests {
             .expect("Failed to initialise settings");
     }
 
+    async fn create_chat_fake_model_file() {
+        let path_string = settings::chat_completions_dir().await;
+        let path = Path::new(&path_string).join("fake-model.fake");
+        if !path.exists() {
+            let mut file = File::create(path).expect("cannot create fake model");
+            file.write_all(b"this is for testing")
+                .expect("cannot write to fake model");
+        }
+    }
+
+    fn poor_mans_stream_processor(stream: &str) -> String {
+        let mut answer = String::new();
+        let mut next_one = false;
+        for p in stream.split("\"") {
+            if next_one && p != ":" {
+                next_one = false;
+                if answer.len() > 0 {
+                    answer += " ";
+                }
+                answer += p;
+            }
+            if p == "content" {
+                next_one = true;
+            }
+        }
+        answer
+    }
+
     #[tokio::test]
-    #[ignore]
-    // TODO this is hanging inside LlamaModel::load_from_file_async
-    // Use a small model for this test.
-    // phi-2.Q2_K.gguf is quite fast.
-    // Note that the model must exist in the model path,
-    // otherwise the test fails.
     async fn test_axum_completions_stream() {
         init_settings_for_test().await;
+        create_chat_fake_model_file().await;
 
         let router =
             Router::new().route("/v1/chat/completions", post(openai_shim::chat_completions));
@@ -409,15 +454,44 @@ mod tests {
 
         response.assert_status_ok();
         assert!(response.text().len() > 0);
+
+        // is there no support for reading sse streams in axum_test?
         assert!(response.text().starts_with("data:"));
+        let answer = poor_mans_stream_processor(&response.text());
+        assert_eq!(answer, chat_faker::DEFAULT_ANSWER, "wrong answer");
     }
 
     #[tokio::test]
-    #[ignore]
-    // TODO This test should pass with non-streaming completions!
-    // TODO this is hanging inside LlamaModel::load_from_file_async
+    async fn test_axum_completions_long_stream() {
+        init_settings_for_test().await;
+        create_chat_fake_model_file().await;
+
+        let router =
+            Router::new().route("/v1/chat/completions", post(openai_shim::chat_completions));
+
+        let server = TestServer::new(router).expect("cannot instantiate TestServer");
+
+        let req: openai_shim::CreateChatCompletionRequest =
+            from_str(&completion_long_streaming_request()).unwrap();
+        let response = server
+            .post("/v1/chat/completions")
+            .content_type(&"application/json")
+            .json(&req)
+            .await;
+
+        response.assert_status_ok();
+        assert!(response.text().len() > 0);
+
+        // is there no support for reading sse streams in axum_test?
+        assert!(response.text().starts_with("data:"));
+        let answer = poor_mans_stream_processor(&response.text());
+        assert_eq!(answer, chat_faker::LONG_ANSWER, "wrong answer");
+    }
+
+    #[tokio::test]
     async fn test_axum_completions() {
         init_settings_for_test().await;
+        create_chat_fake_model_file().await;
 
         let router =
             Router::new().route("/v1/chat/completions", post(openai_shim::chat_completions));
@@ -433,8 +507,16 @@ mod tests {
             .await;
 
         response.assert_status_ok();
-        let _completion: openai_shim::ChatCompletion = from_str(&response.text()).unwrap();
-        // assert something with completions
+        let mut answer = String::new();
+        let completion: ChatCompletion = serde_json::from_str(&response.text()).unwrap();
+        for choice in completion.choices {
+            if let ChatMessage::Assistant { content, .. } = choice.message {
+                if let Some(content) = content {
+                    answer += &content;
+                }
+            }
+        }
+        assert_eq!(answer, chat_faker::CAPITAL_OF_PORTUGAL, "wrong answer");
     }
 
     #[tokio::test]

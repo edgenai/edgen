@@ -1,5 +1,3 @@
-use std::fmt;
-use std::fmt::Display;
 use std::fs;
 use std::io;
 use std::panic;
@@ -18,6 +16,7 @@ use edgen_core::settings::SettingsParams;
 use edgen_server::cli;
 use edgen_server::start;
 use edgen_server::status;
+use edgen_server::types::Endpoint;
 
 pub const SMALL_LLM_NAME: &str = "tinyllama-1.1b-chat-v1.0.Q2_K.gguf";
 pub const SMALL_LLM_REPO: &str = "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF";
@@ -38,22 +37,6 @@ pub const MODELS_URL: &str = "/models";
 pub const BACKUP_DIR: &str = "env_backup";
 pub const CONFIG_BACKUP_DIR: &str = "config_backup";
 pub const MY_MODEL_FILES: &str = "my_models";
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum Endpoint {
-    ChatCompletions,
-    AudioTranscriptions,
-}
-
-impl Display for Endpoint {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let s = match self {
-            Endpoint::ChatCompletions => "chat completions",
-            Endpoint::AudioTranscriptions => "audio transcriptions",
-        };
-        write!(f, "{}", s)
-    }
-}
 
 /// Backup environment (config and model directories) before running 'f';
 /// restore environment, even if 'f' panicks.
@@ -273,6 +256,7 @@ pub fn set_model_dir(ep: Endpoint, model_dir: &str) {
         Endpoint::AudioTranscriptions => {
             config.audio_transcriptions_models_dir = model_dir.to_string();
         }
+        Endpoint::Embeddings => todo!(),
     }
     write_config(&config).unwrap();
 
@@ -296,6 +280,7 @@ pub fn set_model(ep: Endpoint, model_name: &str, model_repo: &str) {
             config.audio_transcriptions_model_name = model_name.to_string();
             config.audio_transcriptions_model_repo = model_repo.to_string();
         }
+        Endpoint::Embeddings => todo!(),
     }
     write_config(&config).unwrap();
 
@@ -307,6 +292,7 @@ pub fn set_model(ep: Endpoint, model_name: &str, model_repo: &str) {
         Endpoint::AudioTranscriptions => {
             make_url(&[BASE_URL, AUDIO_URL, TRANSCRIPTIONS_URL, STATUS_URL])
         }
+        Endpoint::Embeddings => todo!(),
     };
     let stat: status::AIStatus = blocking::get(url).unwrap().json().unwrap();
     assert_eq!(stat.active_model, model_name);
@@ -355,6 +341,7 @@ pub fn spawn_request(ep: Endpoint, body: &str, model: &str) -> thread::JoinHandl
     match ep {
         Endpoint::ChatCompletions => spawn_chat_completions_request(body),
         Endpoint::AudioTranscriptions => spawn_audio_transcriptions_request(model),
+        Endpoint::Embeddings => todo!(),
     }
 }
 
@@ -376,8 +363,7 @@ pub fn spawn_chat_completions_request(body: &str) -> thread::JoinHandle<bool> {
             }
             Ok(v) => {
                 println!("Got {:?}", v);
-                assert!(v.status().is_success());
-                true
+                v.status().is_success()
             }
         }
     })
@@ -410,8 +396,7 @@ pub fn spawn_audio_transcriptions_request(model: &str) -> thread::JoinHandle<boo
             }
             Ok(v) => {
                 println!("Got {:?}", v);
-                assert!(v.status().is_success());
-                true
+                v.status().is_success()
             }
         }
     })
