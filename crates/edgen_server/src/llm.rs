@@ -14,7 +14,7 @@ use futures::Stream;
 use once_cell::sync::Lazy;
 
 use edgen_core::llm::{CompletionArgs, LLMEndpoint, LLMEndpointError};
-use edgen_core::request::{Device, REQUEST_QUEUE};
+use edgen_core::request::{DeviceId, REQUEST_QUEUE};
 use edgen_rt_llama_cpp::LlamaCppEndpoint;
 
 use crate::model::Model;
@@ -22,7 +22,7 @@ use crate::util::StoppingStream;
 
 static ENDPOINT: Lazy<LlamaCppEndpoint> = Lazy::new(move || {
     let endpoint = LlamaCppEndpoint::default();
-    REQUEST_QUEUE.register_users(endpoint.resource_users());
+    REQUEST_QUEUE.register_user(endpoint.resource_user());
     endpoint
 });
 
@@ -35,7 +35,7 @@ pub async fn chat_completion(
         .file_path()
         .map_err(move |e| LLMEndpointError::Load(e.to_string()))?;
     let passport = ENDPOINT
-        .requirements_of(&model_path, Device::Any, &prompt, &args)
+        .completion_requirements(&model_path, DeviceId::Any, &prompt, &args)
         .await?;
 
     let ticket = REQUEST_QUEUE.enqueue(passport).await?;
@@ -54,7 +54,7 @@ pub async fn chat_completion_stream(
         .file_path()
         .map_err(move |e| LLMEndpointError::Load(e.to_string()))?;
     let passport = ENDPOINT
-        .requirements_of(&model_path, Device::Any, &prompt, &args)
+        .completion_requirements(&model_path, DeviceId::Any, &prompt, &args)
         .await?;
 
     let ticket = REQUEST_QUEUE.enqueue(passport).await?;

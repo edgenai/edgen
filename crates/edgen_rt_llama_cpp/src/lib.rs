@@ -39,7 +39,7 @@ use edgen_core::llm::{
 };
 use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, PerishableWriteGuard};
 use edgen_core::request::{
-    Device, Passport, Request, RequestManager, ResourceUser, Ticket, REQUEST_QUEUE,
+    DeviceId, FreedMemory, Passport, Request, ResourceUser, Ticket, REQUEST_QUEUE,
 };
 use edgen_core::settings::SETTINGS;
 
@@ -62,7 +62,7 @@ impl LlamaCppEndpoint {
     async fn get(
         &self,
         model_path: impl AsRef<Path> + Send,
-        device: Device,
+        device: DeviceId,
     ) -> Result<dashmap::mapref::one::Ref<ModelKey, UnloadingModel>, LLMEndpointError> {
         let key = ModelKey::new(&model_path, device);
 
@@ -105,14 +105,14 @@ impl LLMEndpoint for LlamaCppEndpoint {
         model_path: impl AsRef<Path> + Send,
         inputs: Vec<String>,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
-        let model = self.get(model_path, Device::CPU).await?;
+        let model = self.get(model_path, DeviceId::CPU).await?;
         model.embeddings(inputs).await
     }
 
-    async fn requirements_of(
+    async fn completion_requirements(
         &self,
         model_path: impl AsRef<Path> + Send + Sync,
-        device: Device,
+        device: DeviceId,
         prompt: &str,
         args: &CompletionArgs,
     ) -> Result<Passport, LLMEndpointError> {
@@ -122,58 +122,81 @@ impl LLMEndpoint for LlamaCppEndpoint {
         // so it can just be instantiated immediately.
         if let Some(model) = self.models.get(&key) {
             if model.loaded().await
-                || (model.device == Device::CPU && LlamaParams::default().use_mmap)
+                || (model.device == DeviceId::CPU && LlamaParams::default().use_mmap)
             {
-                model.requirements_of(prompt, args).await
+                model.completion_requirements(prompt, args).await
             } else {
+                let (host_size, device_size) = if model.device == DeviceId::CPU {
+                    (file_size(model_path).await?, 0)
+                } else {
+                    (0, file_size(model_path).await?)
+                };
+
                 Ok(Passport::new(
-                    Request::Model(file_size(model_path).await?),
+                    Request::Recursive {
+                        host_memory: host_size,
+                        device_memory: device_size,
+                    },
                     device,
                 ))
             }
         } else {
             match device {
-                Device::CPU if LlamaParams::default().use_mmap => {
+                DeviceId::CPU if LlamaParams::default().use_mmap => {
                     let model = self.get(model_path, device).await?;
-                    model.requirements_of(prompt, args).await
+                    model.completion_requirements(prompt, args).await
                 }
-                Device::Any => {
+                DeviceId::Any => {
                     let size = file_size(&model_path).await?;
                     let use_mmap = LlamaParams::default().use_mmap;
                     let device_pick = REQUEST_QUEUE
                         .pick_device(|d| {
-                            if d == Device::CPU && use_mmap {
-                                0
+                            if d == DeviceId::CPU {
+                                if use_mmap {
+                                    (0, 0)
+                                } else {
+                                    (size, 0)
+                                }
                             } else {
-                                size
+                                (0, size)
                             }
                         })
                         .await?;
-                    if device_pick == Device::CPU && use_mmap {
-                        let model = self.get(model_path, Device::CPU).await?;
-                        model.requirements_of(prompt, args).await
+                    if device_pick == DeviceId::CPU && use_mmap {
+                        let model = self.get(model_path, DeviceId::CPU).await?;
+                        model.completion_requirements(prompt, args).await
                     } else {
-                        Ok(Passport::new(Request::Model(size), device))
+                        let (host_size, device_size) = if device_pick == DeviceId::CPU {
+                            (size, 0)
+                        } else {
+                            (0, size)
+                        };
+
+                        Ok(Passport::new(
+                            Request::Recursive {
+                                host_memory: host_size,
+                                device_memory: device_size,
+                            },
+                            device,
+                        ))
                     }
                 }
                 _ => Ok(Passport::new(
-                    Request::Model(file_size(model_path).await?),
+                    Request::Recursive {
+                        host_memory: 0,
+                        device_memory: file_size(model_path).await?,
+                    },
                     device,
                 )),
             }
         }
     }
 
-    fn resource_users(&self) -> Vec<(Device, Box<dyn ResourceUser>)> {
-        let mut ret = vec![];
-        for device in RequestManager::all_devices() {
-            let resource_user = LlamaResourceUser {
-                device,
-                models: self.models.clone(),
-            };
-            ret.push((device, Box::new(resource_user) as Box<dyn ResourceUser>));
-        }
-        ret
+    fn resource_user(&self) -> Box<dyn ResourceUser> {
+        let resource_user = LlamaResourceUser {
+            models: self.models.clone(),
+        };
+        Box::new(resource_user)
     }
 
     fn reset(&self) {
@@ -217,11 +240,11 @@ struct ModelKey {
     path: String,
 
     /// The device where the model is loaded.
-    device: Device,
+    device: DeviceId,
 }
 
 impl ModelKey {
-    fn new(path: impl AsRef<Path>, device: Device) -> Self {
+    fn new(path: impl AsRef<Path>, device: DeviceId) -> Self {
         Self {
             path: path.as_ref().to_string_lossy().to_string(),
             device,
@@ -252,9 +275,6 @@ async fn file_size(path: impl AsRef<Path> + Send) -> Result<usize, LLMEndpointEr
 
 /// A resource user for this backend.
 struct LlamaResourceUser {
-    /// The device managed/used by the user.
-    device: Device,
-
     /// A reference to the map with all models the Llama backend has currently loaded.
     models: Arc<DashMap<ModelKey, UnloadingModel>>,
 }
@@ -264,9 +284,8 @@ impl ResourceUser for LlamaResourceUser {
     fn allocs(&self) -> usize {
         self.models
             .iter()
-            .filter(|model| model.key().device == self.device)
             .map(|model| {
-                let m = if model.key().device == Device::CPU && LlamaParams::default().use_mmap {
+                let m = if model.key().device == DeviceId::CPU && LlamaParams::default().use_mmap {
                     0
                 } else {
                     1
@@ -277,12 +296,17 @@ impl ResourceUser for LlamaResourceUser {
             .unwrap_or(0)
     }
 
-    async fn request_memory(&self, memory: usize) -> usize {
+    async fn request_memory(
+        &self,
+        host_memory: usize,
+        device_memory: usize,
+        device_id: DeviceId,
+    ) -> FreedMemory {
         let mut droppable: Vec<(ModelKey, Instant)> = self
             .models
             .iter()
             .filter(|model| {
-                model.key().device == self.device
+                model.key().device == device_id
                     // Filter models that only have sessions in flight
                     && !(model.sessions() > 0 && model.droppable_sessions() == 0)
             })
@@ -292,28 +316,37 @@ impl ResourceUser for LlamaResourceUser {
         // Sort by oldest to most recent
         droppable.sort_by(|a, b| a.1.cmp(&b.1));
 
-        let mut freed = 0;
+        let mut freed = FreedMemory {
+            host_memory: 0,
+            device_memory: 0,
+        };
         for (key, _) in droppable {
-            if memory < freed {
+            if host_memory < freed.host_memory && device_memory < freed.device_memory {
                 break;
             }
 
             if let Some(model) = self.models.get(&key) {
-                if !(model.key().device == Device::CPU && LlamaParams::default().use_mmap)
+                if !(model.key().device == DeviceId::CPU && LlamaParams::default().use_mmap)
                     && model.sessions() == 0
                 {
-                    freed = model.size();
+                    if model.key().device == DeviceId::CPU {
+                        freed.host_memory += model.size();
+                    } else {
+                        freed.device_memory += model.size();
+                    }
                     model.unload().await;
                 } else {
-                    freed += model.request_memory(memory - freed).await;
+                    freed += model
+                        .request_memory(
+                            host_memory - freed.host_memory,
+                            device_memory - freed.device_memory,
+                        )
+                        .await;
                 }
             }
         }
 
-        info!(
-            "Llama backend has freed {freed} bytes from {:?}",
-            self.device
-        );
+        info!("Llama backend has freed {freed} bytes from {device_id:?}");
 
         freed
     }
@@ -329,7 +362,7 @@ struct UnloadingModel {
     path: PathBuf,
 
     /// The device where the model is loaded in.
-    device: Device,
+    device: DeviceId,
 
     /// A map storing this model's idle sessions.
     sessions: Arc<DashMap<SessionId, UnloadingSession>>,
@@ -357,7 +390,7 @@ impl UnloadingModel {
     /// order to be loaded.
     async fn new(
         model_path: impl AsRef<Path> + Send,
-        device: Device,
+        device: DeviceId,
     ) -> Result<Self, LLMEndpointError> {
         let sessions: Arc<DashMap<SessionId, UnloadingSession>> = Default::default();
         let (tx, mut rx) = unbounded_channel();
@@ -382,7 +415,7 @@ impl UnloadingModel {
         let model = Perishable::with_ttl(inactive_llm_ttl());
         model
             .set_callback(Some(move || {
-                if let Err(e) = REQUEST_QUEUE.notify_free(&device) {
+                if let Err(e) = REQUEST_QUEUE.notify_free(device) {
                     error!("Failed to notify request queue: {e}");
                 }
             }))
@@ -415,7 +448,7 @@ impl UnloadingModel {
     ///
     /// The model's sessions are sorted by oldest to newest and freed in order until either the memory target is met,
     /// or there are no more sessions to be freed.
-    async fn request_memory(&self, memory: usize) -> usize {
+    async fn request_memory(&self, host_memory: usize, device_memory: usize) -> FreedMemory {
         let mut droppable: Vec<(SessionId, Instant)> = self
             .sessions
             .iter()
@@ -424,15 +457,23 @@ impl UnloadingModel {
 
         droppable.sort_by(|a, b| a.1.cmp(&b.1));
 
-        let mut freed = 0;
+        let mut freed = FreedMemory {
+            host_memory: 0,
+            device_memory: 0,
+        };
         for (key, _) in droppable {
-            if memory < freed {
+            if host_memory < freed.host_memory && device_memory < freed.device_memory {
                 break;
             }
 
             if let Some(session) = self.sessions.get(&key) {
                 if let Ok(size) = session.size().await {
-                    freed += size;
+                    if self.device == DeviceId::CPU {
+                        freed.host_memory += size;
+                    } else {
+                        freed.host_memory += (size * 2) / 3;
+                        freed.device_memory += size / 3;
+                    }
                     session.unload().await;
                 } else {
                     warn!("Session is already uninitialised")
@@ -444,7 +485,7 @@ impl UnloadingModel {
     }
 
     /// Estimate and return the resources required to compute a request, given its arguments.
-    async fn requirements_of(
+    async fn completion_requirements(
         &self,
         prompt: &str,
         args: &CompletionArgs,
@@ -456,7 +497,13 @@ impl UnloadingModel {
             let params = from_completion_args(args.clone()).await;
             let (_signal, model) = self.get_or_init().await?;
             let estimated = model.estimate_session_size(&params);
-            Ok(Passport::new(Request::Model(estimated), self.device))
+            Ok(Passport::new(
+                Request::Regular {
+                    host_memory: estimated.host_memory,
+                    device_memory: estimated.device_memory,
+                },
+                self.device,
+            ))
         }
     }
 
@@ -509,12 +556,14 @@ impl UnloadingModel {
                     .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
 
                 let sampler = StandardSampler::default();
-                let handle = session.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
+                let handle = session
+                    .start_completing_with(sampler, SINGLE_MESSAGE_LIMIT)
+                    .map_err(|e| LLMEndpointError::Advance(e.to_string()))?;
 
                 handle.into_string_async().await
             };
 
-            REQUEST_QUEUE.notify_free(&self.device)?;
+            REQUEST_QUEUE.notify_free(self.device)?;
 
             Ok(res)
         } else {
@@ -530,7 +579,9 @@ impl UnloadingModel {
                 id.advance(new_context);
 
                 let sampler = StandardSampler::default();
-                let handle = session_guard.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
+                let handle = session_guard
+                    .start_completing_with(sampler, SINGLE_MESSAGE_LIMIT)
+                    .map_err(|e| LLMEndpointError::Advance(e.to_string()))?;
 
                 (session_signal, handle)
             };
@@ -611,7 +662,7 @@ impl UnloadingModel {
             .await
             .map_err(move |e| LLMEndpointError::Embeddings(e.to_string()))?;
 
-        REQUEST_QUEUE.notify_free(&Device::CPU)?;
+        REQUEST_QUEUE.notify_free(self.device)?;
 
         Ok(res)
     }
@@ -639,10 +690,10 @@ impl UnloadingModel {
 
                 let mut args = LlamaParams::default();
 
-                if device == Device::CPU {
+                if device == DeviceId::CPU {
                     args.n_gpu_layers = 0;
                 } else {
-                    args.main_gpu = device.id() as u32;
+                    args.main_gpu = device.local_id() as u32;
                     args.n_gpu_layers = i32::MAX as u32;
                 }
 
@@ -700,11 +751,11 @@ struct UnloadingSession {
 
 impl UnloadingSession {
     /// Create a new unloading session.
-    async fn new(args: CompletionArgs, model: LlamaModel, device: Device) -> Self {
+    async fn new(args: CompletionArgs, model: LlamaModel, device: DeviceId) -> Self {
         let session = Perishable::with_ttl(inactive_llm_session_ttl());
         session
             .set_callback(Some(move || {
-                if let Err(e) = REQUEST_QUEUE.notify_free(&device) {
+                if let Err(e) = REQUEST_QUEUE.notify_free(device) {
                     error!("Failed to notify request queue: {e}");
                 }
             }))
@@ -760,7 +811,7 @@ impl UnloadingSession {
     /// Return the current size of this session in memory.
     async fn size(&self) -> Result<usize, LLMEndpointError> {
         let (_signal, session) = self.get_or_init(None).await?;
-        Ok(session.async_memory_size().await)
+        Ok(session.memory_size())
     }
 }
 
@@ -979,7 +1030,9 @@ impl CompletionStream {
 
             (
                 session_signal,
-                session_guard.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT),
+                session_guard
+                    .start_completing_with(sampler, SINGLE_MESSAGE_LIMIT)
+                    .map_err(|e| LLMEndpointError::Advance(e.to_string()))?,
             )
         };
 
@@ -1007,7 +1060,7 @@ impl CompletionStream {
         mut session: LlamaSession,
         new_context: &str,
         model_signal: ActiveSignal,
-        device: Device,
+        device: DeviceId,
         sampler: StandardSampler,
         in_flight_ref: InFlightRef,
     ) -> Result<Self, LLMEndpointError> {
@@ -1015,11 +1068,16 @@ impl CompletionStream {
             .advance_context_async(new_context)
             .await
             .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
-        let handle = session.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
+        let handle = session
+            .start_completing_with(sampler, SINGLE_MESSAGE_LIMIT)
+            .map_err(|e| LLMEndpointError::Advance(e.to_string()))?;
 
         Ok(Self {
             handle: handle.into_strings(),
-            session: SessionOption::OneShot { session, device },
+            session: SessionOption::OneShot {
+                _session: session,
+                device,
+            },
             session_id: None,
             finished_tx: None,
             _in_flight_ref: in_flight_ref,
@@ -1066,7 +1124,7 @@ impl Drop for CompletionStream {
 
         // Make sure the notification is only sent after the session has been dropped
         if let Some(device) = notify {
-            let _ = REQUEST_QUEUE.notify_free(&device);
+            let _ = REQUEST_QUEUE.notify_free(device);
         }
     }
 }
@@ -1077,10 +1135,10 @@ enum SessionOption {
     /// An isolated session.
     OneShot {
         /// The session's handle.
-        session: LlamaSession,
+        _session: LlamaSession,
 
         /// The device where `session` is loaded in.
-        device: Device,
+        device: DeviceId,
     },
 
     /// An unloading session that should be sent back to a model.

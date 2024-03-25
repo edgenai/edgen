@@ -13,7 +13,7 @@
 use core::time::Duration;
 use std::path::Path;
 
-use crate::request::{Device, Passport, QueueError, ResourceUser, Ticket};
+use crate::request::{DeviceId, Passport, QueueError, ResourceUser, Ticket};
 use futures::Stream;
 use serde::Serialize;
 use thiserror::Error;
@@ -96,16 +96,16 @@ pub trait LLMEndpoint {
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError>;
 
     /// Return an estimation of the resources required to process inference given its arguments.
-    async fn requirements_of(
+    async fn completion_requirements(
         &self,
         model_path: impl AsRef<Path> + Send + Sync,
-        device: Device,
+        device: DeviceId,
         prompt: &str,
         args: &CompletionArgs,
     ) -> Result<Passport, LLMEndpointError>;
 
-    /// Return a [`ResourceUser`] for each [`Device`] the endpoint is capable of using.
-    fn resource_users(&self) -> Vec<(Device, Box<dyn ResourceUser>)>;
+    /// Return a [`ResourceUser`] handle of this endpoint.
+    fn resource_user(&self) -> Box<dyn ResourceUser>;
 
     /// Unloads everything from memory.
     fn reset(&self);
