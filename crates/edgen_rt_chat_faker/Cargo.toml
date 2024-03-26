@@ -1,0 +1,16 @@
+[package]
+name = "edgen_rt_chat_faker"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+blake3 = { workspace = true }
+dashmap = { workspace = true }
+derive_more = { workspace = true }
+edgen_core = { path = "../edgen_core" }
+futures = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt", "fs"] }
+tracing = { workspace = true }

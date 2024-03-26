@@ -56,6 +56,7 @@ pub async fn reset_environment() {
 mod tests {
     use super::*;
     use crate::model::{Model, ModelKind};
+    use crate::types::Endpoint;
     use edgen_core::settings::SETTINGS;
     use levenshtein;
     use std::path::PathBuf;
@@ -91,7 +92,7 @@ mod tests {
             .audio_transcriptions_models_dir
             .to_string();
         let mut model = Model::new(ModelKind::Whisper, &model_name, &repo, &PathBuf::from(&dir));
-        assert!(model.preload().await.is_ok());
+        assert!(model.preload(Endpoint::AudioTranscriptions).await.is_ok());
 
         let sound = include_bytes!("../resources/frost.wav");
         let response = create_transcription(sound, model, None, None, None, true, None).await;

@@ -6,6 +6,7 @@ members = [
     "crates/edgen_async_compat",
     "crates/edgen_rt_llama_cpp",
     "crates/edgen_rt_whisper_cpp",
+    "crates/edgen_rt_chat_faker",
     "edgen/src-tauri"
 ]
 

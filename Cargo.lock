@@ -1339,7 +1339,7 @@ checksum = "56ce8c6da7551ec6c462cbaf3bfbc75131ebbfa1c944aeaa9dab51ca1c5f0c3b"
 
 [[package]]
 name = "edgen"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "edgen_core",
  "edgen_server",
@@ -1397,6 +1397,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "edgen_rt_chat_faker"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "dashmap",
+ "derive_more",
+ "edgen_core",
+ "futures",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "edgen_rt_llama_cpp"
 version = "0.1.0"
 dependencies = [
@@ -1430,7 +1444,7 @@ dependencies = [
 
 [[package]]
 name = "edgen_server"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "argh",
  "axum 0.7.4",
@@ -1441,6 +1455,7 @@ dependencies = [
  "dashmap",
  "derive_more",
  "edgen_core",
+ "edgen_rt_chat_faker",
  "edgen_rt_llama_cpp",
  "edgen_rt_whisper_cpp",
  "either",

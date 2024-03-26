@@ -7,6 +7,7 @@ use reqwest::blocking;
 
 use edgen_core::settings;
 use edgen_server::model_man::{ModelDeletionStatus, ModelDesc, ModelList};
+use edgen_server::types::Endpoint;
 
 #[allow(dead_code)]
 mod common;
@@ -45,12 +46,9 @@ fn test_modelmanager() {
                 "transcriptions",
             );
 
-        common::set_model_dir(common::Endpoint::ChatCompletions, &new_chat_completions_dir);
+        common::set_model_dir(Endpoint::ChatCompletions, &new_chat_completions_dir);
 
-        common::set_model_dir(
-            common::Endpoint::AudioTranscriptions,
-            &new_audio_transcriptions_dir,
-        );
+        common::set_model_dir(Endpoint::AudioTranscriptions, &new_audio_transcriptions_dir);
 
         make_dirs();
 
@@ -113,7 +111,7 @@ fn test_list_models() {
 
     let v = res
         .json::<ModelList>()
-        .expect("cannot converto to model list")
+        .expect("cannot convert to model list")
         .data;
 
     assert_eq!(v.len(), 3);

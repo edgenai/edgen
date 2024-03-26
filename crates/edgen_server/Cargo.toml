@@ -1,6 +1,6 @@
 [package]
 name = "edgen_server"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 
 [dependencies]
@@ -9,10 +9,10 @@ axum = { workspace = true, features = ["tokio", "multipart"] }
 axum_typed_multipart = "0.11.0"
 axum-test = "14.4.0"
 console-subscriber = { workspace = true }
-copy_dir = "0.1.3"
 dashmap = { workspace = true }
 derive_more = { workspace = true }
 edgen_core = { path = "../edgen_core" }
+edgen_rt_chat_faker = { path = "../edgen_rt_chat_faker" }
 edgen_rt_llama_cpp = { path = "../edgen_rt_llama_cpp" }
 edgen_rt_whisper_cpp = { path = "../edgen_rt_whisper_cpp" }
 either = { workspace = true, features = ["serde"] }
@@ -44,6 +44,7 @@ uuid = { workspace = true, features = ["v4", "serde"] }
 [dev-dependencies]
 levenshtein = "1.0.5"
 tempfile = { workspace = true }
+copy_dir = "0.1.3"
 
 [features]
 llama_vulkan = ["edgen_rt_llama_cpp/vulkan"]

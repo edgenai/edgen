@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-//! Edgen Error Handling
+//! Collection of fundamental types.
 
 use std::any::Any;
 use std::error;
@@ -27,6 +27,27 @@ use edgen_core::settings;
 use edgen_core::whisper;
 
 use crate::model;
+
+/// Endpoint Identifier
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Endpoint {
+    /// Chat Completions
+    ChatCompletions,
+    /// Audio Transcriptions
+    AudioTranscriptions,
+    /// Embeddings
+    Embeddings,
+}
+
+impl Display for Endpoint {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Endpoint::ChatCompletions => write!(f, "/chat/completions"),
+            Endpoint::AudioTranscriptions => write!(f, "/audio/transcriptions"),
+            Endpoint::Embeddings => write!(f, "/embeddings"),
+        }
+    }
+}
 
 /// Abstraction over all errors that we can handle in edgen.
 /// This allows using '?' error handling everywhere for all known error types.

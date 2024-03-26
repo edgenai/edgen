@@ -22,7 +22,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use serde::{Deserialize, Serialize};
 use thiserror;
-use tracing::warn;
+use tracing::{info, warn};
 use utoipa::ToSchema;
 
 use edgen_core::settings;
@@ -139,15 +139,18 @@ async fn list_all_models() -> Result<ModelList, PathError> {
 
 async fn list_models_in_dir(path: &Path, v: &mut Vec<ModelDesc>) -> Result<(), PathError> {
     let es = tokio::fs::read_dir(path).await;
-    if es.is_err() {
-        warn!("model manager: cannot read directory {:?} ({:?})", path, es);
-        return Err(PathError::IOError(es.unwrap_err()));
+    if let Err(error) = es {
+        warn!(
+            "model manager: cannot read directory {:?} ({:?})",
+            path, error
+        );
+        return Err(PathError::IOError(error));
     };
     let mut es = es.unwrap();
     loop {
         let e = es.next_entry().await;
-        if e.is_err() {
-            warn!("model manager: cannot get entry: {:?}", e);
+        if let Err(error) = e {
+            warn!("model manager: cannot get entry: {:?}", error);
             break;
         }
         let tmp = e.unwrap();
@@ -155,12 +158,16 @@ async fn list_models_in_dir(path: &Path, v: &mut Vec<ModelDesc>) -> Result<(), P
             break;
         }
         let tmp = tmp.unwrap();
+        if tmp.file_name() == "tmp" {
+            continue;
+        }
         match path_to_model_desc(tmp.path().as_path()).await {
             Ok(m) => v.push(m),
             Err(e) => {
-                warn!(
+                info!(
                     "model manager: invalid entry in directory {:?}: {:?}",
-                    path, e
+                    tmp.path(),
+                    e
                 );
             }
         }

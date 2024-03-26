@@ -22,3 +22,5 @@ For the audio transcriptions endpoint, Edgen supports all whisper.cpp models:
 Just change the configuration file! Check [Documentation &raquo; Configuration](/documentation/configuration) and if Edgen cannot find the model you specified locally, it'll download it automatically from HuggingFace. See also [API Reference &raquo; Models](/api-reference/models).
 
 You can also download your model manually and copy it to the model directory. In this case, Edgen will not manage this model.
+
+The configured model can be overridden by the "model" parameter of endpoint requests. See the [API Reference](/api-reference) for details.
