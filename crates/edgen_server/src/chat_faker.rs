@@ -16,6 +16,7 @@ use futures::Stream;
 use once_cell::sync::Lazy;
 
 use edgen_core::llm::{CompletionArgs, LLMEndpoint, LLMEndpointError};
+use edgen_core::request::{DeviceId, REQUEST_QUEUE};
 use edgen_rt_chat_faker::ChatFakerEndpoint;
 
 use crate::model::Model;
@@ -25,29 +26,41 @@ static ENDPOINT: Lazy<ChatFakerEndpoint> = Lazy::new(Default::default);
 
 pub async fn chat_completion(
     model: Model,
+    prompt: String,
     args: CompletionArgs,
 ) -> Result<String, LLMEndpointError> {
+    let model_path = model
+        .file_path()
+        .map_err(move |e| LLMEndpointError::Load(e.to_string()))?;
+
+    let passport = ENDPOINT
+        .completion_requirements(&model_path, DeviceId::Any, &prompt, &args)
+        .await?;
+
+    let ticket = REQUEST_QUEUE.enqueue(passport).await?;
+
     ENDPOINT
-        .chat_completions(
-            model
-                .file_path()
-                .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
-            args,
-        )
+        .chat_completions(&model_path, &prompt, args, ticket)
         .await
 }
 
 pub async fn chat_completion_stream(
     model: Model,
+    prompt: String,
     args: CompletionArgs,
 ) -> Result<StoppingStream<Box<dyn Stream<Item = String> + Unpin + Send>>, LLMEndpointError> {
+    let model_path = model
+        .file_path()
+        .map_err(move |e| LLMEndpointError::Load(e.to_string()))?;
+
+    let passport = ENDPOINT
+        .completion_requirements(&model_path, DeviceId::Any, &prompt, &args)
+        .await?;
+
+    let ticket = REQUEST_QUEUE.enqueue(passport).await?;
+
     let stream = ENDPOINT
-        .stream_chat_completions(
-            model
-                .file_path()
-                .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
-            args,
-        )
+        .stream_chat_completions(&model_path, &prompt, args, ticket)
         .await?;
 
     Ok(StoppingStream::wrap_with_stop_words(

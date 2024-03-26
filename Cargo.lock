@@ -1400,6 +1400,7 @@ dependencies = [
 name = "edgen_rt_chat_faker"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "blake3",
  "dashmap",
  "derive_more",
