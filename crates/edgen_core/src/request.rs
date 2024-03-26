@@ -123,14 +123,14 @@ impl RequestManager {
         }
 
         let (required_host, required_device) = match requirements.request {
-            Request::Recursive {
+            Request::Staged {
                 host_memory,
                 device_memory,
             } => (
                 (host_memory as f64 * 1.1) as usize,
                 (device_memory as f64 * 1.1) as usize,
             ),
-            Request::Regular {
+            Request::Final {
                 host_memory,
                 device_memory,
             } => (
@@ -479,7 +479,7 @@ async fn queue_normal(
         }
 
         let ticket = Ticket {
-            content: Some(TicketContent::Regular {
+            content: Some(TicketContent::Final {
                 _host_memory: devices[0].reserve_memory(host_memory),
                 _device_memory: devices[mm_device_id].reserve_memory(device_memory),
             }),
@@ -623,6 +623,11 @@ impl Passport {
     pub fn new(request: Request, device: DeviceId) -> Self {
         Self { request, device }
     }
+
+    /// Return true if this passport's request requires multiple allocations.
+    pub fn staged(&self) -> bool {
+        matches!(&self.request, Request::Staged { .. })
+    }
 }
 
 /// A basic description of a request.
@@ -630,7 +635,7 @@ impl Passport {
 pub enum Request {
     /// A complex request that may require multiple allocations, where estimating some allocations depend on some
     /// resource already being allocated.
-    Recursive {
+    Staged {
         /// Required amount of host memory for this request.
         host_memory: usize,
 
@@ -639,7 +644,7 @@ pub enum Request {
     },
 
     /// A normal request.
-    Regular {
+    Final {
         /// Required amount of host memory for this request.
         host_memory: usize,
 
@@ -687,7 +692,7 @@ impl Drop for Ticket {
 #[derive(Debug)]
 enum TicketContent {
     /// A normal ticket.
-    Regular {
+    Final {
         /// Reserved host memory for this ticket.
         _host_memory: ReservedMemory,
 

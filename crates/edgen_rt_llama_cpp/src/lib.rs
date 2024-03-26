@@ -133,7 +133,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
                 };
 
                 Ok(Passport::new(
-                    Request::Recursive {
+                    Request::Staged {
                         host_memory: host_size,
                         device_memory: device_size,
                     },
@@ -173,7 +173,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
                         };
 
                         Ok(Passport::new(
-                            Request::Recursive {
+                            Request::Staged {
                                 host_memory: host_size,
                                 device_memory: device_size,
                             },
@@ -182,7 +182,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
                     }
                 }
                 _ => Ok(Passport::new(
-                    Request::Recursive {
+                    Request::Staged {
                         host_memory: 0,
                         device_memory: file_size(model_path).await?,
                     },
@@ -498,7 +498,7 @@ impl UnloadingModel {
             let (_signal, model) = self.get_or_init().await?;
             let estimated = model.estimate_session_size(&params);
             Ok(Passport::new(
-                Request::Regular {
+                Request::Final {
                     host_memory: estimated.host_memory,
                     device_memory: estimated.device_memory,
                 },
