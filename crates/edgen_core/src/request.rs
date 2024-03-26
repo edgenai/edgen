@@ -11,7 +11,7 @@ use thiserror::Error;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use tokio::time::MissedTickBehavior;
+use tokio::time::{interval, MissedTickBehavior};
 use tokio::{select, spawn};
 use tracing::{error, warn};
 
@@ -41,6 +41,9 @@ pub enum QueueError {
 pub struct RequestManager {
     /// The sender used to push new items into the queue.
     item_tx: UnboundedSender<QueueItem>,
+
+    /// The fast track sender used to push recursive request items into the queue.
+    ft_item_tx: UnboundedSender<QueueItem>,
 
     /// The sender used to notify the queue of resources being freed.
     free_tx: UnboundedSender<()>,
@@ -81,11 +84,13 @@ impl RequestManager {
         let devices: Arc<Vec<Device>> = Arc::new(devices);
 
         let (item_tx, item_rx) = unbounded_channel();
+        let (ft_item_tx, ft_item_rx) = unbounded_channel();
         let (drop_tx, drop_rx) = unbounded_channel();
-        let thread = spawn(run_queue(item_rx, drop_rx, devices.clone()));
+        let thread = spawn(run_queue(item_rx, ft_item_rx, drop_rx, devices.clone()));
 
         Self {
             item_tx,
+            ft_item_tx,
             free_tx: drop_tx,
             thread,
             devices,
@@ -156,27 +161,20 @@ impl RequestManager {
             }
         };
 
-        let (os_tx, os_rx) = oneshot::channel();
+        let (ticket_tx, ticket_rx) = oneshot::channel();
         let waiter = QueueItem::Normal {
             host_memory: required_host,
             device_memory: required_device,
-            signal_tx: os_tx,
+            ticket_tx,
             mm_device_id: device.mm_global_id,
         };
         self.item_tx
             .send(waiter)
             .map_err(move |e| QueueError::Closed(e.to_string()))?;
-        os_rx
+
+        let ticket = ticket_rx
             .await
             .map_err(move |e| QueueError::Enqueue(e.to_string()))?;
-
-        let ticket = Ticket {
-            content: Some(TicketContent::Regular {
-                _host_memory: self.devices[0].reserve_memory(required_host),
-                _device_memory: device.reserve_memory(required_device),
-            }),
-            device: device.id,
-        };
 
         Ok(ticket)
     }
@@ -283,7 +281,7 @@ impl RequestManager {
 
     /// Register the provided resource user.
     pub fn register_user(&self, user: Box<dyn ResourceUser>) {
-        if let Err(e) = self.item_tx.send(QueueItem::RegisterUser(user)) {
+        if let Err(e) = self.ft_item_tx.send(QueueItem::RegisterUser(user)) {
             error!("Failed to register resource user: {e}")
         }
     }
@@ -372,68 +370,111 @@ impl Device {
 /// The main loop for a queue.
 async fn run_queue(
     mut item_rx: UnboundedReceiver<QueueItem>,
+    mut ft_item_rx: UnboundedReceiver<QueueItem>,
     mut drop_rx: UnboundedReceiver<()>,
     devices: Arc<Vec<Device>>,
 ) {
     let mut users = vec![];
-    while let Some(request) = item_rx.recv().await {
-        match request {
-            QueueItem::Normal {
-                host_memory,
-                device_memory,
-                mm_device_id,
-                signal_tx,
-            } => {
-                let mut interval = tokio::time::interval(Duration::from_millis(2000));
-                interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-                let mut requirements =
-                    MemoryRequirements::new(host_memory, device_memory, &devices, mm_device_id);
-                while !requirements.met() {
-                    if signal_tx.is_closed() {
-                        break;
-                    }
-
-                    let mut ordered_ids: Vec<(usize, usize)> = users
-                        .iter()
-                        .map(|user: &Box<dyn ResourceUser>| user.allocs())
-                        .enumerate()
-                        .collect();
-                    // Sort by decreasing allocation count
-                    ordered_ids.sort_by(|a, b| b.1.cmp(&a.1));
-
-                    let mut freed = FreedMemory {
-                        host_memory: 0,
-                        device_memory: 0,
-                    };
-                    for (id, _) in ordered_ids {
-                        if let Some((host_needed, device_needed)) =
-                            requirements.cached_met_with(&freed)
-                        {
-                            // Clear drop alert channel
-                            while let Ok(()) = drop_rx.try_recv() {}
-
-                            freed += users[id]
-                                .request_memory(
-                                    host_needed,
-                                    device_needed,
-                                    devices[mm_device_id].id,
-                                )
-                                .await;
-                        } else {
-                            break;
-                        }
-                    }
-
-                    select! {
-                        Some(_) = drop_rx.recv() => {},
-                        _ = interval.tick() => {},
-                    }
+    // Attempting to make a `select!` that prioritizes items coming from ft_item_rx, unfortunately if both receivers
+    // receive an item at once inside the select, ft_item_rx cannot be prioritized
+    loop {
+        while let Ok(item) = ft_item_rx.try_recv() {
+            match item {
+                QueueItem::Normal { .. } => {
+                    queue_normal(&mut drop_rx, devices.as_slice(), &users, item).await
                 }
-                let _ = signal_tx.send(());
+                QueueItem::RegisterUser(user) => users.push(user),
             }
-            QueueItem::RegisterUser(user) => users.push(user),
         }
+
+        select! {
+            item = ft_item_rx.recv() => {
+                if let Some(item) = item {
+                    match item {
+                        QueueItem::Normal { .. } => {
+                            queue_normal(&mut drop_rx, devices.as_slice(), &users, item).await
+                        }
+                        QueueItem::RegisterUser(user) => users.push(user),
+                    }
+                } else {
+                    break;
+                }
+            }
+            item = item_rx.recv() => {
+                if let Some(item) = item {
+                    queue_normal(&mut drop_rx, devices.as_slice(), &users, item).await;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+async fn queue_normal(
+    drop_rx: &mut UnboundedReceiver<()>,
+    devices: &[Device],
+    users: &[Box<dyn ResourceUser>],
+    item: QueueItem,
+) {
+    if let QueueItem::Normal {
+        host_memory,
+        device_memory,
+        mm_device_id,
+        ticket_tx: signal_tx,
+    } = item
+    {
+        let mut interval = interval(Duration::from_millis(2000));
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+        let mut requirements =
+            MemoryRequirements::new(host_memory, device_memory, devices, mm_device_id);
+        while !requirements.met() {
+            if signal_tx.is_closed() {
+                break;
+            }
+
+            let mut ordered_ids: Vec<(usize, usize)> = users
+                .iter()
+                .map(|user: &Box<dyn ResourceUser>| user.allocs())
+                .enumerate()
+                .collect();
+            // Sort by decreasing allocation count
+            ordered_ids.sort_by(|a, b| b.1.cmp(&a.1));
+
+            let mut freed = FreedMemory {
+                host_memory: 0,
+                device_memory: 0,
+            };
+            for (id, _) in ordered_ids {
+                if let Some((host_needed, device_needed)) = requirements.cached_met_with(&freed) {
+                    // Clear drop alert channel
+                    while let Ok(()) = drop_rx.try_recv() {}
+
+                    freed += users[id]
+                        .request_memory(host_needed, device_needed, devices[mm_device_id].id)
+                        .await;
+                } else {
+                    break;
+                }
+            }
+
+            select! {
+                Some(_) = drop_rx.recv() => {},
+                _ = interval.tick() => {},
+            }
+        }
+
+        let ticket = Ticket {
+            content: Some(TicketContent::Regular {
+                _host_memory: devices[0].reserve_memory(host_memory),
+                _device_memory: devices[mm_device_id].reserve_memory(device_memory),
+            }),
+            device: devices[mm_device_id].id,
+        };
+
+        let _ = signal_tx.send(ticket);
     }
 }
 
@@ -451,7 +492,7 @@ enum QueueItem {
         mm_device_id: usize,
 
         /// A oneshot channel used to signal the item has been through the queue.
-        signal_tx: oneshot::Sender<()>,
+        ticket_tx: oneshot::Sender<Ticket>,
     },
 
     /// A request to register a new resource user.
@@ -598,7 +639,7 @@ pub enum Request {
     Free,
 }
 
-/// A "ticket" that allows a request to be executed.
+/// A "ticket" that allows a generation request to be executed.
 ///
 /// This object should be required as an argument for all generations functions.
 #[derive(Debug)]
@@ -676,7 +717,7 @@ impl Drop for ReservedMemory {
 
 /// A resource user, which can coordinate with the request manager.
 #[async_trait::async_trait]
-pub trait ResourceUser: Send {
+pub trait ResourceUser: Send + Sync {
     /// This user's current number of allocations.
     fn allocs(&self) -> usize;
 
