@@ -298,6 +298,10 @@ async fn run_server(args: &cli::Serve) -> Result<bool, types::EdgenError> {
                     .audio_transcriptions_model_name,
             )
             .await;
+            status::set_embeddings_active_model(
+                &SETTINGS.read().await.read().await.embeddings_model_name,
+            )
+            .await;
         });
     });
 
