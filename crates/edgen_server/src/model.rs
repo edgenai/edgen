@@ -332,7 +332,7 @@ async fn observe_download(
         Endpoint::AudioTranscriptions => {
             status::observe_audio_transcriptions_progress(dir, size, download).await
         }
-        Endpoint::Embeddings => todo!(),
+        Endpoint::Embeddings => status::observe_embeddings_progress(dir, size, download).await,
     }
 }
 
@@ -340,7 +340,7 @@ async fn report_start_of_download(ep: Endpoint) {
     match ep {
         Endpoint::ChatCompletions => status::set_chat_completions_download(true).await,
         Endpoint::AudioTranscriptions => status::set_audio_transcriptions_download(true).await,
-        Endpoint::Embeddings => todo!(),
+        Endpoint::Embeddings => status::set_embeddings_download(true).await,
     }
 }
 
@@ -354,7 +354,10 @@ async fn report_end_of_download(ep: Endpoint) {
             status::set_audio_transcriptions_progress(100).await;
             status::set_audio_transcriptions_download(false).await;
         }
-        Endpoint::Embeddings => todo!(),
+        Endpoint::Embeddings => {
+            status::set_embeddings_progress(100).await;
+            status::set_embeddings_download(false).await;
+        }
     }
 }
 

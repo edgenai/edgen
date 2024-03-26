@@ -209,6 +209,9 @@ async fn run_server(args: &cli::Serve) -> Result<bool, types::EdgenError> {
     )
     .await;
 
+    status::set_embeddings_active_model(&SETTINGS.read().await.read().await.embeddings_model_name)
+        .await;
+
     let http_app = routes::routes()
         .layer(CorsLayer::permissive())
         .layer(DefaultBodyLimit::max(
@@ -293,6 +296,10 @@ async fn run_server(args: &cli::Serve) -> Result<bool, types::EdgenError> {
                     .read()
                     .await
                     .audio_transcriptions_model_name,
+            )
+            .await;
+            status::set_embeddings_active_model(
+                &SETTINGS.read().await.read().await.embeddings_model_name,
             )
             .await;
         });

@@ -49,6 +49,9 @@ pub fn routes() -> Router {
             "/v1/audio/transcriptions/status",
             get(status::audio_transcriptions_status),
         )
+        // ---- Embeddings -----------------------------------------------------
+        .route("/v1/embeddings/status", get(status::embeddings_status))
+        // -- Model Manager ----------------------------------------------------
         // -- Model Manager ----------------------------------------------------
         .route("/v1/models", get(model_man::list_models))
         .route("/v1/models/:model", get(model_man::retrieve_model))
