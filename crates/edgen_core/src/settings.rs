@@ -62,6 +62,16 @@ pub async fn create_project_dirs() -> Result<(), std::io::Error> {
 
     let audio_transcriptions_dir = PathBuf::from(&audio_transcriptions_str);
 
+    let embeddings_str = SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .embeddings_models_dir
+        .to_string();
+
+    let embeddings_dir = PathBuf::from(&embeddings_str);
+
     if !config_dir.is_dir() {
         std::fs::create_dir_all(config_dir)?;
     }
@@ -72,6 +82,10 @@ pub async fn create_project_dirs() -> Result<(), std::io::Error> {
 
     if !audio_transcriptions_dir.is_dir() {
         std::fs::create_dir_all(&audio_transcriptions_dir)?;
+    }
+
+    if !embeddings_dir.is_dir() {
+        std::fs::create_dir_all(&embeddings_str)?;
     }
 
     Ok(())

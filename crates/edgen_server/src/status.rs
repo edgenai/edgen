@@ -316,8 +316,8 @@ async fn observe_progress(
         let mut m = tokio::fs::metadata(&f.path()).await;
         let mut last_size = 0;
         let mut timestamp = Instant::now();
-        while m.is_ok() {
-            let s = m.unwrap().len() as u64;
+        while let Ok(d) = m {
+            let s = d.len() as u64;
             let p = (s * 100) / size;
 
             if s > last_size {
