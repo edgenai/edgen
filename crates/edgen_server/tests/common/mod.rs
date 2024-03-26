@@ -24,11 +24,15 @@ pub const SMALL_LLM_REPO: &str = "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF";
 pub const SMALL_WHISPER_NAME: &str = "ggml-distil-small.en.bin";
 pub const SMALL_WHISPER_REPO: &str = "distil-whisper/distil-small.en";
 
+pub const SMALL_EMBEDDINGS_NAME: &str = "tinyllama-1.1b-chat-v1.0.Q2_K.gguf";
+pub const SMALL_EMBEDDINGS_REPO: &str = "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF";
+
 pub const BASE_URL: &str = "http://localhost:33322/v1";
 pub const CHAT_URL: &str = "/chat";
 pub const COMPLETIONS_URL: &str = "/completions";
 pub const AUDIO_URL: &str = "/audio";
 pub const TRANSCRIPTIONS_URL: &str = "/transcriptions";
+pub const EMBEDDINGS_URL: &str = "/embeddings";
 pub const STATUS_URL: &str = "/status";
 pub const MISC_URL: &str = "/misc";
 pub const VERSION_URL: &str = "/version";
@@ -241,6 +245,10 @@ pub fn data_exists() {
     let transcriptions = audio.join("transcriptions");
     println!("exists: {:?}", transcriptions);
     assert!(transcriptions.exists());
+
+    let embeddings = models.join("embeddings");
+    println!("exists: {:?}", embeddings);
+    assert!(embeddings.exists());
 }
 
 /// Edit the config file: set another model dir for the indicated endpoint.
@@ -256,7 +264,9 @@ pub fn set_model_dir(ep: Endpoint, model_dir: &str) {
         Endpoint::AudioTranscriptions => {
             config.audio_transcriptions_models_dir = model_dir.to_string();
         }
-        Endpoint::Embeddings => todo!(),
+        Endpoint::Embeddings => {
+            config.embeddings_models_dir = model_dir.to_string();
+        }
     }
     write_config(&config).unwrap();
 
@@ -280,7 +290,10 @@ pub fn set_model(ep: Endpoint, model_name: &str, model_repo: &str) {
             config.audio_transcriptions_model_name = model_name.to_string();
             config.audio_transcriptions_model_repo = model_repo.to_string();
         }
-        Endpoint::Embeddings => todo!(),
+        Endpoint::Embeddings => {
+            config.embeddings_model_name = model_name.to_string();
+            config.embeddings_model_repo = model_repo.to_string();
+        }
     }
     write_config(&config).unwrap();
 
@@ -292,7 +305,7 @@ pub fn set_model(ep: Endpoint, model_name: &str, model_repo: &str) {
         Endpoint::AudioTranscriptions => {
             make_url(&[BASE_URL, AUDIO_URL, TRANSCRIPTIONS_URL, STATUS_URL])
         }
-        Endpoint::Embeddings => todo!(),
+        Endpoint::Embeddings => make_url(&[BASE_URL, EMBEDDINGS_URL, STATUS_URL]),
     };
     let stat: status::AIStatus = blocking::get(url).unwrap().json().unwrap();
     assert_eq!(stat.active_model, model_name);
@@ -335,13 +348,22 @@ pub fn chat_completions_custom_body(model: &str) -> String {
     .expect("cannot convert JSON to String")
 }
 
+/// embeddings body with custom model
+pub fn embeddings_custom_body(model: &str) -> String {
+    serde_json::to_string(&json!({
+            "model": model,
+            "input": "what is the capital of idaho?",
+    }))
+    .expect("cannot convert JSON to String")
+}
+
 /// Spawn a thread to send a request to the indicated endpoint.
 /// This allows the caller to perform another task in the caller thread.
 pub fn spawn_request(ep: Endpoint, body: &str, model: &str) -> thread::JoinHandle<bool> {
     match ep {
         Endpoint::ChatCompletions => spawn_chat_completions_request(body),
         Endpoint::AudioTranscriptions => spawn_audio_transcriptions_request(model),
-        Endpoint::Embeddings => todo!(),
+        Endpoint::Embeddings => spawn_embeddings_request(body),
     }
 }
 
@@ -349,6 +371,30 @@ pub fn spawn_chat_completions_request(body: &str) -> thread::JoinHandle<bool> {
     let body = body.to_string();
     thread::spawn(move || {
         let ep = make_url(&[BASE_URL, CHAT_URL, COMPLETIONS_URL]);
+        println!("requesting {}", ep);
+        match blocking::Client::new()
+            .post(&ep)
+            .header("Content-Type", "application/json")
+            .body(body)
+            .timeout(Duration::from_secs(180))
+            .send()
+        {
+            Err(e) => {
+                eprintln!("cannot connect: {:?}", e);
+                false
+            }
+            Ok(v) => {
+                println!("Got {:?}", v);
+                v.status().is_success()
+            }
+        }
+    })
+}
+
+pub fn spawn_embeddings_request(body: &str) -> thread::JoinHandle<bool> {
+    let body = body.to_string();
+    thread::spawn(move || {
+        let ep = make_url(&[BASE_URL, EMBEDDINGS_URL]);
         println!("requesting {}", ep);
         match blocking::Client::new()
             .post(&ep)
