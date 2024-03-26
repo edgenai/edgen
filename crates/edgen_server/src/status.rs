@@ -42,6 +42,15 @@ pub async fn audio_transcriptions_status() -> Response {
     Json(state.clone()).into_response()
 }
 
+/// GET `/v1/embeddings`: returns the current status of the /embeddings endpoint.
+///
+/// The status is returned as json value AIStatus.
+/// For any error, the version endpoint returns "internal server error".
+pub async fn embeddings_status() -> Response {
+    let state = get_embeddings_status().read().await;
+    Json(state.clone()).into_response()
+}
+
 /// Current Endpoint status.
 #[derive(ToSchema, Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct AIStatus {
@@ -72,6 +81,7 @@ static AISTATES: Lazy<AIStates> = Lazy::new(Default::default);
 
 const EP_CHAT_COMPLETIONS: usize = 0;
 const EP_AUDIO_TRANSCRIPTIONS: usize = 1;
+const EP_EMBEDDINGS: usize = 2;
 
 const MAX_ERRORS: usize = 32;
 
@@ -85,6 +95,12 @@ pub fn get_chat_completions_status() -> &'static RwLock<AIStatus> {
 /// Call read() or write() on the returned value to get either read or write access.
 pub fn get_audio_transcriptions_status() -> &'static RwLock<AIStatus> {
     get_status(EP_AUDIO_TRANSCRIPTIONS)
+}
+
+/// Get a protected embeddings status.
+/// Call read() or write() on the returned value to get either read or write access.
+pub fn get_embeddings_status() -> &'static RwLock<AIStatus> {
+    get_status(EP_EMBEDDINGS)
 }
 
 fn get_status(idx: usize) -> &'static RwLock<AIStatus> {
@@ -101,6 +117,11 @@ pub async fn reset_audio_transcriptions_status() {
     reset_status(EP_AUDIO_TRANSCRIPTIONS).await;
 }
 
+/// Reset the embeddings status to its defaults
+pub async fn reset_embeddings_status() {
+    reset_status(EP_EMBEDDINGS).await;
+}
+
 async fn reset_status(idx: usize) {
     let mut status = get_status(idx).write().await;
     *status = AIStatus::default();
@@ -114,6 +135,11 @@ pub async fn set_chat_completions_active_model(model: &str) {
 /// Set audio transcriptions active model
 pub async fn set_audio_transcriptions_active_model(model: &str) {
     set_active_model(EP_AUDIO_TRANSCRIPTIONS, model).await;
+}
+
+/// Set embeddings active model
+pub async fn set_embeddings_active_model(model: &str) {
+    set_active_model(EP_EMBEDDINGS, model).await;
 }
 
 async fn set_active_model(idx: usize, model: &str) {
@@ -141,6 +167,16 @@ pub async fn set_audio_transcriptions_download(ongoing: bool) {
     set_download(EP_AUDIO_TRANSCRIPTIONS, ongoing).await;
 }
 
+/// Set embeddings download ongoing
+pub async fn set_embeddings_download(ongoing: bool) {
+    if ongoing {
+        info!("starting embeddings model download");
+    } else {
+        info!("embeddings model download finished");
+    };
+    set_download(EP_EMBEDDINGS, ongoing).await;
+}
+
 async fn set_download(idx: usize, ongoing: bool) {
     let mut state = get_status(idx).write().await;
     state.download_ongoing = ongoing;
@@ -154,6 +190,11 @@ pub async fn set_chat_completions_progress(progress: u64) {
 /// Set audio transcriptions download progress
 pub async fn set_audio_transcriptions_progress(progress: u64) {
     set_progress(EP_AUDIO_TRANSCRIPTIONS, progress).await;
+}
+
+/// Set embeddings download progress
+pub async fn set_embeddings_progress(progress: u64) {
+    set_progress(EP_EMBEDDINGS, progress).await;
 }
 
 async fn set_progress(idx: usize, progress: u64) {
@@ -177,6 +218,15 @@ pub async fn observe_audio_transcriptions_progress(
     download: bool,
 ) -> tokio::task::JoinHandle<()> {
     observe_progress(EP_AUDIO_TRANSCRIPTIONS, datadir, size, download).await
+}
+
+/// Observe embeddings download progress
+pub async fn observe_embeddings_progress(
+    datadir: &PathBuf,
+    size: Option<u64>,
+    download: bool,
+) -> tokio::task::JoinHandle<()> {
+    observe_progress(EP_EMBEDDINGS, datadir, size, download).await
 }
 
 /// Add an error to the last errors in chat completions
@@ -215,6 +265,7 @@ impl Default for AIStates {
     fn default() -> AIStates {
         AIStates {
             endpoints: vec![
+                RwLock::new(Default::default()),
                 RwLock::new(Default::default()),
                 RwLock::new(Default::default()),
             ],
@@ -598,6 +649,57 @@ mod tests {
         set_audio_transcriptions_active_model(&model).await;
 
         let response = server.get("/v1/audio/transcriptions/status").await;
+
+        response.assert_status_ok();
+        assert!(response.text().len() > 0);
+        assert_eq!(response.json::<AIStatus>().active_model, model);
+    }
+
+    #[tokio::test]
+    async fn test_embeddings_status() {
+        reset_embeddings_status().await;
+
+        // default
+        let mut expected = AIStatus::default();
+
+        {
+            let status = get_embeddings_status().read().await;
+            assert_eq!(*status, AIStatus::default());
+        }
+
+        // download ongoing
+        expected.download_ongoing = true;
+        set_embeddings_download(true).await;
+
+        {
+            let status = get_embeddings_status().read().await;
+            assert_eq!(*status, expected);
+        }
+
+        // download progress
+        expected.download_progress = 42;
+        set_embeddings_progress(42).await;
+
+        {
+            let status = get_embeddings_status().read().await;
+            assert_eq!(*status, expected);
+        }
+
+        // axum router
+        let router = Router::new().route("/v1/embeddings/status", get(embeddings_status));
+
+        let server = TestServer::new(router).expect("cannot instantiate TestServer");
+
+        let response = server.get("/v1/embeddings/status").await;
+
+        response.assert_status_ok();
+        assert!(response.text().len() > 0);
+        assert_eq!(response.json::<AIStatus>().active_model, "unknown");
+
+        let model = "shes-a-model-and-shes-looking-good".to_string();
+        set_embeddings_active_model(&model).await;
+
+        let response = server.get("/v1/embeddings/status").await;
 
         response.assert_status_ok();
         assert!(response.text().len() > 0);
