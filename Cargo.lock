@@ -2883,7 +2883,7 @@ checksum = "01cda141df6706de531b6c46c3a33ecca755538219bd484262fa09410c13539c"
 [[package]]
 name = "llama_cpp"
 version = "0.3.1"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#9c098a769785738deb5e0179ad2c5e5554d1cb43"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#491f69a868a3fb6169501359870bb0649f45069f"
 dependencies = [
  "derive_more",
  "futures",
@@ -2897,7 +2897,7 @@ dependencies = [
 [[package]]
 name = "llama_cpp_sys"
 version = "0.3.1"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#9c098a769785738deb5e0179ad2c5e5554d1cb43"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#491f69a868a3fb6169501359870bb0649f45069f"
 dependencies = [
  "ash",
  "bindgen",
