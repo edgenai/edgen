@@ -31,11 +31,15 @@ See the [releases](https://github.com/edgenai/edgen/releases) page for the lates
 See the [documentation page](https://docs.edgen.co) for help and support 
 
 ## Help
-Should any error be encountered with the Rust toolchain, the following command will install the required toolchain for the project
+Should any error be encountered when building the application locally, ensure the following system dependencies are met
 
+1. Minimum Required Rust Toolchain
 ```shell
-rustup toolchain add beta-2023-11-21 --profile minimal
+# use the rustup toolchain command to install the required toolchain
+rustup toolchain add beta-2023-11-21
 ```
+
+2. Install cmake from [https://cmake.org/download/](https://cmake.org/download/)
 
 ## Running the Application Locally 
 To run the application locally, ensure the dependencies are met 
@@ -43,6 +47,8 @@ To run the application locally, ensure the dependencies are met
 pnpm install
 pnpm tauri dev 
 ``` 
+
+
 
 ## License
 
