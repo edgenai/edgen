@@ -10,14 +10,22 @@
  * limitations under the License.
  */
 
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 
-use serde_derive::Serialize;
+use once_cell::sync::Lazy;
+use serde_derive::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::warn;
+use tracing::{info, warn};
 use utoipa::ToSchema;
 
+use edgen_core::settings;
+
 use crate::status;
+use crate::types::Endpoint;
+
+pub static MODEL_PATTERNS: Lazy<ModelPatterns> = Lazy::new(make_model_patterns);
 
 #[derive(Serialize, Error, ToSchema, Debug, PartialEq)]
 pub enum ModelError {
@@ -25,6 +33,8 @@ pub enum ModelError {
     FileNotFound(String),
     #[error("no repository is available for the specified model: ({0:?})")]
     UnknownModel(ModelKind),
+    #[error("unknown model kind for model: ({0:?})")]
+    UnknownKind(String),
     #[error("error checking remote repository: ({0})")]
     API(String),
     /// error resulting from tokio::JoinError
@@ -34,10 +44,11 @@ pub enum ModelError {
     NotPreloaded,
 }
 
-#[derive(Serialize, ToSchema, Debug, Clone, PartialEq)]
+#[derive(Serialize, ToSchema, Debug, Clone, PartialEq, Eq)]
 pub enum ModelKind {
     LLM,
     Whisper,
+    ChatFaker,
 }
 
 #[derive(Debug, PartialEq)]
@@ -45,10 +56,157 @@ enum ModelQuantization {
     Default,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ModelPatterns {
+    pub llama: Vec<String>,
+    pub whisper: Vec<String>,
+    pub chat_faker: Vec<String>,
+}
+
+impl ModelPatterns {
+    #[cfg(test)]
+    pub fn new(yaml: &str) -> Result<ModelPatterns, serde_yaml::Error> {
+        let mut m = serde_yaml::from_str::<ModelPatterns>(yaml)?;
+        m.llama = m.llama.iter().map(|s| s.to_lowercase()).collect();
+        m.whisper = m.whisper.iter().map(|s| s.to_lowercase()).collect();
+        m.chat_faker = m.chat_faker.iter().map(|s| s.to_lowercase()).collect();
+        Ok(m)
+    }
+
+    // we don't use this at the moment. Instead, endpoints request the top kind
+    // and when it fails return an error. An alternative approach would get
+    // all matching kinds and try one after the other until one succeeds.
+    // If all fail, the endpoint returns an error response.
+    #[allow(dead_code)]
+    pub fn get_model_kinds(&self, model_name: &str) -> Vec<ModelKind> {
+        self.get_accepted_model_kinds(
+            model_name,
+            &[ModelKind::LLM, ModelKind::Whisper, ModelKind::ChatFaker],
+        )
+    }
+
+    // note that the order of accepted kinds passed in
+    // decides which one is the top kind.
+    pub fn get_top_model_kind(
+        &self,
+        model_name: &str,
+        accepted: &[ModelKind],
+    ) -> Result<ModelKind, ModelError> {
+        let v = self.get_accepted_model_kinds(model_name, accepted);
+        if v.is_empty() {
+            return Err(ModelError::UnknownKind(model_name.to_string()));
+        }
+        Ok(v[0].clone())
+    }
+
+    pub fn get_accepted_model_kinds(
+        &self,
+        model_name: &str,
+        accepted: &[ModelKind],
+    ) -> Vec<ModelKind> {
+        let mut v = vec![];
+        let n = model_name.to_lowercase();
+        for kind in accepted {
+            let list = match kind {
+                ModelKind::LLM => &self.llama,
+                ModelKind::Whisper => &self.whisper,
+                ModelKind::ChatFaker => &self.chat_faker,
+            };
+            find_model_kind(list, kind, &n, &mut v);
+        }
+        v
+    }
+}
+
+fn find_model_kind(ps: &[String], r: &ModelKind, n: &str, v: &mut Vec<ModelKind>) {
+    for p in ps {
+        if n.contains(p) {
+            v.push(r.clone());
+            break;
+        }
+    }
+}
+
+impl Default for ModelPatterns {
+    fn default() -> Self {
+        Self {
+            llama: vec!["gguf".to_string()],
+            whisper: vec!["distil".to_string(), "whisper".to_string()],
+            chat_faker: vec!["fake".to_string()],
+        }
+    }
+}
+
+fn make_model_patterns() -> ModelPatterns {
+    let data_dir = settings::PROJECT_DIRS.data_dir();
+    let model_dir = data_dir.join("models");
+    let model_patterns_file = model_dir.join("model_patterns.yaml");
+    if model_patterns_file.exists() {
+        info!("Loading existing model patterns file");
+        read_model_file_and_parse(model_patterns_file.as_path())
+    } else {
+        info!("Creating new model patterns file");
+        create_model_patterns_file(&model_patterns_file.as_path());
+        ModelPatterns::default()
+    }
+}
+
+fn read_model_file_and_parse(path: &Path) -> ModelPatterns {
+    match File::open(path) {
+        Ok(mut file) => {
+            let mut s = String::new();
+            match file.read_to_string(&mut s) {
+                Ok(_) => serde_yaml::from_str::<ModelPatterns>(&s).unwrap_or_else(|error| {
+                    warn!(
+                        "Cannot parse model patterns file: {:?}, using default",
+                        error
+                    );
+                    ModelPatterns::default()
+                }),
+                Err(error) => {
+                    warn!(
+                        "Cannot read model patterns file: {:?}, using default",
+                        error
+                    );
+                    ModelPatterns::default()
+                }
+            }
+        }
+        Err(error) => {
+            warn!(
+                "Cannot read model patterns file: {:?}, using default",
+                error
+            );
+            ModelPatterns::default()
+        }
+    }
+}
+
+fn create_model_patterns_file(path: &Path) {
+    match File::create(path) {
+        Ok(ref mut file) => {
+            let model_patterns = serde_yaml::to_string(&ModelPatterns::default())
+                .expect("Cannot create yaml file from default model patterns");
+            if let Err(error) = file.write_all(model_patterns.as_bytes()) {
+                warn!(
+                    "Cannot write model patterns file: {:?}, using default",
+                    error
+                );
+            }
+        }
+        Err(error) => {
+            warn!(
+                "Cannot create model patterns file: {:?}, using default",
+                error
+            );
+        }
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub struct Model {
-    kind: ModelKind,
+    pub kind: ModelKind,
     quantization: ModelQuantization,
     name: String,
     repo: String,
@@ -75,7 +233,7 @@ impl Model {
     }
 
     /// Checks if a file of the model is already present locally, and if not, downloads it.
-    pub async fn preload(&mut self) -> Result<(), ModelError> {
+    pub async fn preload(&mut self, ep: Endpoint) -> Result<(), ModelError> {
         if self.path.is_file() {
             self.preloaded = true;
             return Ok(());
@@ -101,41 +259,22 @@ impl Model {
         } else {
             None
         };
-        let progress_handle = match self.kind {
-            ModelKind::LLM => {
-                status::observe_chat_completions_progress(&self.dir, size, download).await
-            }
-            ModelKind::Whisper => {
-                status::observe_audio_transcriptions_progress(&self.dir, size, download).await
-            }
-        };
+
+        let progress_handle = observe_download(ep, &self.dir, size, download).await;
 
         let name = self.name.clone();
-        let kind = self.kind.clone();
         let download_handle = tokio::spawn(async move {
             if download {
-                match kind {
-                    ModelKind::LLM => status::set_chat_completions_download(true).await,
-                    ModelKind::Whisper => status::set_audio_transcriptions_download(true).await,
-                }
-            };
+                report_start_of_download(ep).await;
+            }
 
             let path = api
                 .get(&name)
                 .map_err(move |e| ModelError::API(e.to_string()));
 
             if download {
-                match kind {
-                    ModelKind::LLM => {
-                        status::set_chat_completions_progress(100).await;
-                        status::set_chat_completions_download(false).await;
-                    }
-                    ModelKind::Whisper => {
-                        status::set_audio_transcriptions_progress(100).await;
-                        status::set_audio_transcriptions_download(false).await;
-                    }
-                }
-            };
+                report_end_of_download(ep).await;
+            }
 
             return path;
         });
@@ -177,6 +316,48 @@ impl Model {
         }
 
         Err(ModelError::NotPreloaded)
+    }
+}
+
+async fn observe_download(
+    ep: Endpoint,
+    dir: &PathBuf,
+    size: Option<u64>,
+    download: bool,
+) -> tokio::task::JoinHandle<()> {
+    match ep {
+        Endpoint::ChatCompletions => {
+            status::observe_chat_completions_progress(dir, size, download).await
+        }
+        Endpoint::AudioTranscriptions => {
+            status::observe_audio_transcriptions_progress(dir, size, download).await
+        }
+        Endpoint::Embeddings => status::observe_embeddings_progress(dir, size, download).await,
+    }
+}
+
+async fn report_start_of_download(ep: Endpoint) {
+    match ep {
+        Endpoint::ChatCompletions => status::set_chat_completions_download(true).await,
+        Endpoint::AudioTranscriptions => status::set_audio_transcriptions_download(true).await,
+        Endpoint::Embeddings => status::set_embeddings_download(true).await,
+    }
+}
+
+async fn report_end_of_download(ep: Endpoint) {
+    match ep {
+        Endpoint::ChatCompletions => {
+            status::set_chat_completions_progress(100).await;
+            status::set_chat_completions_download(false).await;
+        }
+        Endpoint::AudioTranscriptions => {
+            status::set_audio_transcriptions_progress(100).await;
+            status::set_audio_transcriptions_download(false).await;
+        }
+        Endpoint::Embeddings => {
+            status::set_embeddings_progress(100).await;
+            status::set_embeddings_download(false).await;
+        }
     }
 }
 
@@ -236,7 +417,9 @@ mod test {
         let repo = "dummy";
         let dir = PathBuf::from("resources");
         let mut m = Model::new(ModelKind::LLM, model, repo, &dir);
-        m.preload().await.expect("model preload failed");
+        m.preload(Endpoint::ChatCompletions)
+            .await
+            .expect("model preload failed");
         assert_eq!(
             m,
             Model {
@@ -250,6 +433,61 @@ mod test {
             }
         );
         assert_eq!(m.file_path(), Ok(m.path));
+    }
+
+    #[test]
+    fn get_model_kinds() {
+        let yaml = "
+            llama: [
+                 chat, phi, TinyLlama, GPT, multi-model
+            ]
+
+            whisper: [
+                 distil,
+                 whisper,
+                 multi-model
+            ]
+
+            chat_faker: []
+            ";
+        println!("{}", yaml);
+        let m = ModelPatterns::new(yaml).expect("cannot parse model patterns");
+        println!("{:?}", m);
+        assert_eq!(
+            m.llama,
+            ["chat", "phi", "tinyllama", "gpt", "multi-model"],
+            "unexpected list of model patterns for llama"
+        );
+        assert_eq!(
+            m.whisper,
+            ["distil", "whisper", "multi-model"],
+            "unexpected list of model patterns for whisper"
+        );
+        assert_eq!(
+            m.get_model_kinds("TheBloke/neural-chat-7B-v3-3-GGUF"),
+            &[ModelKind::LLM],
+            "expected model to be Llama"
+        );
+        assert_eq!(
+            m.get_model_kinds("distil-whisper/distil-small.en"),
+            &[ModelKind::Whisper],
+            "expected model to be Whisper"
+        );
+        assert_eq!(
+            m.get_model_kinds("my-chat-bot.bin"),
+            &[ModelKind::LLM],
+            "expected model to be Llama"
+        );
+        assert_eq!(
+            m.get_model_kinds("my-poor-model.bin"),
+            &[],
+            "expected model to be nothing"
+        );
+        assert_eq!(
+            m.get_model_kinds("my-versatile-multi-model.bin"),
+            &[ModelKind::LLM, ModelKind::Whisper],
+            "expected model to be nothing"
+        );
     }
 
     #[tokio::test]

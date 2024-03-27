@@ -26,7 +26,18 @@ Discover how to convert audio to text or text to audio. OpenAI compliant. {{ cla
 
     <Properties>
       <Property name="model" type="string">
-        The model used for transcription. **WARNING**: currently, this attribute is **ignored** and the **default model is used**.
+        The model used for transcription.
+        <ul>
+            <li>
+                If the model name is "default", the audio model from the configuration is used (see [Documentation &raquo; Configuration](/documentation/configuration) for details).
+            </li>
+            <li>
+                 If the model name follows the format repo-owner/repo-name/model-name, the indicated model is used and, if it is not present, it will be downloaded from [huggingface](https://huggingface.co/). If it cannot be downloaded, Edgen responds with an error. Example: "distil-whisper/distil-small.en/ggml-distil-small.en.bin".
+            </li>
+            <li>
+                If the model name contains just a file name, e.g.: "my-model.bin", Edgen will try using the file of this name in the data directory as defined in the configuration. If the the file does not exist there, Edgen responds with an error.
+            </li>
+        </ul>
       </Property>
     </Properties>
 

@@ -41,6 +41,8 @@ pub enum LLMEndpointError {
     SessionCreationFailed(String),
     #[error("failed to create embeddings: {0}")]
     Embeddings(String), // Embeddings may involve session creation, advancing, and other things, so it should have its own error
+    #[error("unsuitable endpoint for model: {0}")]
+    UnsuitableEndpoint(String),
 }
 
 #[derive(Debug, Clone)]

@@ -259,7 +259,9 @@ impl UnloadingModel {
                 .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
 
             let sampler = StandardSampler::default();
-            let handle = session.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
+            let handle = session
+                .start_completing_with(sampler, SINGLE_MESSAGE_LIMIT)
+                .map_err(|e| LLMEndpointError::Advance(e.to_string()))?;
 
             Ok(handle.into_string_async().await)
         } else {
@@ -276,7 +278,9 @@ impl UnloadingModel {
                 id.advance(new_context);
 
                 let sampler = StandardSampler::default();
-                let handle = session_guard.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
+                let handle = session_guard
+                    .start_completing_with(sampler, SINGLE_MESSAGE_LIMIT)
+                    .map_err(|e| LLMEndpointError::Advance(e.to_string()))?;
 
                 (session_signal, handle)
             };
@@ -581,7 +585,9 @@ impl CompletionStream {
 
             (
                 session_signal,
-                session_guard.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT),
+                session_guard
+                    .start_completing_with(sampler, SINGLE_MESSAGE_LIMIT)
+                    .map_err(|e| LLMEndpointError::Advance(e.to_string()))?,
             )
         };
 
@@ -605,7 +611,9 @@ impl CompletionStream {
             .advance_context_async(new_context)
             .await
             .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
-        let handle = session.start_completing_with(sampler, SINGLE_MESSAGE_LIMIT);
+        let handle = session
+            .start_completing_with(sampler, SINGLE_MESSAGE_LIMIT)
+            .map_err(|e| LLMEndpointError::Advance(e.to_string()))?;
 
         Ok(Self {
             handle: handle.into_strings(),
