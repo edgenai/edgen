@@ -122,28 +122,14 @@ impl RequestManager {
             return Err(QueueError::Unspecified);
         }
 
-        let (required_host, required_device) = match requirements.request {
-            Request::Staged {
-                host_memory,
-                device_memory,
-            } => (
-                (host_memory as f64 * 1.1) as usize,
-                (device_memory as f64 * 1.1) as usize,
-            ),
-            Request::Final {
-                host_memory,
-                device_memory,
-            } => (
-                (host_memory as f64 * 1.05) as usize,
-                (device_memory as f64 * 1.05) as usize,
-            ),
-            Request::Free => {
-                return Ok(Ticket {
-                    content: Some(TicketContent::Free),
-                    device: requirements.device,
-                });
-            }
-        };
+        if requirements.free() {
+            return Ok(Ticket {
+                content: Some(TicketContent::Free),
+                device: requirements.device,
+            });
+        }
+
+        let (required_host, required_device) = requirements.memory();
 
         let device = {
             let mut matched = None;
@@ -175,8 +161,7 @@ impl RequestManager {
 
         let (ticket_tx, ticket_rx) = oneshot::channel();
         let waiter = QueueItem::Normal {
-            host_memory: required_host,
-            device_memory: required_device,
+            passport: requirements,
             ticket_tx,
             mm_device_id: device.mm_global_id,
         };
@@ -308,7 +293,7 @@ impl Drop for RequestManager {
 /// An abstraction over a backend device.
 ///
 /// A backend in this context, is a device API, like Vulkan, CUDA or Metal.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
 pub enum DeviceId {
     CPU,
     Vulkan(usize),
@@ -431,12 +416,13 @@ async fn queue_normal(
     item: QueueItem,
 ) {
     if let QueueItem::Normal {
-        host_memory,
-        device_memory,
+        passport,
         mm_device_id,
         ticket_tx: signal_tx,
     } = item
     {
+        let (host_memory, device_memory) = passport.memory();
+
         let mut interval = interval(Duration::from_millis(2000));
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
@@ -479,10 +465,7 @@ async fn queue_normal(
         }
 
         let ticket = Ticket {
-            content: Some(TicketContent::Final {
-                _host_memory: devices[0].reserve_memory(host_memory),
-                _device_memory: devices[mm_device_id].reserve_memory(device_memory),
-            }),
+            content: Some(passport.into_reservation(&devices[0], &devices[mm_device_id])),
             device: devices[mm_device_id].id,
         };
 
@@ -494,11 +477,8 @@ async fn queue_normal(
 enum QueueItem {
     /// A standard generation request to be executed.
     Normal {
-        /// Required amount of host memory for the request.
-        host_memory: usize,
-
-        /// Required amount of device memory for the request.
-        device_memory: usize,
+        /// The request's passport.
+        passport: Passport,
 
         /// The [`memonitor`] device id of the device the request is executed on.
         mm_device_id: usize,
@@ -606,7 +586,7 @@ impl<'a> MemoryRequirements<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 /// The requirements to execute a request.
 ///
 /// This should be acquired by querying a generation endpoint.
@@ -628,10 +608,58 @@ impl Passport {
     pub fn staged(&self) -> bool {
         matches!(&self.request, Request::Staged { .. })
     }
+
+    /// Return true if this passport's request requires no allocations.
+    pub fn free(&self) -> bool {
+        matches!(&self.request, Request::Free)
+    }
+
+    /// Return a tuple containing the host and device memory requirements for this passport, in that order and
+    /// adjusted for safety.
+    fn memory(&self) -> (usize, usize) {
+        match self.request {
+            Request::Staged {
+                host_memory,
+                device_memory,
+            } => (
+                (host_memory as f64 * 1.1) as usize,
+                (device_memory as f64 * 1.1) as usize,
+            ),
+            Request::Final {
+                host_memory,
+                device_memory,
+            } => (
+                (host_memory as f64 * 1.05) as usize,
+                (device_memory as f64 * 1.05) as usize,
+            ),
+            Request::Free => (0, 0),
+        }
+    }
+
+    /// Turn this passport into a reservation of host and device memory.
+    fn into_reservation(self, host: &Device, device: &Device) -> TicketContent {
+        match self.request {
+            Request::Staged {
+                host_memory,
+                device_memory,
+            } => TicketContent::Staged {
+                _host_memory: host.reserve_memory(host_memory),
+                _device_memory: device.reserve_memory(device_memory),
+            },
+            Request::Final {
+                host_memory,
+                device_memory,
+            } => TicketContent::Final {
+                _host_memory: host.reserve_memory(host_memory),
+                _device_memory: device.reserve_memory(device_memory),
+            },
+            Request::Free => TicketContent::Free,
+        }
+    }
 }
 
 /// A basic description of a request.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Serialize)]
 pub enum Request {
     /// A complex request that may require multiple allocations, where estimating some allocations depend on some
     /// resource already being allocated.
@@ -678,6 +706,11 @@ impl Ticket {
     pub fn device(&self) -> DeviceId {
         self.device
     }
+
+    /// Return true if this ticket only allows for a staging allocation.
+    pub fn staged(&self) -> bool {
+        matches!(self.content, Some(TicketContent::Staged { .. }))
+    }
 }
 
 impl Drop for Ticket {
@@ -691,6 +724,15 @@ impl Drop for Ticket {
 /// The inner content of a [`Ticket`].
 #[derive(Debug)]
 enum TicketContent {
+    /// A ticket for one of many allocations needed for the request.
+    Staged {
+        /// Reserved host memory for this ticket.
+        _host_memory: ReservedMemory,
+
+        /// Reserved device memory for this ticket.
+        _device_memory: ReservedMemory,
+    },
+
     /// A normal ticket.
     Final {
         /// Reserved host memory for this ticket.

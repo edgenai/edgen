@@ -46,6 +46,8 @@ pub enum LLMEndpointError {
     UnsuitableEndpoint(String),
     #[error("could not submit request")]
     Queue(#[from] QueueError),
+    #[error("request must be enqueued again with the provided passport")]
+    Retry(Passport),
 }
 
 #[derive(Debug, Clone)]
@@ -74,7 +76,7 @@ pub trait LLMEndpoint {
     /// Given a prompt with several arguments, return the prompt completion in [`String`] form.
     async fn chat_completions(
         &self,
-        model_path: impl AsRef<Path> + Send,
+        model_path: impl AsRef<Path> + Send + Sync,
         prompt: &str,
         args: CompletionArgs,
         ticket: Ticket,
@@ -84,7 +86,7 @@ pub trait LLMEndpoint {
     /// acquired as they get processed.
     async fn stream_chat_completions(
         &self,
-        model_path: impl AsRef<Path> + Send,
+        model_path: impl AsRef<Path> + Send + Sync,
         prompt: &str,
         args: CompletionArgs,
         ticket: Ticket,
@@ -93,7 +95,7 @@ pub trait LLMEndpoint {
     /// Runs embeddings inference for the given inputs, returning the result.
     async fn embeddings(
         &self,
-        model_path: impl AsRef<Path> + Send,
+        model_path: impl AsRef<Path> + Send + Sync,
         inputs: Vec<String>,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError>;
 

@@ -74,35 +74,57 @@ impl LlamaCppEndpoint {
         // PANIC SAFETY: Just inserted the element if it isn't already inside the map, so must be present in the map
         Ok(self.models.get(&key).unwrap())
     }
+
+    async fn staging_check(
+        &self,
+        model_path: impl AsRef<Path> + Send + Sync,
+        prompt: &str,
+        args: &CompletionArgs,
+        ticket: &mut Ticket,
+    ) -> Result<(), LLMEndpointError> {
+        if ticket.staged() {
+            ticket.consume();
+            let passport = self
+                .completion_requirements(model_path, ticket.device(), prompt, args)
+                .await?;
+            Err(LLMEndpointError::Retry(passport))
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[async_trait::async_trait]
 impl LLMEndpoint for LlamaCppEndpoint {
     async fn chat_completions(
         &self,
-        model_path: impl AsRef<Path> + Send,
+        model_path: impl AsRef<Path> + Send + Sync,
         prompt: &str,
         args: CompletionArgs,
-        ticket: Ticket,
+        mut ticket: Ticket,
     ) -> Result<String, LLMEndpointError> {
-        let model = self.get(model_path, ticket.device()).await?;
+        let model = self.get(&model_path, ticket.device()).await?;
+        self.staging_check(model_path, prompt, &args, &mut ticket)
+            .await?;
         model.chat_completions(prompt, args, ticket).await
     }
 
     async fn stream_chat_completions(
         &self,
-        model_path: impl AsRef<Path> + Send,
+        model_path: impl AsRef<Path> + Send + Sync,
         prompt: &str,
         args: CompletionArgs,
-        ticket: Ticket,
+        mut ticket: Ticket,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
-        let model = self.get(model_path, ticket.device()).await?;
+        let model = self.get(&model_path, ticket.device()).await?;
+        self.staging_check(model_path, prompt, &args, &mut ticket)
+            .await?;
         model.stream_chat_completions(prompt, args, ticket).await
     }
 
     async fn embeddings(
         &self,
-        model_path: impl AsRef<Path> + Send,
+        model_path: impl AsRef<Path> + Send + Sync,
         inputs: Vec<String>,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
         let model = self.get(model_path, DeviceId::CPU).await?;
@@ -177,7 +199,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
                                 host_memory: host_size,
                                 device_memory: device_size,
                             },
-                            device,
+                            device_pick,
                         ))
                     }
                 }
@@ -490,7 +512,7 @@ impl UnloadingModel {
         prompt: &str,
         args: &CompletionArgs,
     ) -> Result<Passport, LLMEndpointError> {
-        let (key, _) = SessionId::chat(&prompt);
+        let (key, _, _) = SessionId::chat(&prompt);
         if self.sessions.contains_key(&key) {
             Ok(Passport::new(Request::Free, self.device))
         } else {
@@ -516,15 +538,30 @@ impl UnloadingModel {
         prompt: &'a str,
         args: CompletionArgs,
     ) -> Result<(UnloadingSession, SessionId, &'a str), LLMEndpointError> {
-        let (id, new_context) = SessionId::chat(prompt);
+        let (id, old_context, new_context) = SessionId::chat(prompt);
 
         let session = if let Some((_, session)) = self.sessions.remove(&id) {
             info!("Matching session found, continuing");
+            if !session.loaded().await {
+                let (_signal, mut guard) = session.get_or_init(None).await?;
+                guard
+                    .advance_context_async(old_context)
+                    .await
+                    .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
+            }
             session
         } else {
             info!("No matching session found, creating new one");
             let (_signal, model) = self.get_or_init().await?;
-            UnloadingSession::new(args, model.clone(), self.device).await
+            let session = UnloadingSession::new(args, model.clone(), self.device).await;
+            {
+                let (_signal, mut guard) = session.get_or_init(None).await?;
+                guard
+                    .advance_context_async(old_context)
+                    .await
+                    .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
+            }
+            session
         };
 
         Ok((session, id, new_context))
@@ -854,7 +891,7 @@ impl SessionId {
     /// The new [`SessionId`] returned by this function must be advanced using the returned new context,
     /// before being advanced with inference content. The reason it isn't already advance with the
     /// new context, is for the purpose of finding matching [`SessionId`]s in the endpoint.
-    fn chat(prompt: &str) -> (Self, &str) {
+    fn chat(prompt: &str) -> (Self, &str, &str) {
         let idx = if prompt.ends_with(ASSISTANT_TAG) {
             if let Some(start) = prompt[..prompt.len() - ASSISTANT_TAG.len()].rfind(ASSISTANT_TAG) {
                 // Another assistant tag is found, the is previous context
@@ -887,7 +924,7 @@ impl SessionId {
             hasher,
             len: old_context.len(),
         };
-        (id, new_context)
+        (id, old_context, new_context)
     }
 
     /// A function to advance the current session context with the provided [`str`] slice.
