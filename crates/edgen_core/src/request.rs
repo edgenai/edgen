@@ -70,25 +70,24 @@ pub struct RequestManager {
 impl RequestManager {
     /// Create a new request manager.
     fn new() -> Self {
-        memonitor::init();
-
         let mut devices = vec![];
         for hw_device in memonitor::list_all_devices().iter() {
             if let memonitor::DeviceKind::GPU(memonitor::GPUKind::Integrated) = hw_device.kind() {
                 continue;
             }
 
-            let device = match hw_device.backend_name() {
-                memonitor::CPU_NAME => DeviceId::CPU,
-                memonitor::VULKAN_NAME => DeviceId::Vulkan(hw_device.local_id()),
-                &_ => {
+            let device = match hw_device.backend() {
+                memonitor::BackendId::CPU => DeviceId::CPU,
+                memonitor::BackendId::Vulkan => DeviceId::Vulkan(hw_device.local_id()),
+                memonitor::BackendId::CUDA => DeviceId::Cuda(hw_device.local_id()),
+                _ => {
                     unimplemented!()
                 }
             };
 
             devices.push(Device {
                 id: device,
-                mm_global_id: hw_device.global_id(),
+                mm_global_id: hw_device.global_index(),
                 max_memory: hw_device.current_memory_stats().total,
                 reserved_memory: Arc::new(AtomicUsize::new(0)),
             })
@@ -304,7 +303,7 @@ pub enum DeviceId {
 
 impl DeviceId {
     /// Return the device's id relative to its backend (matches the CUDA device index, Vulkan's order of finding
-    /// devices, etc).
+    /// devices, etc.).
     pub fn local_id(&self) -> usize {
         match self {
             DeviceId::Vulkan(id) => *id,
@@ -314,13 +313,13 @@ impl DeviceId {
         }
     }
 
-    /// Return the name of a device provided its id in the backend, the backend name and a default name for the case
+    /// Return the name of a device provided its id in the backend, the backend id and a default name for the case
     /// where the backend wasn't found.
-    fn get_name(local_id: usize, backend_name: &str, default_name: &str) -> String {
+    fn get_name(local_id: usize, backend_id: &memonitor::BackendId, default_name: &str) -> String {
         let mut name = default_name.to_string();
         for backend in memonitor::list_backends().iter() {
-            if backend.name() == backend_name {
-                let id = backend.device_ids()[local_id];
+            if backend.id() == *backend_id {
+                let id = backend.device_indexes()[local_id];
                 name = memonitor::list_all_devices()[id].name().to_string();
                 break;
             }
@@ -333,10 +332,12 @@ impl DeviceId {
         match self {
             DeviceId::CPU => memonitor::list_all_devices()[0].name().to_string(),
             DeviceId::Vulkan(local_id) => {
-                Self::get_name(*local_id, memonitor::VULKAN_NAME, "VULKAN_NOT_FOUND")
+                Self::get_name(*local_id, &memonitor::BackendId::Vulkan, "VULKAN_NOT_FOUND")
             }
-            DeviceId::Cuda(local_id) => Self::get_name(*local_id, "TODO", "CUDA_NOT_FOUND"),
-            DeviceId::Metal(local_id) => Self::get_name(*local_id, "TODO", "METAL_NOT_FOUND"),
+            DeviceId::Cuda(local_id) => {
+                Self::get_name(*local_id, &memonitor::BackendId::CUDA, "CUDA_NOT_FOUND")
+            }
+            DeviceId::Metal(_local_id) => todo!(), // Self::get_name(*local_id, "TODO", "METAL_NOT_FOUND"),
             DeviceId::Any => "NONE".to_string(),
         }
     }

@@ -792,6 +792,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "cfg_aliases"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77e53693616d3075149f4ead59bdeecd204ac6b8192d8969757601b74bddf00f"
+
+[[package]]
 name = "chrono"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2416,7 +2422,7 @@ dependencies = [
  "httpdate",
  "itoa 1.0.10",
  "pin-project-lite",
- "socket2 0.4.10",
+ "socket2 0.5.5",
  "tokio",
  "tower-service",
  "tracing",
@@ -3026,21 +3032,25 @@ dependencies = [
 
 [[package]]
 name = "memonitor"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a196a71f4a046c37d56a7f1e92ef539b45b579670f82f54d6da784d3bb2b3c80"
+checksum = "65af721a1658501e9a6be2865cd19c8b44b2740eaa454e57bffe1567c07ba7ea"
 dependencies = [
+ "cfg_aliases",
  "memonitor-sys",
+ "once_cell",
  "sysinfo",
+ "tracing",
 ]
 
 [[package]]
 name = "memonitor-sys"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0b08cad7e175a3264405ebd9d5a01dfe37c51bb7454c5a5445429cf90c60b1b"
+checksum = "f98ba7dc113ac33fc2ac0f4b7b03a1c2bbcb32dc25b6dc017c642d986fd8393d"
 dependencies = [
  "bindgen",
+ "cfg_aliases",
  "cmake",
 ]
 

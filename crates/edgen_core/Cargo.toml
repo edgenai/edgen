@@ -10,7 +10,7 @@ dashmap = { workspace = true }
 directories = { workspace = true }
 derive_more = { workspace = true }
 edgen_async_compat = { path = "../edgen_async_compat", features = ["runtime-tokio"] }
-memonitor = "0.1.1"
+memonitor = "0.2.0"
 notify = { workspace = true }
 num_cpus = { workspace = true }
 once_cell = { workspace = true }
