@@ -3032,9 +3032,9 @@ dependencies = [
 
 [[package]]
 name = "memonitor"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65af721a1658501e9a6be2865cd19c8b44b2740eaa454e57bffe1567c07ba7ea"
+checksum = "c59372284917ba6c9b5f98f3082deafe84fcea40534a5c113cf1f0dda3363108"
 dependencies = [
  "cfg_aliases",
  "memonitor-sys",
@@ -3045,9 +3045,9 @@ dependencies = [
 
 [[package]]
 name = "memonitor-sys"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f98ba7dc113ac33fc2ac0f4b7b03a1c2bbcb32dc25b6dc017c642d986fd8393d"
+checksum = "016a58a1ba333559ca7970ee70c4329b6f70a095327499f243b4140753de7322"
 dependencies = [
  "bindgen",
  "cfg_aliases",

@@ -74,24 +74,6 @@ impl LlamaCppEndpoint {
         // PANIC SAFETY: Just inserted the element if it isn't already inside the map, so must be present in the map
         Ok(self.models.get(&key).unwrap())
     }
-
-    async fn staging_check(
-        &self,
-        model_path: impl AsRef<Path> + Send + Sync,
-        prompt: &str,
-        args: &CompletionArgs,
-        ticket: &mut Ticket,
-    ) -> Result<(), LLMEndpointError> {
-        if ticket.staged() {
-            ticket.consume();
-            let passport = self
-                .completion_requirements(model_path, ticket.device(), prompt, args)
-                .await?;
-            Err(LLMEndpointError::Retry(passport))
-        } else {
-            Ok(())
-        }
-    }
 }
 
 #[async_trait::async_trait]
@@ -100,26 +82,26 @@ impl LLMEndpoint for LlamaCppEndpoint {
         &self,
         model_path: impl AsRef<Path> + Send + Sync,
         prompt: &str,
-        args: CompletionArgs,
+        args: &CompletionArgs,
         mut ticket: Ticket,
     ) -> Result<String, LLMEndpointError> {
         let model = self.get(&model_path, ticket.device()).await?;
-        self.staging_check(model_path, prompt, &args, &mut ticket)
-            .await?;
-        model.chat_completions(prompt, args, ticket).await
+        model.staging_check(prompt, &args, &mut ticket).await?;
+        model.chat_completions(prompt, args.clone(), ticket).await
     }
 
     async fn stream_chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send + Sync,
         prompt: &str,
-        args: CompletionArgs,
+        args: &CompletionArgs,
         mut ticket: Ticket,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
         let model = self.get(&model_path, ticket.device()).await?;
-        self.staging_check(model_path, prompt, &args, &mut ticket)
-            .await?;
-        model.stream_chat_completions(prompt, args, ticket).await
+        model.staging_check(prompt, &args, &mut ticket).await?;
+        model
+            .stream_chat_completions(prompt, args.clone(), ticket)
+            .await
     }
 
     async fn embeddings(
@@ -140,8 +122,8 @@ impl LLMEndpoint for LlamaCppEndpoint {
     ) -> Result<Passport, LLMEndpointError> {
         let key = ModelKey::new(&model_path, device);
 
-        // If mmap is enabled by default, the model won't occupy a relevant amount of space in memory
-        // so it can just be instantiated immediately.
+        // If mmap is enabled by default, the model won't occupy a relevant amount of space in
+        // memory, so it can just be instantiated immediately.
         if let Some(model) = self.models.get(&key) {
             if model.loaded().await
                 || (model.device == DeviceId::CPU && LlamaParams::default().use_mmap)
@@ -169,18 +151,23 @@ impl LLMEndpoint for LlamaCppEndpoint {
                     model.completion_requirements(prompt, args).await
                 }
                 DeviceId::Any => {
+                    // TODO look for loaded models with this path for every device
+
                     let size = file_size(&model_path).await?;
                     let use_mmap = LlamaParams::default().use_mmap;
                     let device_pick = REQUEST_QUEUE
                         .pick_device(|d| {
-                            if d == DeviceId::CPU {
-                                if use_mmap {
-                                    (0, 0)
-                                } else {
-                                    (size, 0)
+                            match d {
+                                DeviceId::CPU => {
+                                    if use_mmap {
+                                        (0, 0)
+                                    } else {
+                                        (size, 0)
+                                    }
                                 }
-                            } else {
-                                (0, size)
+                                // DeviceId::Vulkan(_) => {}
+                                DeviceId::Cuda(_) => (0, size),
+                                _ => (usize::MAX, usize::MAX),
                             }
                         })
                         .await?;
@@ -279,15 +266,14 @@ async fn file_size(path: impl AsRef<Path> + Send) -> Result<usize, LLMEndpointEr
     if path.as_ref().is_file() {
         let model_file = fs::File::open(path)
             .await
-            .map_err(|e| LLMEndpointError::Load(e.to_string()))?;
-        model_file
-            .sync_all()
-            .await
-            .map_err(|e| LLMEndpointError::Load(e.to_string()))?;
+            .map_err(|e| LLMEndpointError::Load(format!("Failed to open model file: {e}")))?;
+        if let Err(e) = model_file.sync_all().await {
+            warn!("Failed to sync file metadata: {e}");
+        }
         let metadata = model_file
             .metadata()
             .await
-            .map_err(|e| LLMEndpointError::Load(e.to_string()))?;
+            .map_err(|e| LLMEndpointError::Load(format!("Failed to read file metadata: {e}")))?;
 
         Ok(metadata.len() as usize)
     } else {
@@ -504,6 +490,23 @@ impl UnloadingModel {
         }
 
         freed
+    }
+
+    /// Verify the ticket, if it is a staging ticket, return an error containing a passport with
+    /// updated requirements, otherwise return ok.
+    async fn staging_check(
+        &self,
+        prompt: &str,
+        args: &CompletionArgs,
+        ticket: &mut Ticket,
+    ) -> Result<(), LLMEndpointError> {
+        if ticket.staged() {
+            ticket.consume();
+            let passport = self.completion_requirements(prompt, args).await?;
+            Err(LLMEndpointError::Retry(passport))
+        } else {
+            Ok(())
+        }
     }
 
     /// Estimate and return the resources required to compute a request, given its arguments.

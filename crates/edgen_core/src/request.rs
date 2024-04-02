@@ -25,7 +25,7 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::{interval, MissedTickBehavior};
 use tokio::{select, spawn};
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use crate::settings::{DevicePolicy, SETTINGS};
 
@@ -75,6 +75,12 @@ impl RequestManager {
             if let memonitor::DeviceKind::GPU(memonitor::GPUKind::Integrated) = hw_device.kind() {
                 continue;
             }
+
+            info!(
+                "Found device: {} @ {:?}",
+                hw_device.name(),
+                hw_device.backend()
+            );
 
             let device = match hw_device.backend() {
                 memonitor::BackendId::CPU => DeviceId::CPU,
@@ -315,10 +321,10 @@ impl DeviceId {
 
     /// Return the name of a device provided its id in the backend, the backend id and a default name for the case
     /// where the backend wasn't found.
-    fn get_name(local_id: usize, backend_id: &memonitor::BackendId, default_name: &str) -> String {
+    fn get_name(local_id: usize, backend_id: memonitor::BackendId, default_name: &str) -> String {
         let mut name = default_name.to_string();
         for backend in memonitor::list_backends().iter() {
-            if backend.id() == *backend_id {
+            if backend.id() == backend_id {
                 let id = backend.device_indexes()[local_id];
                 name = memonitor::list_all_devices()[id].name().to_string();
                 break;
@@ -332,10 +338,10 @@ impl DeviceId {
         match self {
             DeviceId::CPU => memonitor::list_all_devices()[0].name().to_string(),
             DeviceId::Vulkan(local_id) => {
-                Self::get_name(*local_id, &memonitor::BackendId::Vulkan, "VULKAN_NOT_FOUND")
+                Self::get_name(*local_id, memonitor::BackendId::Vulkan, "VULKAN_NOT_FOUND")
             }
             DeviceId::Cuda(local_id) => {
-                Self::get_name(*local_id, &memonitor::BackendId::CUDA, "CUDA_NOT_FOUND")
+                Self::get_name(*local_id, memonitor::BackendId::CUDA, "CUDA_NOT_FOUND")
             }
             DeviceId::Metal(_local_id) => todo!(), // Self::get_name(*local_id, "TODO", "METAL_NOT_FOUND"),
             DeviceId::Any => "NONE".to_string(),

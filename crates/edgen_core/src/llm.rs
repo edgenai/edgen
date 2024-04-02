@@ -78,7 +78,7 @@ pub trait LLMEndpoint {
         &self,
         model_path: impl AsRef<Path> + Send + Sync,
         prompt: &str,
-        args: CompletionArgs,
+        args: &CompletionArgs,
         ticket: Ticket,
     ) -> Result<String, LLMEndpointError>;
 
@@ -88,7 +88,7 @@ pub trait LLMEndpoint {
         &self,
         model_path: impl AsRef<Path> + Send + Sync,
         prompt: &str,
-        args: CompletionArgs,
+        args: &CompletionArgs,
         ticket: Ticket,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError>;
 

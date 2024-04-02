@@ -37,7 +37,7 @@ impl ChatFakerModel {
     async fn chat_completions(
         &self,
         prompt: &str,
-        _args: CompletionArgs,
+        _args: &CompletionArgs,
     ) -> Result<String, LLMEndpointError> {
         info!("faking chat completions");
         Ok(completions_for(prompt))
@@ -46,7 +46,7 @@ impl ChatFakerModel {
     async fn stream_chat_completions(
         &self,
         prompt: &str,
-        _args: CompletionArgs,
+        _args: &CompletionArgs,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
         info!("faking stream chat completions");
         let msg = completions_for(prompt);
@@ -111,7 +111,7 @@ impl LLMEndpoint for ChatFakerEndpoint {
         &self,
         model_path: impl AsRef<Path> + Send,
         prompt: &str,
-        args: CompletionArgs,
+        args: &CompletionArgs,
         mut ticket: Ticket,
     ) -> Result<String, LLMEndpointError> {
         let model = self.get(model_path).await;
@@ -123,7 +123,7 @@ impl LLMEndpoint for ChatFakerEndpoint {
         &self,
         model_path: impl AsRef<Path> + Send,
         prompt: &str,
-        args: CompletionArgs,
+        args: &CompletionArgs,
         mut ticket: Ticket,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
         let model = self.get(model_path).await;

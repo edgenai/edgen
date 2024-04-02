@@ -40,7 +40,7 @@ pub async fn chat_completion(
     let ticket = REQUEST_QUEUE.enqueue(passport).await?;
 
     ENDPOINT
-        .chat_completions(&model_path, &prompt, args, ticket)
+        .chat_completions(&model_path, &prompt, &args, ticket)
         .await
 }
 
@@ -60,7 +60,7 @@ pub async fn chat_completion_stream(
     let ticket = REQUEST_QUEUE.enqueue(passport).await?;
 
     let stream = ENDPOINT
-        .stream_chat_completions(&model_path, &prompt, args, ticket)
+        .stream_chat_completions(&model_path, &prompt, &args, ticket)
         .await?;
 
     Ok(StoppingStream::wrap_with_stop_words(
