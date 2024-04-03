@@ -81,8 +81,8 @@ async fn main() {
     let chat_args: Chat = argh::from_env();
 
     assert!(
-        chat_args.min_idle < chat_args.max_idle,
-        "Minimum idle time must be higher than the maximum"
+        chat_args.min_idle <= chat_args.max_idle,
+        "Minimum idle time cannot be higher than the maximum"
     );
 
     let mut rng = rand::thread_rng();
@@ -150,7 +150,11 @@ async fn chain_requests(chat_args: Chat, count: usize, index: usize) {
     });
 
     for request in 0..count {
-        let wait = rand::thread_rng().gen_range(chat_args.min_idle..chat_args.max_idle);
+        let wait = if chat_args.min_idle != chat_args.max_idle {
+            rand::thread_rng().gen_range(chat_args.min_idle..chat_args.max_idle)
+        } else {
+            chat_args.min_idle
+        };
         sleep(Duration::from_secs_f32(wait)).await;
         info!(
             "Chain {} sending request {} of {}.",
@@ -197,4 +201,6 @@ async fn chain_requests(chat_args: Chat, count: usize, index: usize) {
             name: None,
         });
     }
+
+    info!("Chain {index} finished.")
 }

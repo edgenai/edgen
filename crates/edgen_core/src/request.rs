@@ -508,6 +508,7 @@ struct MemoryRequirements<'a> {
     devices: &'a [Device],
 
     /// The [`memonitor`] device id of the device the request is executed on.
+    /// If [`None`], the request is executed fully on the CPU/host.
     mm_device_id: Option<usize>,
 
     /// Cached value for available host memory.
@@ -566,15 +567,23 @@ impl<'a> MemoryRequirements<'a> {
         if self.mm_device_id.is_some() {
             let available_host = self.cached_available_host.unwrap_or(0);
             let available_device = self.cached_available_device.unwrap_or(0);
-            if self.host_memory < available_host + freed.host_memory
-                && self.device_memory < available_device + freed.device_memory
-            {
-                None
+
+            let currently_required_host = if self.host_memory < available_host + freed.host_memory {
+                0
             } else {
-                Some((
-                    self.host_memory - (available_device + freed.host_memory),
-                    self.device_memory - (available_device + freed.device_memory),
-                ))
+                self.host_memory - (available_host + freed.host_memory)
+            };
+            let currently_required_device =
+                if self.device_memory < available_device + freed.device_memory {
+                    0
+                } else {
+                    self.device_memory - (available_device + freed.device_memory)
+                };
+
+            if 0 < currently_required_host || 0 < currently_required_device {
+                Some((currently_required_host, currently_required_device))
+            } else {
+                None
             }
         } else {
             let available = self.cached_available_host.unwrap_or(0);
