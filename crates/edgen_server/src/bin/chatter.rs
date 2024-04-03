@@ -14,6 +14,22 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 use edgen_server::openai_shim::{ChatCompletionChunk, ChatMessage, CreateChatCompletionRequest};
 
+const START_PROMPTS: [&str; 6] = [
+    "Hello!",
+    "Please give me a number between 1 and 50.",
+    "Please tell me a short story.",
+    "Please tell me a long story.",
+    "What is the capital of Portugal?",
+    "What is the current weather like in France?",
+];
+
+const CONTINUE_PROMPTS: [&str; 4] = [
+    "Please continue.",
+    "Tell me more.",
+    "Can you give me more details?",
+    "I don't understand.",
+];
+
 /// Send an arbitrary number of requests to the streaming chat endpoint.
 #[derive(argh::FromArgs, PartialEq, Debug, Clone)]
 pub struct Chat {
@@ -122,14 +138,14 @@ async fn chain_requests(chat_args: Chat, count: usize, index: usize) {
         context_hint: None,
     };
 
-    body.messages.push(ChatMessage::Assistant {
+    body.messages.push(ChatMessage::System {
         content: Some(Cow::from("You are Edgen, a helpful assistant.")),
         name: None,
-        tool_calls: None,
     });
 
+    let prompt_idx = rand::thread_rng().gen_range(0..START_PROMPTS.len());
     body.messages.push(ChatMessage::User {
-        content: Either::Left(Cow::from("Give me a number between 1 and 10.")),
+        content: Either::Left(Cow::from(START_PROMPTS[prompt_idx])),
         name: None,
     });
 
@@ -173,6 +189,12 @@ async fn chain_requests(chat_args: Chat, count: usize, index: usize) {
             content: Some(Cow::from(text)),
             name: None,
             tool_calls: None,
+        });
+
+        let continue_idx = rand::thread_rng().gen_range(0..CONTINUE_PROMPTS.len());
+        body.messages.push(ChatMessage::User {
+            content: Either::Left(Cow::from(CONTINUE_PROMPTS[continue_idx])),
+            name: None,
         });
     }
 }

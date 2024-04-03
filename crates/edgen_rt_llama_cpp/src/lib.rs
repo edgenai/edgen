@@ -30,7 +30,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::task::JoinHandle;
 use tokio::time::{interval, Instant, MissedTickBehavior};
 use tokio::{fs, select, spawn};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use edgen_core::cleanup_interval;
 use edgen_core::llm::{
@@ -542,6 +542,8 @@ impl UnloadingModel {
         args: CompletionArgs,
     ) -> Result<(UnloadingSession, SessionId, &'a str), LLMEndpointError> {
         let (id, old_context, new_context) = SessionId::chat(prompt);
+        debug!("Old session context: {old_context}");
+        debug!("New session context: {new_context}");
 
         let session = if let Some((_, session)) = self.sessions.remove(&id) {
             info!("Matching session found, continuing");
@@ -773,10 +775,10 @@ impl Drop for UnloadingModel {
 
 /// A Llama session that automatically unloads itself from memory after some time.
 ///
-/// If the session gets unloaded before a request that would match is submitted, all of the request's context will
-/// have to be processed again.
+/// If the session gets unloaded before a request that would match is submitted, the whole
+/// request's context will have to be processed again.
 struct UnloadingSession {
-    /// This sessions [`Perishable`] inner [`LlamaSession`].
+    /// This session's [`Perishable`] inner [`LlamaSession`].
     session: Perishable<LlamaSession>,
 
     /// The parameter used to create the session.
