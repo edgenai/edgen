@@ -97,7 +97,6 @@ fn test_battery() {
         test_ai_endpoint_with_download(Endpoint::AudioTranscriptions, "default");
         test_ai_endpoint_with_download(Endpoint::Embeddings, "default");
 
-
         // we have downloaded, we should not download again
         test_ai_endpoint_no_download(Endpoint::ChatCompletions, "default");
         test_ai_endpoint_no_download(Endpoint::AudioTranscriptions, "default");
@@ -131,12 +130,8 @@ fn test_battery() {
                 "transcriptions",
             );
 
-        let new_embeddings_dir = my_models_dir.clone()
-            + &format!(
-                "{}{}",
-                path::MAIN_SEPARATOR,
-                "embeddings",
-            );
+        let new_embeddings_dir =
+            my_models_dir.clone() + &format!("{}{}", path::MAIN_SEPARATOR, "embeddings",);
 
         common::set_model_dir(Endpoint::ChatCompletions, &new_chat_completions_dir);
         common::set_model_dir(Endpoint::AudioTranscriptions, &new_audio_transcriptions_dir);
@@ -344,16 +339,9 @@ fn test_ai_endpoint(endpoint: Endpoint, model: &str, download: bool) {
             )
         }
         Endpoint::Embeddings => {
-            common::test_message(&format!(
-                "embeddints endpoint with download: {}",
-                download
-            ));
+            common::test_message(&format!("embeddints endpoint with download: {}", download));
             (
-                common::make_url(&[
-                    common::BASE_URL,
-                    common::EMBEDDINGS_URL,
-                    common::STATUS_URL,
-                ]),
+                common::make_url(&[common::BASE_URL, common::EMBEDDINGS_URL, common::STATUS_URL]),
                 common::embeddings_custom_body(model),
             )
         }
