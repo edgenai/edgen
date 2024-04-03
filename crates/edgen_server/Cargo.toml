@@ -22,7 +22,9 @@ hyper = { workspace = true }
 hyper-util = { workspace = true }
 once_cell = { workspace = true }
 pin-project = { workspace = true }
-reqwest = { workspace = true, features = ["blocking", "multipart"] }
+rand = "0.9.0-alpha.1"
+reqwest = { workspace = true, features = ["blocking", "multipart", "json"] }
+reqwest-eventsource = "0.6.0"
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }
@@ -51,3 +53,8 @@ llama_vulkan = ["edgen_rt_llama_cpp/vulkan"]
 llama_cuda = ["edgen_rt_llama_cpp/cuda"]
 llama_metal = ["edgen_rt_llama_cpp/metal"]
 whisper_cuda = ["edgen_rt_whisper_cpp/cuda"]
+
+[[bin]]
+name = "chatter"
+test = false
+bench = false
