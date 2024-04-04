@@ -118,10 +118,12 @@ Options:
 ⚡Edgen also supports compilation and execution on a GPU, when building from source, through Vulkan, CUDA and Metal.
 The following cargo features enable the GPU:
 
-- `llama_vulkan` - execute LLM models using Vulkan. Requires a Vulkan SDK to be installed.
+- ~~`llama_vulkan` - execute LLM models using Vulkan. Requires a Vulkan SDK to be installed.~~
 - `llama_cuda` - execute LLM models using CUDA. Requires a CUDA Toolkit to be installed.
-- `llama_metal` - execute LLM models using Metal.
+- ~~`llama_metal` - execute LLM models using Metal.~~
 - `whisper_cuda` - execute Whisper models using CUDA. Requires a CUDA Toolkit to be installed.
+
+(Vulkan and Metal related features are currently disabled due to lack of support for memory management)
 
 Note that, at the moment, `llama_vulkan`, `llama_cuda` and `llama_metal` cannot be enabled at the same time.
 
