@@ -17,6 +17,7 @@
 //! arbitrary [`EnvelopeHandler`].
 
 extern crate alloc;
+extern crate core;
 
 use std::future::Future;
 use std::time::Duration;

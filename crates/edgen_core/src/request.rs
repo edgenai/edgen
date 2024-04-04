@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-use core::fmt::{Display, Formatter};
+use core::fmt::{Debug, Display, Formatter};
 use std::ops::AddAssign;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -128,6 +128,7 @@ impl RequestManager {
         }
 
         if requirements.free() {
+            info!("\"Free\" request clear for immediate execution");
             return Ok(Ticket {
                 content: Some(TicketContent::Free),
                 device: requirements.device,
@@ -181,12 +182,25 @@ impl RequestManager {
         Ok(ticket)
     }
 
-    /// Given a function that calculates the allocation requirements for each device, return a device based on the
+    /// Given a list of possible passports and a function that calculates the allocation
+    /// requirements for each device, return either the best passport or a device based on the
     /// configured device selection policy.
-    pub async fn pick_device(
+    pub async fn pick(
         &self,
+        passports: Vec<Passport>,
         local_size: impl Fn(DeviceId) -> (usize, usize),
-    ) -> Result<DeviceId, QueueError> {
+    ) -> Result<QueueSelection, QueueError> {
+        let mut p = None;
+        for passport in passports {
+            if passport.free() {
+                return Ok(QueueSelection::Passport(passport));
+            }
+            p = Some(passport);
+        }
+        if let Some(passport) = p {
+            return Ok(QueueSelection::Passport(passport));
+        }
+
         let policy = SETTINGS.read().await.read().await.gpu_policy;
         let device = match policy {
             DevicePolicy::AlwaysCpu {
@@ -218,8 +232,8 @@ impl RequestManager {
                 overflow_to_cpu: false,
             } => {
                 if self.devices.len() == 1 {
-                    // Only CPU is available.
-                    return Err(QueueError::NoSuchDevice);
+                    warn!("Device policy set to always execute on device, without CPU overflow, but no device was found in the system");
+                    return Ok(QueueSelection::Device(DeviceId::CPU));
                 }
 
                 let mut device_id = DeviceId::Any;
@@ -266,7 +280,7 @@ impl RequestManager {
             }
         };
 
-        Ok(device)
+        Ok(QueueSelection::Device(device))
     }
 
     /// Notify the queue that some resource has been freed.
@@ -476,6 +490,7 @@ async fn queue_normal(
             device: devices[mm_device_id].id,
         };
 
+        info!("Request clear for execution: {ticket:?}");
         let _ = signal_tx.send(ticket);
     }
 }
@@ -659,15 +674,15 @@ impl Passport {
                 host_memory,
                 device_memory,
             } => TicketContent::Staged {
-                _host_memory: host.reserve_memory(host_memory),
-                _device_memory: device.reserve_memory(device_memory),
+                host_memory: host.reserve_memory(host_memory),
+                device_memory: device.reserve_memory(device_memory),
             },
             Request::Final {
                 host_memory,
                 device_memory,
             } => TicketContent::Final {
-                _host_memory: host.reserve_memory(host_memory),
-                _device_memory: device.reserve_memory(device_memory),
+                host_memory: host.reserve_memory(host_memory),
+                device_memory: device.reserve_memory(device_memory),
             },
             Request::Free => TicketContent::Free,
         }
@@ -738,32 +753,56 @@ impl Drop for Ticket {
 }
 
 /// The inner content of a [`Ticket`].
-#[derive(Debug)]
 enum TicketContent {
     /// A ticket for one of many allocations needed for the request.
     Staged {
         /// Reserved host memory for this ticket.
-        _host_memory: ReservedMemory,
+        host_memory: ReservedMemory,
 
         /// Reserved device memory for this ticket.
-        _device_memory: ReservedMemory,
+        device_memory: ReservedMemory,
     },
 
     /// A normal ticket.
     Final {
         /// Reserved host memory for this ticket.
-        _host_memory: ReservedMemory,
+        host_memory: ReservedMemory,
 
         /// Reserved device memory for this ticket.
-        _device_memory: ReservedMemory,
+        device_memory: ReservedMemory,
     },
 
     /// No resource allocations are necessary for this ticket's request.
     Free,
 }
 
+impl Debug for TicketContent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            TicketContent::Staged {
+                host_memory,
+                device_memory,
+            } => write!(
+                f,
+                "Staged {{ host_reserved: {}MiB, device_reserved: {}MiB }}",
+                host_memory.amount / 1024 / 1024,
+                device_memory.amount / 1024 / 1024
+            ),
+            TicketContent::Final {
+                host_memory,
+                device_memory,
+            } => write!(
+                f,
+                "Final {{ host_reserved: {}MiB, device_reserved: {}MiB }}",
+                host_memory.amount / 1024 / 1024,
+                device_memory.amount / 1024 / 1024
+            ),
+            TicketContent::Free => write!(f, "Free"),
+        }
+    }
+}
+
 /// A chunk of "reserved" memory.
-#[derive(Debug)]
 struct ReservedMemory {
     /// The amount of memory reserved, in bytes.
     amount: usize,
@@ -842,4 +881,17 @@ impl Display for FreedMemory {
             self.device_memory / 1024 / 1024
         )
     }
+}
+
+/// A selection made by a call to [`RequestManager::pick`].
+pub enum QueueSelection {
+    /// Execute the request using a provided passport.
+    ///
+    /// Some allocations have probably already been made for this type of selection.
+    Passport(Passport),
+
+    /// Execute the request on a specified device.
+    ///
+    /// It's up to the backend to generate a new [`Passport`].
+    Device(DeviceId),
 }

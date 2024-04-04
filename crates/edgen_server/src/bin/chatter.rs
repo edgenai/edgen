@@ -6,9 +6,10 @@ use futures::StreamExt;
 use rand::Rng;
 use reqwest_eventsource::EventSource;
 use reqwest_eventsource::{retry, Event};
+use tokio::sync::mpsc;
 use tokio::task::JoinSet;
-use tokio::time::sleep;
-use tracing::info;
+use tokio::time::{sleep, Instant};
+use tracing::{debug, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -107,14 +108,38 @@ async fn main() {
     }
 
     let mut join_set = JoinSet::new();
+    let (tx, mut rx) = mpsc::unbounded_channel();
     for (id, count) in request_chains.drain(..).enumerate() {
-        join_set.spawn(chain_requests(chat_args.clone(), count, id));
+        join_set.spawn(chain_requests(chat_args.clone(), count, id, tx.clone()));
     }
+    drop(tx);
+
+    let mut first_tokens = vec![];
+    let mut all_tokens = vec![];
+    let mut all_tokens_nf = vec![];
+
+    while let Some(stats) = rx.recv().await {
+        first_tokens.push(stats.first_token);
+        all_tokens.extend(&stats.all_tokens);
+        all_tokens_nf.extend(&stats.all_tokens[1..])
+    }
+
+    println!("First token times:");
+    print_stats(first_tokens);
+    println!("All token times:");
+    print_stats(all_tokens);
+    println!("All token times (without first token):");
+    print_stats(all_tokens_nf);
 
     while let Some(_) = join_set.join_next().await {}
 }
 
-async fn chain_requests(chat_args: Chat, count: usize, index: usize) {
+async fn chain_requests(
+    chat_args: Chat,
+    count: usize,
+    index: usize,
+    stats_tx: mpsc::UnboundedSender<RequestStatistics>,
+) {
     let client = reqwest::Client::new();
     let base_builder = client.post(chat_args.url + "/v1/chat/completions");
     let mut body = CreateChatCompletionRequest {
@@ -164,6 +189,13 @@ async fn chain_requests(chat_args: Chat, count: usize, index: usize) {
         );
 
         let builder = base_builder.try_clone().unwrap().json(&body);
+
+        let mut stats = RequestStatistics {
+            first_token: -1.0,
+            all_tokens: vec![],
+        };
+        let mut t = Instant::now();
+
         let mut event_source = EventSource::new(builder).unwrap();
         event_source.set_retry_policy(Box::new(retry::Never));
         let mut token_count = 0;
@@ -176,7 +208,18 @@ async fn chain_requests(chat_args: Chat, count: usize, index: usize) {
                         event_source.close();
                         break;
                     }
+
+                    let nt = Instant::now();
+                    let d = (nt - t).as_secs_f32();
+                    t = nt;
+
+                    if stats.first_token == -1.0 {
+                        stats.first_token = d;
+                    }
+                    stats.all_tokens.push(d);
+
                     token_count += 1;
+                    debug!("Chain {index} has received token {token_count}");
                     let response: ChatCompletionChunk =
                         serde_json::from_str(message.data.as_str()).unwrap();
                     text += response.choices[0].delta.content.as_ref().unwrap();
@@ -188,6 +231,8 @@ async fn chain_requests(chat_args: Chat, count: usize, index: usize) {
                 }
             }
         }
+
+        stats_tx.send(stats).unwrap();
 
         body.messages.push(ChatMessage::Assistant {
             content: Some(Cow::from(text)),
@@ -202,5 +247,20 @@ async fn chain_requests(chat_args: Chat, count: usize, index: usize) {
         });
     }
 
-    info!("Chain {index} finished.")
+    info!("Chain {index} finished")
+}
+
+struct RequestStatistics {
+    first_token: f32,
+    all_tokens: Vec<f32>,
+}
+
+fn print_stats(mut values: Vec<f32>) {
+    let mean = values.iter().map(|v| *v).reduce(|a, b| a + b).unwrap() / values.len() as f32;
+    values.sort_unstable_by(|a, b| a.total_cmp(b));
+    let min = values[0];
+    let max = *values.last().unwrap();
+    let median = values[values.len() / 2];
+
+    println!("Mean: {mean}s ; Median: {median}s ; Min: {min}s ; Max: {max}s");
 }

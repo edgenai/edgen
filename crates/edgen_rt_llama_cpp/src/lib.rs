@@ -39,7 +39,7 @@ use edgen_core::llm::{
 };
 use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, PerishableWriteGuard};
 use edgen_core::request::{
-    DeviceId, FreedMemory, Passport, Request, ResourceUser, Ticket, REQUEST_QUEUE,
+    DeviceId, FreedMemory, Passport, QueueSelection, Request, ResourceUser, Ticket, REQUEST_QUEUE,
 };
 use edgen_core::settings::SETTINGS;
 
@@ -151,12 +151,25 @@ impl LLMEndpoint for LlamaCppEndpoint {
                     model.completion_requirements(prompt, args).await
                 }
                 DeviceId::Any => {
-                    // TODO look for loaded models with this path for every device
+                    let mut passports = vec![];
+                    for key in REQUEST_QUEUE
+                        .all_devices()
+                        .drain(..)
+                        .map(|d| ModelKey::new(&model_path, d))
+                    {
+                        if let Some(model) = self.models.get(&key) {
+                            let passport = model.completion_requirements(prompt, args).await?;
+                            if passport.free() {
+                                return Ok(passport);
+                            }
+                            passports.push(passport);
+                        }
+                    }
 
                     let size = file_size(&model_path).await?;
                     let use_mmap = LlamaParams::default().use_mmap;
-                    let device_pick = REQUEST_QUEUE
-                        .pick_device(|d| {
+                    let selection = REQUEST_QUEUE
+                        .pick(passports, |d| {
                             match d {
                                 DeviceId::CPU => {
                                     if use_mmap {
@@ -171,23 +184,29 @@ impl LLMEndpoint for LlamaCppEndpoint {
                             }
                         })
                         .await?;
-                    if device_pick == DeviceId::CPU && use_mmap {
-                        let model = self.get(model_path, DeviceId::CPU).await?;
-                        model.completion_requirements(prompt, args).await
-                    } else {
-                        let (host_size, device_size) = if device_pick == DeviceId::CPU {
-                            (size, 0)
-                        } else {
-                            (0, size)
-                        };
 
-                        Ok(Passport::new(
-                            Request::Staged {
-                                host_memory: host_size,
-                                device_memory: device_size,
-                            },
-                            device_pick,
-                        ))
+                    match selection {
+                        QueueSelection::Passport(passport) => Ok(passport),
+                        QueueSelection::Device(device_pick) => {
+                            if device_pick == DeviceId::CPU && use_mmap {
+                                let model = self.get(model_path, DeviceId::CPU).await?;
+                                model.completion_requirements(prompt, args).await
+                            } else {
+                                let (host_size, device_size) = if device_pick == DeviceId::CPU {
+                                    (size, 0)
+                                } else {
+                                    (0, size)
+                                };
+
+                                Ok(Passport::new(
+                                    Request::Staged {
+                                        host_memory: host_size,
+                                        device_memory: device_size,
+                                    },
+                                    device_pick,
+                                ))
+                            }
+                        }
                     }
                 }
                 _ => Ok(Passport::new(
@@ -354,7 +373,9 @@ impl ResourceUser for LlamaResourceUser {
             }
         }
 
-        info!("Llama backend has freed {freed} bytes from {device_id:?}");
+        if 0 < freed.host_memory || 0 < freed.device_memory {
+            info!("Llama backend has freed {freed} bytes from {device_id:?}");
+        }
 
         freed
     }
@@ -414,6 +435,7 @@ impl UnloadingModel {
                     item = rx.recv() => {
                         if let Some((id, session)) = item {
                             sessions_clone.insert(id, session);
+                            info!("Session added to model map");
                         }
                     }
                 }
@@ -475,16 +497,18 @@ impl UnloadingModel {
             }
 
             if let Some(session) = self.sessions.get(&key) {
-                if let Ok(size) = session.size().await {
-                    if self.device == DeviceId::CPU {
-                        freed.host_memory += size;
+                if session.loaded().await {
+                    if let Ok(size) = session.size().await {
+                        if self.device == DeviceId::CPU {
+                            freed.host_memory += size;
+                        } else {
+                            freed.host_memory += (size * 2) / 3;
+                            freed.device_memory += size / 3;
+                        }
+                        session.unload().await;
                     } else {
-                        freed.host_memory += (size * 2) / 3;
-                        freed.device_memory += size / 3;
+                        warn!("Session is already uninitialised")
                     }
-                    session.unload().await;
-                } else {
-                    warn!("Session is already uninitialised")
                 }
             }
         }
@@ -1155,6 +1179,7 @@ impl Drop for CompletionStream {
                 SessionOption::OneShot { device, .. } => notify = Some(device),
                 SessionOption::Perishable(session) => {
                     if let Some(channel) = self.finished_tx.take() {
+                        info!("Sending session to maintenance thread");
                         channel.send((id, session)).unwrap_or_else(move |e| {
                             error!("Failed to send session to maintenance thread: {e}")
                         });
