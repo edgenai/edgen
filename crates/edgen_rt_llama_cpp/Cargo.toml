@@ -10,7 +10,7 @@ dashmap = { workspace = true }
 derive_more = { workspace = true }
 edgen_core = { path = "../edgen_core" }
 futures = { workspace = true }
-llama_cpp = { git = "https://github.com/edgenai/llama_cpp-rs", branch = "main", features = ["native"] }
+llama_cpp = { git = "https://github.com/edgenai/llama_cpp-rs", branch = "main", features = ["native", "sys_verbosity"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt", "fs"] }
 tracing = { workspace = true }
