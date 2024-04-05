@@ -55,7 +55,7 @@ impl ChatFakerModel {
     }
 
     //TODO: implement
-    async fn embeddings(&self, _inputs: &Vec<String>) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
+    async fn embeddings(&self, _inputs: &[String]) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
         info!("faking emeddings");
         Ok(vec![])
     }
@@ -134,10 +134,12 @@ impl LLMEndpoint for ChatFakerEndpoint {
     async fn embeddings(
         &self,
         model_path: impl AsRef<Path> + Send,
-        inputs: Vec<String>,
+        inputs: &[String],
+        mut ticket: Ticket,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
         let model = self.get(model_path).await;
-        model.embeddings(&inputs).await
+        ticket.consume();
+        model.embeddings(inputs).await
     }
 
     async fn completion_requirements(
@@ -146,6 +148,15 @@ impl LLMEndpoint for ChatFakerEndpoint {
         _device: DeviceId,
         _prompt: &str,
         _args: &CompletionArgs,
+    ) -> Result<Passport, LLMEndpointError> {
+        Ok(Passport::new(Request::Free, DeviceId::CPU))
+    }
+
+    async fn embedding_requirements(
+        &self,
+        _model_path: impl AsRef<Path> + Send + Sync,
+        _device: DeviceId,
+        _inputs: &[String],
     ) -> Result<Passport, LLMEndpointError> {
         Ok(Passport::new(Request::Free, DeviceId::CPU))
     }

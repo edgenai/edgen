@@ -96,16 +96,27 @@ pub trait LLMEndpoint {
     async fn embeddings(
         &self,
         model_path: impl AsRef<Path> + Send + Sync,
-        inputs: Vec<String>,
+        inputs: &[String],
+        ticket: Ticket,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError>;
 
-    /// Return an estimation of the resources required to process inference given its arguments.
+    /// Return an estimation of the resources required to process completions inference given its
+    /// arguments.
     async fn completion_requirements(
         &self,
         model_path: impl AsRef<Path> + Send + Sync,
         device: DeviceId,
         prompt: &str,
         args: &CompletionArgs,
+    ) -> Result<Passport, LLMEndpointError>;
+
+    /// Return an estimation of the resources required to process embeddings inference given its
+    /// arguments.
+    async fn embedding_requirements(
+        &self,
+        model_path: impl AsRef<Path> + Send + Sync,
+        device: DeviceId,
+        inputs: &[String],
     ) -> Result<Passport, LLMEndpointError>;
 
     /// Return a [`ResourceUser`] handle of this endpoint.

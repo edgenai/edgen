@@ -78,12 +78,23 @@ pub async fn embeddings(
     model: Model,
     input: Vec<String>,
 ) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
+    let model_path = model
+        .file_path()
+        .map_err(move |e| LLMEndpointError::Load(e.to_string()))?;
+
+    let passport = ENDPOINT
+        .embedding_requirements(&model_path, DeviceId::Any, &input)
+        .await?;
+
+    let ticket = REQUEST_QUEUE.enqueue(passport).await?;
+
     ENDPOINT
         .embeddings(
             model
                 .file_path()
                 .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
-            input,
+            &input,
+            ticket,
         )
         .await
 }

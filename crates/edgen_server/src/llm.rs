@@ -34,15 +34,27 @@ pub async fn chat_completion(
     let model_path = model
         .file_path()
         .map_err(move |e| LLMEndpointError::Load(e.to_string()))?;
-    let passport = ENDPOINT
+    let mut passport = ENDPOINT
         .completion_requirements(&model_path, DeviceId::Any, &prompt, &args)
         .await?;
 
-    let ticket = REQUEST_QUEUE.enqueue(passport).await?;
+    loop {
+        let ticket = REQUEST_QUEUE.enqueue(passport).await?;
 
-    ENDPOINT
-        .chat_completions(model_path, &prompt, &args, ticket)
-        .await
+        let res = ENDPOINT
+            .chat_completions(&model_path, &prompt, &args, ticket)
+            .await;
+
+        match res {
+            Ok(completion) => {
+                return Ok(completion);
+            }
+            Err(LLMEndpointError::Retry(new_passport)) => passport = new_passport,
+            Err(e) => {
+                return Err(e);
+            }
+        }
+    }
 }
 
 pub async fn chat_completion_stream(
@@ -88,14 +100,28 @@ pub async fn embeddings(
     model: Model,
     input: Vec<String>,
 ) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
-    ENDPOINT
-        .embeddings(
-            model
-                .file_path()
-                .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
-            input,
-        )
-        .await
+    let model_path = model
+        .file_path()
+        .map_err(move |e| LLMEndpointError::Load(e.to_string()))?;
+    let mut passport = ENDPOINT
+        .embedding_requirements(&model_path, DeviceId::Any, &input)
+        .await?;
+
+    loop {
+        let ticket = REQUEST_QUEUE.enqueue(passport).await?;
+
+        let res = ENDPOINT.embeddings(&model_path, &input, ticket).await;
+
+        match res {
+            Ok(embeddings) => {
+                return Ok(embeddings);
+            }
+            Err(LLMEndpointError::Retry(new_passport)) => passport = new_passport,
+            Err(e) => {
+                return Err(e);
+            }
+        }
+    }
 }
 
 pub async fn reset_environment() {

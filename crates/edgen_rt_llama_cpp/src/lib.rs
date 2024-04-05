@@ -74,6 +74,110 @@ impl LlamaCppEndpoint {
         // PANIC SAFETY: Just inserted the element if it isn't already inside the map, so must be present in the map
         Ok(self.models.get(&key).unwrap())
     }
+
+    async fn session_requirements(
+        &self,
+        model: &UnloadingModel,
+        instance: SessionInstance<'_>,
+    ) -> Result<Passport, LLMEndpointError> {
+        match instance {
+            SessionInstance::Completions { prompt, args } => {
+                model.completion_requirements(prompt, args).await
+            }
+            SessionInstance::Embeddings { inputs } => model.embedding_requirements(inputs).await,
+        }
+    }
+
+    async fn requirements(
+        &self,
+        model_path: impl AsRef<Path> + Send + Sync,
+        device: DeviceId,
+        instance: SessionInstance<'_>,
+    ) -> Result<Passport, LLMEndpointError> {
+        match device {
+            DeviceId::CPU if LlamaParams::default().use_mmap => {
+                let model = self.get(model_path, device).await?;
+                self.session_requirements(model.value(), instance).await
+            }
+            DeviceId::Any => {
+                let mut passports = vec![];
+                for key in REQUEST_QUEUE
+                    .all_devices()
+                    .drain(..)
+                    .map(|d| ModelKey::new(&model_path, d))
+                {
+                    if let Some(model) = self.models.get(&key) {
+                        let passport = self.session_requirements(model.value(), instance).await?;
+                        if passport.free() {
+                            return Ok(passport);
+                        }
+                        passports.push(passport);
+                    }
+                }
+
+                let size = file_size(&model_path).await?;
+                let use_mmap = LlamaParams::default().use_mmap;
+                let selection = REQUEST_QUEUE
+                    .pick(passports, |d| {
+                        match d {
+                            DeviceId::CPU => {
+                                if use_mmap {
+                                    (0, 0)
+                                } else {
+                                    (size, 0)
+                                }
+                            }
+                            // DeviceId::Vulkan(_) => {}
+                            DeviceId::Cuda(_) => (0, size),
+                            _ => (usize::MAX, usize::MAX),
+                        }
+                    })
+                    .await?;
+
+                match selection {
+                    QueueSelection::Passport(passport) => Ok(passport),
+                    QueueSelection::Device(device_pick) => {
+                        if device_pick == DeviceId::CPU && use_mmap {
+                            let model = self.get(model_path, DeviceId::CPU).await?;
+                            self.session_requirements(model.value(), instance).await
+                        } else {
+                            let (host_size, device_size) = if device_pick == DeviceId::CPU {
+                                (size, 0)
+                            } else {
+                                (0, size)
+                            };
+
+                            Ok(Passport::new(
+                                Request::Staged {
+                                    host_memory: host_size,
+                                    device_memory: device_size,
+                                },
+                                device_pick,
+                            ))
+                        }
+                    }
+                }
+            }
+            _ => Ok(Passport::new(
+                Request::Staged {
+                    host_memory: 0,
+                    device_memory: file_size(model_path).await?,
+                },
+                device,
+            )),
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+enum SessionInstance<'a> {
+    Completions {
+        prompt: &'a str,
+        args: &'a CompletionArgs,
+    },
+    Embeddings {
+        inputs: &'a [String],
+    },
 }
 
 #[async_trait::async_trait]
@@ -86,7 +190,9 @@ impl LLMEndpoint for LlamaCppEndpoint {
         mut ticket: Ticket,
     ) -> Result<String, LLMEndpointError> {
         let model = self.get(&model_path, ticket.device()).await?;
-        model.staging_check(prompt, &args, &mut ticket).await?;
+        model
+            .completion_staging_check(prompt, &args, &mut ticket)
+            .await?;
         model.chat_completions(prompt, args.clone(), ticket).await
     }
 
@@ -98,7 +204,9 @@ impl LLMEndpoint for LlamaCppEndpoint {
         mut ticket: Ticket,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
         let model = self.get(&model_path, ticket.device()).await?;
-        model.staging_check(prompt, &args, &mut ticket).await?;
+        model
+            .completion_staging_check(prompt, &args, &mut ticket)
+            .await?;
         model
             .stream_chat_completions(prompt, args.clone(), ticket)
             .await
@@ -107,10 +215,12 @@ impl LLMEndpoint for LlamaCppEndpoint {
     async fn embeddings(
         &self,
         model_path: impl AsRef<Path> + Send + Sync,
-        inputs: Vec<String>,
+        inputs: &[String],
+        mut ticket: Ticket,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
         let model = self.get(model_path, DeviceId::CPU).await?;
-        model.embeddings(inputs).await
+        model.embedding_staging_check(inputs, &mut ticket).await?;
+        model.embeddings(inputs, ticket).await
     }
 
     async fn completion_requirements(
@@ -145,79 +255,23 @@ impl LLMEndpoint for LlamaCppEndpoint {
                 ))
             }
         } else {
-            match device {
-                DeviceId::CPU if LlamaParams::default().use_mmap => {
-                    let model = self.get(model_path, device).await?;
-                    model.completion_requirements(prompt, args).await
-                }
-                DeviceId::Any => {
-                    let mut passports = vec![];
-                    for key in REQUEST_QUEUE
-                        .all_devices()
-                        .drain(..)
-                        .map(|d| ModelKey::new(&model_path, d))
-                    {
-                        if let Some(model) = self.models.get(&key) {
-                            let passport = model.completion_requirements(prompt, args).await?;
-                            if passport.free() {
-                                return Ok(passport);
-                            }
-                            passports.push(passport);
-                        }
-                    }
-
-                    let size = file_size(&model_path).await?;
-                    let use_mmap = LlamaParams::default().use_mmap;
-                    let selection = REQUEST_QUEUE
-                        .pick(passports, |d| {
-                            match d {
-                                DeviceId::CPU => {
-                                    if use_mmap {
-                                        (0, 0)
-                                    } else {
-                                        (size, 0)
-                                    }
-                                }
-                                // DeviceId::Vulkan(_) => {}
-                                DeviceId::Cuda(_) => (0, size),
-                                _ => (usize::MAX, usize::MAX),
-                            }
-                        })
-                        .await?;
-
-                    match selection {
-                        QueueSelection::Passport(passport) => Ok(passport),
-                        QueueSelection::Device(device_pick) => {
-                            if device_pick == DeviceId::CPU && use_mmap {
-                                let model = self.get(model_path, DeviceId::CPU).await?;
-                                model.completion_requirements(prompt, args).await
-                            } else {
-                                let (host_size, device_size) = if device_pick == DeviceId::CPU {
-                                    (size, 0)
-                                } else {
-                                    (0, size)
-                                };
-
-                                Ok(Passport::new(
-                                    Request::Staged {
-                                        host_memory: host_size,
-                                        device_memory: device_size,
-                                    },
-                                    device_pick,
-                                ))
-                            }
-                        }
-                    }
-                }
-                _ => Ok(Passport::new(
-                    Request::Staged {
-                        host_memory: 0,
-                        device_memory: file_size(model_path).await?,
-                    },
-                    device,
-                )),
-            }
+            self.requirements(
+                model_path,
+                device,
+                SessionInstance::Completions { prompt, args },
+            )
+            .await
         }
+    }
+
+    async fn embedding_requirements(
+        &self,
+        model_path: impl AsRef<Path> + Send + Sync,
+        device: DeviceId,
+        inputs: &[String],
+    ) -> Result<Passport, LLMEndpointError> {
+        self.requirements(model_path, device, SessionInstance::Embeddings { inputs })
+            .await
     }
 
     fn resource_user(&self) -> Box<dyn ResourceUser> {
@@ -518,7 +572,7 @@ impl UnloadingModel {
 
     /// Verify the ticket, if it is a staging ticket, return an error containing a passport with
     /// updated requirements, otherwise return ok.
-    async fn staging_check(
+    async fn completion_staging_check(
         &self,
         prompt: &str,
         args: &CompletionArgs,
@@ -533,7 +587,7 @@ impl UnloadingModel {
         }
     }
 
-    /// Estimate and return the resources required to compute a request, given its arguments.
+    /// Estimate and return the resources required to compute a completions request, given its arguments.
     async fn completion_requirements(
         &self,
         prompt: &str,
@@ -554,6 +608,46 @@ impl UnloadingModel {
                 self.device,
             ))
         }
+    }
+
+    /// Verify the ticket, if it is a staging ticket, return an error containing a passport with
+    /// updated requirements, otherwise return ok.
+    async fn embedding_staging_check(
+        &self,
+        inputs: &[String],
+        ticket: &mut Ticket,
+    ) -> Result<(), LLMEndpointError> {
+        if ticket.staged() {
+            ticket.consume();
+            let passport = self.embedding_requirements(inputs).await?;
+            Err(LLMEndpointError::Retry(passport))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Estimate and return the resources required to compute an embeddings request, given its inputs.
+    async fn embedding_requirements(
+        &self,
+        inputs: &[String],
+    ) -> Result<Passport, LLMEndpointError> {
+        let threads = SETTINGS.read().await.read().await.auto_threads(false);
+        let mut params = EmbeddingsParams::default();
+        params.n_threads = threads;
+        params.n_threads_batch = threads;
+
+        let (_signal, model) = self.get_or_init().await?;
+        let tokens = model
+            .tokenize_slice(&inputs, true, false)
+            .map_err(move |e| LLMEndpointError::Embeddings(e.to_string()))?;
+        let estimated = model.estimate_embeddings_session_size(&tokens, &params);
+        Ok(Passport::new(
+            Request::Final {
+                host_memory: estimated.host_memory,
+                device_memory: estimated.device_memory,
+            },
+            self.device,
+        ))
     }
 
     /// Either takes an existing chat [`LlamaSession`] compatible with the provided prompt from the
@@ -714,7 +808,11 @@ impl UnloadingModel {
     }
 
     /// Compute and return embeddings vectors for the provided vector of inputs.
-    async fn embeddings(&self, inputs: Vec<String>) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
+    async fn embeddings(
+        &self,
+        inputs: &[String],
+        mut ticket: Ticket,
+    ) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
         info!("Allocating one-shot LLM embeddings session");
         let _in_flight_ref = InFlightRef::new(&self.sessions_in_flight);
         let threads = SETTINGS.read().await.read().await.auto_threads(false);
@@ -728,6 +826,7 @@ impl UnloadingModel {
             .await
             .map_err(move |e| LLMEndpointError::Embeddings(e.to_string()))?;
 
+        ticket.consume();
         REQUEST_QUEUE.notify_free(self.device)?;
 
         Ok(res)
