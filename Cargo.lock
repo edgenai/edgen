@@ -2911,7 +2911,7 @@ checksum = "01cda141df6706de531b6c46c3a33ecca755538219bd484262fa09410c13539c"
 [[package]]
 name = "llama_cpp"
 version = "0.3.1"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=fix/compilation-issues#0196f14b9049cfcedc669bc54cd1e0167d1a5205"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=fix/cuda-compilation#1c48149a2572dbd12399c6855a90aa5ce31454c6"
 dependencies = [
  "derive_more",
  "futures",
@@ -2925,7 +2925,7 @@ dependencies = [
 [[package]]
 name = "llama_cpp_sys"
 version = "0.3.1"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=fix/compilation-issues#0196f14b9049cfcedc669bc54cd1e0167d1a5205"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=fix/cuda-compilation#1c48149a2572dbd12399c6855a90aa5ce31454c6"
 dependencies = [
  "ash",
  "bindgen",
