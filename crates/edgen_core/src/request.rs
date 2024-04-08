@@ -149,18 +149,19 @@ impl RequestManager {
             }
 
             if let Some(device) = matched {
+                let idx = matched_idx.expect("There should also be a matching index");
                 if device.id == DeviceId::CPU {
                     if device.max_memory < required_host + required_device {
                         return Err(QueueError::Unfulfillable);
                     } else {
-                        (matched_idx.unwrap(), device)
+                        (idx, device)
                     }
                 } else if self.devices[0].max_memory < required_host
                     || device.max_memory < required_device
                 {
                     return Err(QueueError::Unfulfillable);
                 } else {
-                    (matched_idx.unwrap(), device)
+                    (idx, device)
                 }
             } else {
                 return Err(QueueError::NoSuchDevice);
@@ -209,12 +210,14 @@ impl RequestManager {
                         break;
                     }
                 }
-                // A matching device should always be found
-                let occupancy = device.unwrap().occupancy();
+                let occupancy = device
+                    .expect("A matching device should always be found")
+                    .occupancy();
                 (occupancy, p)
             })
             .collect();
-        occupancy_passports.sort_unstable_by(|a, b| b.0.total_cmp(&a.0));
+        // Sort by occupancy
+        occupancy_passports.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
 
         for passport in passports {
             if passport.free() {
@@ -224,7 +227,11 @@ impl RequestManager {
         if let Some((occupancy, _)) = occupancy_passports.first() {
             if occupancy_passports.len() == self.devices.len() || *occupancy < 0.9 {
                 return Ok(QueueSelection::Passport(
-                    occupancy_passports.drain(..).next().unwrap().1,
+                    occupancy_passports
+                        .drain(..)
+                        .next()
+                        .expect("There should be at least one element in the vector")
+                        .1,
                 ));
             }
         }
@@ -279,11 +286,19 @@ impl RequestManager {
                 for device in filtered_devices {
                     let (required_host, required_device) = local_size(device.id);
 
-                    if required_host < self.devices[0].available_memory()
-                        && required_device < device.available_memory()
+                    if required_host < self.devices[0].max_memory
+                        && required_device < device.max_memory
                     {
-                        device_id = device.id;
-                        break;
+                        if device_id == DeviceId::Any {
+                            device_id = device.id;
+                        }
+
+                        if required_host < self.devices[0].available_memory()
+                            && required_device < device.available_memory()
+                        {
+                            device_id = device.id;
+                            break;
+                        }
                     }
                 }
 
@@ -418,8 +433,8 @@ impl Device {
             .available
             - self.reserved_memory.load(Ordering::SeqCst);
 
-        // Reserve 20% of VRAM for the system and unaccounted runtime allocations
-        let reserved = (self.max_memory as f64 * 0.2) as usize;
+        // Reserve 15% of VRAM for the system and unaccounted runtime allocations
+        let reserved = (self.max_memory as f64 * 0.15) as usize;
         if reserved < real {
             real - reserved
         } else {

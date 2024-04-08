@@ -230,7 +230,18 @@ async fn chain_requests(
                 }
                 Err(reqwest_eventsource::Error::StreamEnded) => {}
                 Err(err) => {
-                    println!("Error: {}", err);
+                    match err {
+                        // Error::Utf8(_) => {}
+                        // Error::Parser(_) => {}
+                        // Error::Transport(_) => {}
+                        // Error::InvalidContentType(_, _) => {}
+                        Error::InvalidStatusCode(code, response) => {
+                            error!("Error {}: {}", code, response.text().await.unwrap());
+                        }
+                        // Error::InvalidLastEventId(_) => {}
+                        Error::StreamEnded => {}
+                        _ => println!("Error: {}", err),
+                    }
                     event_source.close();
                 }
             }
