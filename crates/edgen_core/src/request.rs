@@ -137,11 +137,13 @@ impl RequestManager {
 
         let (required_host, required_device) = requirements.memory();
 
-        let device = {
+        let (idx, device) = {
             let mut matched = None;
-            for device in self.devices.iter() {
+            let mut matched_idx = None;
+            for (idx, device) in self.devices.iter().enumerate() {
                 if device.id == requirements.device {
                     matched = Some(device);
+                    matched_idx = Some(idx);
                     break;
                 }
             }
@@ -151,25 +153,30 @@ impl RequestManager {
                     if device.max_memory < required_host + required_device {
                         return Err(QueueError::Unfulfillable);
                     } else {
-                        device
+                        (matched_idx.unwrap(), device)
                     }
                 } else if self.devices[0].max_memory < required_host
                     || device.max_memory < required_device
                 {
                     return Err(QueueError::Unfulfillable);
                 } else {
-                    device
+                    (matched_idx.unwrap(), device)
                 }
             } else {
                 return Err(QueueError::NoSuchDevice);
             }
         };
 
+        info!(
+            "Enqueuing request for device {:?} ({:?})",
+            device.id, requirements.request
+        );
+
         let (ticket_tx, ticket_rx) = oneshot::channel();
         let waiter = QueueItem::Normal {
             passport: requirements,
             ticket_tx,
-            mm_device_id: device.mm_global_id,
+            device_idx: idx,
         };
         self.item_tx
             .send(waiter)
@@ -178,6 +185,8 @@ impl RequestManager {
         let ticket = ticket_rx
             .await
             .map_err(move |e| QueueError::Enqueue(e.to_string()))?;
+
+        info!("Request clear for execution: {ticket:?}");
 
         Ok(ticket)
     }
@@ -472,7 +481,7 @@ async fn queue_normal(
 ) {
     if let QueueItem::Normal {
         passport,
-        mm_device_id,
+        device_idx,
         ticket_tx: signal_tx,
     } = item
     {
@@ -482,7 +491,7 @@ async fn queue_normal(
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         let mut requirements =
-            MemoryRequirements::new(host_memory, device_memory, devices, mm_device_id);
+            MemoryRequirements::new(host_memory, device_memory, devices, device_idx);
         while !requirements.met() {
             if signal_tx.is_closed() {
                 break;
@@ -506,7 +515,7 @@ async fn queue_normal(
                     while let Ok(()) = drop_rx.try_recv() {}
 
                     freed += users[id]
-                        .request_memory(host_needed, device_needed, devices[mm_device_id].id)
+                        .request_memory(host_needed, device_needed, devices[device_idx].id)
                         .await;
                 } else {
                     break;
@@ -520,11 +529,10 @@ async fn queue_normal(
         }
 
         let ticket = Ticket {
-            content: Some(passport.into_reservation(&devices[0], &devices[mm_device_id])),
-            device: devices[mm_device_id].id,
+            content: Some(passport.into_reservation(&devices[0], &devices[device_idx])),
+            device: devices[device_idx].id,
         };
 
-        info!("Request clear for execution: {ticket:?}");
         let _ = signal_tx.send(ticket);
     }
 }
@@ -536,8 +544,8 @@ enum QueueItem {
         /// The request's passport.
         passport: Passport,
 
-        /// The [`memonitor`] device id of the device the request is executed on.
-        mm_device_id: usize,
+        /// The device index of the device the request is executed on.
+        device_idx: usize,
 
         /// A oneshot channel used to signal the item has been through the queue.
         ticket_tx: oneshot::Sender<Ticket>,
@@ -558,7 +566,7 @@ struct MemoryRequirements<'a> {
 
     /// The [`memonitor`] device id of the device the request is executed on.
     /// If [`None`], the request is executed fully on the CPU/host.
-    mm_device_id: Option<usize>,
+    device_idx: Option<usize>,
 
     /// Cached value for available host memory.
     cached_available_host: Option<usize>,
@@ -572,19 +580,19 @@ impl<'a> MemoryRequirements<'a> {
         required_host: usize,
         required_device: usize,
         devices: &'a [Device],
-        mm_device_id: usize,
+        device_idx: usize,
     ) -> Self {
-        let id = if mm_device_id == 0 {
+        let id = if device_idx == 0 {
             None
         } else {
-            Some(mm_device_id)
+            Some(device_idx)
         };
 
         Self {
             host_memory: required_host,
             device_memory: required_device,
             devices,
-            mm_device_id: id,
+            device_idx: id,
             cached_available_host: None,
             cached_available_device: None,
         }
@@ -592,7 +600,7 @@ impl<'a> MemoryRequirements<'a> {
 
     /// Updates cached available memory values and checks if requirements have been met.
     fn met(&mut self) -> bool {
-        if let Some(id) = &self.mm_device_id {
+        if let Some(id) = &self.device_idx {
             let available_host = self.devices[0].available_memory();
             let available_device = self.devices[*id].available_memory();
             self.cached_available_host = Some(available_host);
@@ -613,7 +621,7 @@ impl<'a> MemoryRequirements<'a> {
     ///
     /// [`None`] if requirements have been met, otherwise the memory currently required.
     fn cached_met_with(&self, freed: &FreedMemory) -> Option<(usize, usize)> {
-        if self.mm_device_id.is_some() {
+        if self.device_idx.is_some() {
             let available_host = self.cached_available_host.unwrap_or(0);
             let available_device = self.cached_available_device.unwrap_or(0);
 
