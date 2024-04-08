@@ -413,10 +413,18 @@ struct Device {
 
 impl Device {
     fn available_memory(&self) -> usize {
-        memonitor::list_all_devices()[self.mm_global_id]
+        let real = memonitor::list_all_devices()[self.mm_global_id]
             .current_memory_stats()
             .available
-            - self.reserved_memory.load(Ordering::SeqCst)
+            - self.reserved_memory.load(Ordering::SeqCst);
+
+        // Reserve 20% of VRAM for the system and unaccounted runtime allocations
+        let reserved = (self.max_memory as f64 * 0.2) as usize;
+        if reserved < real {
+            real - reserved
+        } else {
+            0
+        }
     }
 
     fn reserve_memory(&self, amount: usize) -> ReservedMemory {
@@ -424,7 +432,7 @@ impl Device {
     }
 
     fn occupancy(&self) -> f32 {
-        self.available_memory() as f32 / self.max_memory as f32
+        (self.max_memory - self.available_memory()) as f32 / self.max_memory as f32
     }
 }
 
