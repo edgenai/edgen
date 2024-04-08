@@ -232,7 +232,9 @@ async fn chain_requests(
             }
         }
 
-        stats_tx.send(stats).unwrap();
+        if stats.all_tokens.len() != 0 {
+            stats_tx.send(stats).unwrap();
+        }
 
         body.messages.push(ChatMessage::Assistant {
             content: Some(Cow::from(text)),

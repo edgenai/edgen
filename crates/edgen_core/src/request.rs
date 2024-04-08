@@ -187,19 +187,49 @@ impl RequestManager {
     /// configured device selection policy.
     pub async fn pick(
         &self,
-        passports: Vec<Passport>,
+        mut passports: Vec<Passport>,
         local_size: impl Fn(DeviceId) -> (usize, usize),
     ) -> Result<QueueSelection, QueueError> {
-        let mut p = None;
+        let mut occupancy_passports: Vec<(f32, Passport)> = passports
+            .drain(..)
+            .map(|p| {
+                let mut device = None;
+                for d in self.devices.iter() {
+                    if d.id == p.device {
+                        device = Some(d);
+                        break;
+                    }
+                }
+                // A matching device should always be found
+                let occupancy = device.unwrap().occupancy();
+                (occupancy, p)
+            })
+            .collect();
+        occupancy_passports.sort_unstable_by(|a, b| b.0.total_cmp(&a.0));
+
         for passport in passports {
             if passport.free() {
                 return Ok(QueueSelection::Passport(passport));
             }
-            p = Some(passport);
         }
-        if let Some(passport) = p {
-            return Ok(QueueSelection::Passport(passport));
+        if let Some((occupancy, _)) = occupancy_passports.first() {
+            if occupancy_passports.len() == self.devices.len() || *occupancy < 0.9 {
+                return Ok(QueueSelection::Passport(
+                    occupancy_passports.drain(..).next().unwrap().1,
+                ));
+            }
         }
+
+        let filtered_devices = self.devices.iter().skip(1).filter(|d| {
+            let mut keep = true;
+            for (_, p) in &occupancy_passports {
+                if d.id == p.device {
+                    keep = false;
+                    break;
+                }
+            }
+            keep
+        });
 
         let policy = SETTINGS.read().await.read().await.gpu_policy;
         let device = match policy {
@@ -215,7 +245,7 @@ impl RequestManager {
                     DeviceId::CPU
                 } else {
                     let mut device_id = DeviceId::Any;
-                    for device in &self.devices[1..] {
+                    for device in filtered_devices {
                         let (required_host, required_device) = local_size(device.id);
 
                         if required_host < self.devices[0].available_memory()
@@ -237,7 +267,7 @@ impl RequestManager {
                 }
 
                 let mut device_id = DeviceId::Any;
-                for device in &self.devices[1..] {
+                for device in filtered_devices {
                     let (required_host, required_device) = local_size(device.id);
 
                     if required_host < self.devices[0].available_memory()
@@ -258,7 +288,7 @@ impl RequestManager {
                 overflow_to_cpu: true,
             } => {
                 let mut device_id = DeviceId::Any;
-                for device in &self.devices[1..] {
+                for device in filtered_devices {
                     let (required_host, required_device) = local_size(device.id);
 
                     if required_host < self.devices[0].available_memory()
@@ -382,6 +412,10 @@ impl Device {
 
     fn reserve_memory(&self, amount: usize) -> ReservedMemory {
         ReservedMemory::reserve(amount, self.reserved_memory.clone())
+    }
+
+    fn occupancy(&self) -> f32 {
+        self.available_memory() as f32 / self.max_memory as f32
     }
 }
 
