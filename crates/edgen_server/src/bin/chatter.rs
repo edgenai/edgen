@@ -132,6 +132,8 @@ async fn main() {
     print_stats(all_tokens);
     println!("All token times (without first token):");
     print_stats(all_tokens_nf);
+    println!("Token counts:");
+    print_stats(token_counts);
 
     while let Some(_) = join_set.join_next().await {}
 }
