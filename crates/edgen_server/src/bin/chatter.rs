@@ -117,11 +117,13 @@ async fn main() {
     let mut first_tokens = vec![];
     let mut all_tokens = vec![];
     let mut all_tokens_nf = vec![];
+    let mut token_counts = vec![];
 
     while let Some(stats) = rx.recv().await {
         first_tokens.push(stats.first_token);
         all_tokens.extend(&stats.all_tokens);
-        all_tokens_nf.extend(&stats.all_tokens[1..])
+        all_tokens_nf.extend(&stats.all_tokens[1..]);
+        token_counts.push(stats.all_tokens.len() as f32);
     }
 
     println!("First token times:");
