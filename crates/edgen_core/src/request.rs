@@ -303,7 +303,11 @@ impl RequestManager {
                 }
 
                 if device_id == DeviceId::Any {
-                    return Err(QueueError::Unfulfillable);
+                    if occupancy_passports.is_empty() {
+                        return Err(QueueError::Unfulfillable);
+                    } else {
+                        return Ok(QueueSelection::Passport(occupancy_passports.remove(0).1));
+                    }
                 }
 
                 device_id
