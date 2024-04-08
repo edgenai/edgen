@@ -4,12 +4,12 @@ use std::time::Duration;
 use either::Either;
 use futures::StreamExt;
 use rand::Rng;
-use reqwest_eventsource::EventSource;
 use reqwest_eventsource::{retry, Event};
+use reqwest_eventsource::{Error, EventSource};
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio::time::{sleep, Instant};
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
