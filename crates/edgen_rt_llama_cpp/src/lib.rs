@@ -658,6 +658,7 @@ impl UnloadingModel {
         &self,
         prompt: &'a str,
         args: CompletionArgs,
+        ticket: &mut Ticket,
     ) -> Result<(UnloadingSession, SessionId, &'a str), LLMEndpointError> {
         let (id, old_context, new_context) = SessionId::chat(prompt);
         debug!("Old session context: {old_context}");
@@ -666,6 +667,14 @@ impl UnloadingModel {
         let session = if let Some((_, session)) = self.sessions.remove(&id) {
             info!("Matching session found, continuing");
             if !session.loaded().await {
+                if ticket.free() {
+                    warn!("Unloaded session on a free ticket, retrying");
+                    ticket.consume();
+                    return Err(LLMEndpointError::Retry(
+                        self.completion_requirements(prompt, &args).await?,
+                    ));
+                }
+
                 let (_signal, mut guard) = session.get_or_init(None).await?;
                 guard
                     .advance_context_async(old_context)
@@ -727,7 +736,8 @@ impl UnloadingModel {
 
             Ok(res)
         } else {
-            let (session, mut id, new_context) = self.take_chat_session(prompt, args).await?;
+            let (session, mut id, new_context) =
+                self.take_chat_session(prompt, args, &mut ticket).await?;
 
             let (_session_signal, handle) = {
                 let (session_signal, mut session_guard) = session.get_or_init(Some(ticket)).await?;
@@ -786,7 +796,8 @@ impl UnloadingModel {
                 .await?,
             ))
         } else {
-            let (session, id, new_context) = self.take_chat_session(prompt, args).await?;
+            let (session, id, new_context) =
+                self.take_chat_session(prompt, args, &mut ticket).await?;
 
             let sampler = StandardSampler::default();
             let tx = self.finished_tx.clone();

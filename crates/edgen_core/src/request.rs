@@ -695,15 +695,15 @@ impl Passport {
                 host_memory,
                 device_memory,
             } => (
-                (host_memory as f64 * 1.1) as usize,
-                (device_memory as f64 * 1.1) as usize,
+                (host_memory as f64 * 1.2) as usize,
+                (device_memory as f64 * 1.2) as usize,
             ),
             Request::Final {
                 host_memory,
                 device_memory,
             } => (
-                (host_memory as f64 * 1.05) as usize,
-                (device_memory as f64 * 1.05) as usize,
+                (host_memory as f64 * 1.15) as usize,
+                (device_memory as f64 * 1.15) as usize,
             ),
             Request::Free => (0, 0),
         }
@@ -783,6 +783,11 @@ impl Ticket {
     /// Return true if this ticket only allows for a staging allocation.
     pub fn staged(&self) -> bool {
         matches!(self.content, Some(TicketContent::Staged { .. }))
+    }
+
+    /// Return true if this ticket requires no allocations.
+    pub fn free(&self) -> bool {
+        matches!(self.content, Some(TicketContent::Free))
     }
 }
 
