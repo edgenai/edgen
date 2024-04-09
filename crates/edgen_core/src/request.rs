@@ -826,6 +826,11 @@ impl Ticket {
         matches!(self.content, Some(TicketContent::Staged { .. }))
     }
 
+    /// Return true if this ticket only allows the final allocation.
+    pub fn last(&self) -> bool {
+        matches!(self.content, Some(TicketContent::Final { .. }))
+    }
+
     /// Return true if this ticket requires no allocations.
     pub fn free(&self) -> bool {
         matches!(self.content, Some(TicketContent::Free))

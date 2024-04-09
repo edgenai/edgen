@@ -75,6 +75,33 @@ impl LlamaCppEndpoint {
         Ok(self.models.get(&key).unwrap())
     }
 
+    /// For final or free tickets, returns true if the model is already in memory, and false
+    /// otherwise.
+    ///
+    /// For staging tickets, always returns true.
+    fn preloaded_model(
+        &self,
+        model_path: impl AsRef<Path> + Send,
+        device: DeviceId,
+        ticket: &Ticket,
+    ) -> bool {
+        if ticket.staged() {
+            return true;
+        }
+
+        let key = ModelKey::new(&model_path, device);
+
+        if !self.models.contains_key(&key) {
+            if ticket.free() || ticket.last() {
+                return false;
+            }
+        }
+
+        let model = self.models.get(&key).unwrap();
+
+        !(!model.loaded() && (ticket.free() || ticket.last()))
+    }
+
     async fn session_requirements(
         &self,
         model: &UnloadingModel,
@@ -189,6 +216,14 @@ impl LLMEndpoint for LlamaCppEndpoint {
         args: &CompletionArgs,
         mut ticket: Ticket,
     ) -> Result<String, LLMEndpointError> {
+        if !self.preloaded_model(&model_path, ticket.device(), &ticket) {
+            let passport = self
+                .completion_requirements(model_path, ticket.device(), prompt, args)
+                .await?;
+            warn!("Model not in memory for a final or free ticket, retrying");
+            return Err(LLMEndpointError::Retry(passport));
+        }
+
         let model = self.get(&model_path, ticket.device()).await?;
         model
             .completion_staging_check(prompt, &args, &mut ticket)
@@ -203,6 +238,14 @@ impl LLMEndpoint for LlamaCppEndpoint {
         args: &CompletionArgs,
         mut ticket: Ticket,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
+        if !self.preloaded_model(&model_path, ticket.device(), &ticket) {
+            let passport = self
+                .completion_requirements(model_path, ticket.device(), prompt, args)
+                .await?;
+            warn!("Model not in memory for a final or free ticket, retrying");
+            return Err(LLMEndpointError::Retry(passport));
+        }
+
         let model = self.get(&model_path, ticket.device()).await?;
         model
             .completion_staging_check(prompt, &args, &mut ticket)
@@ -218,6 +261,14 @@ impl LLMEndpoint for LlamaCppEndpoint {
         inputs: &[String],
         mut ticket: Ticket,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
+        if !self.preloaded_model(&model_path, ticket.device(), &ticket) {
+            let passport = self
+                .embedding_requirements(model_path, ticket.device(), inputs)
+                .await?;
+            warn!("Model not in memory for a final or free ticket, retrying");
+            return Err(LLMEndpointError::Retry(passport));
+        }
+
         let model = self.get(model_path, DeviceId::CPU).await?;
         model.embedding_staging_check(inputs, &mut ticket).await?;
         model.embeddings(inputs, ticket).await
