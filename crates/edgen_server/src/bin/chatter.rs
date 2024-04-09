@@ -31,6 +31,16 @@ const CONTINUE_PROMPTS: [&str; 4] = [
     "I don't understand.",
 ];
 
+const LARGE_CONTEXT: &str = r#"Gordon Freeman, a recently employed theoretical physicist, is involved in an experiment analyzing an unknown crystalline artifact; however, when the anti-mass spectrometer beam contacts the crystal, it creates a resonance cascade that opens a dimensional rift between Black Mesa and another world called Xen, causing monsters to swarm Black Mesa and kill many of the facility's personnel. Attempts by the Black Mesa personnel to close the rift are unsuccessful, leading to a Marine Recon unit being sent in to silence the facility, including any survivors from the science team. Freeman fights through the facility to meet with several other scientists, who decide to travel to the alien dimension to stop the aliens. On Xen, Freeman eliminates the alien "leader" and is confronted by the G-Man, who offers Freeman employment before putting him into stasis.[2] Back in Black Mesa, a second alien race begins an invasion, but is stopped when a Marine corporal, Adrian Shephard, collapses its portal in the facility. The G-Man then destroys Black Mesa with a nuclear warhead, and detains Shephard in stasis. Barney Calhoun, a security officer, also escaped from the facility with Dr. Rosenberg and two other scientists. Nearly twenty years later,[2] Half-Life 2 opens as the G-Man brings Freeman out of stasis and inserts him into a dystopian Earth ruled by the Combine, a faction consisting of human and alien members, that used the dimensional rift caused at Black Mesa to conquer Earth in the interim. In the Eastern European settlement City 17, Freeman meets surviving members of the Black Mesa incident, including Isaac Kleiner, Barney Calhoun, Eli Vance and his daughter Alyx Vance, and aids in the human resistance against Combine rule. The Xen aliens, the Vortigaunts, who have been enslaved by the Combine, also assist the resistance. When his presence is made known to former Black Mesa administrator and Combine spokesman Wallace Breen, Freeman becomes a prime target for the Combine forces. Eventually, Freeman sparks a full revolution amongst the human citizens after destroying Nova Prospekt, a major Combine base and troop-production facility. Eli Vance and his daughter are subsequently captured by the Combine, and Freeman helps the resistance forces attack the Combine's Citadel to rescue them, fighting alongside Barney. Freeman fights his way through the Citadel, making his way to Breen's office. He is temporarily captured, but freed by Dr. Mossman, along with Eli and Alyx. Breen attempts to flee in a teleporter, but is presumed dead after Freeman destroys the dark energy reactor at the Citadel's top. The story continues with Half-Life 2: Episode One, as the G-Man then arrives to extract Freeman before he is engulfed in the explosion, but is interrupted when Vortigaunts liberate Freeman from stasis and place both him and Alyx Vance at the bottom of the Citadel. Alyx then contacts her father, Eli Vance, and Isaac Kleiner, who have escaped the city into the surrounding countryside. Kleiner informs them that the reactor's core has gone critical due to the destruction of the dark energy reaction, and is at risk of exploding at any moment, an explosion which could completely destroy City 17. To delay the explosion they must enter the Citadel's now-decaying core and attempt to stabilize its primary reactor while the citizens evacuate the city from a train station. While inside, they discover that the Combine are attempting to speed up the destruction of the reactor, and use the destruction of the Citadel to call for reinforcements from the Combine's native dimension. After downloading critical data, they move through the war-torn city to the train station to take the last train out of the city. The Combine then destroy the reactor and thus both the Citadel and the city; the resulting explosion causes the train to derail. Half-Life 2: Episode Two begins as Freeman awakens in one of the wrecked train cars with Alyx outside. In the distance a forming super-portal is visible where the Citadel used to stand. They begin a journey through the White Forest to a resistance-controlled missile base in the nearby mountains. Along the way, Freeman and Alyx are ambushed and Alyx is severely injured. However, a group of Vortigaunts are able to heal her. During the healing ritual, Freeman receives word from G-Man, indicating that the Vortigaunts were keeping him at bay. G-Man demands that Freeman take Alyx to White Forest as safely as possible, saying that he cannot help as per restrictions he has agreed to. They are able to reach the resistance base and deliver the data, which contains the codes to destroy the portal as well as information on the Borealis, an enigmatic research vessel operated by Black Mesa's rival, Aperture Science; however, the ship disappeared while testing portal technology. The base then launches a satellite that is able to shut down the super-portal, cutting off the Combine from outside assistance. However, as Alyx and Freeman prepare to travel to the Arctic and investigate the Borealis, they are attacked by Combine Advisors, who kill Eli Vance, before being driven off by Alyx's pet robot, D0g."#;
+
+const LARGE_PROMPTS: [&str; 5] = [
+    "Please resume this story.",
+    "Please give a summary of this story.",
+    "Do you think Gordon's actions were correct?",
+    "What was Alyx's pet robot called?",
+    "Please write a story similar to this one.",
+];
+
 /// Send an arbitrary number of requests to the streaming chat endpoint.
 #[derive(argh::FromArgs, PartialEq, Debug, Clone)]
 pub struct Chat {
@@ -57,6 +67,10 @@ pub struct Chat {
     /// the maximum size of a received message.
     #[argh(option, short = 'l', default = "1000")]
     pub message_limit: usize,
+
+    /// the chance that a request will start with large context.
+    #[argh(option, short = 'e', default = "0.0")]
+    pub large_chance: f32,
 
     /// the base URL of the endpoint the requests will be sent to.
     #[argh(
@@ -172,11 +186,24 @@ async fn chain_requests(
         name: None,
     });
 
-    let prompt_idx = rand::thread_rng().gen_range(0..START_PROMPTS.len());
-    body.messages.push(ChatMessage::User {
-        content: Either::Left(Cow::from(START_PROMPTS[prompt_idx])),
-        name: None,
-    });
+    if chat_args.large_chance < rand::thread_rng().gen() {
+        let prompt_idx = rand::thread_rng().gen_range(0..START_PROMPTS.len());
+        body.messages.push(ChatMessage::User {
+            content: Either::Left(Cow::from(START_PROMPTS[prompt_idx])),
+            name: None,
+        });
+    } else {
+        body.messages.push(ChatMessage::User {
+            content: Either::Left(Cow::from(LARGE_CONTEXT)),
+            name: None,
+        });
+
+        let prompt_idx = rand::thread_rng().gen_range(0..LARGE_PROMPTS.len());
+        body.messages.push(ChatMessage::User {
+            content: Either::Left(Cow::from(LARGE_PROMPTS[prompt_idx])),
+            name: None,
+        });
+    }
 
     for request in 0..count {
         let wait = if chat_args.min_idle != chat_args.max_idle {
@@ -283,8 +310,8 @@ fn print_stats(mut values: Vec<f32>) {
 }
 
 fn print_token_stats(mut values: Vec<usize>) {
-    let mean = values.iter().map(|v| *v).reduce(|a, b| a + b).unwrap() / values.len() as f32;
-    values.sort_unstable_by(|a, b| a.total_cmp(b));
+    let mean = values.iter().map(|v| *v).reduce(|a, b| a + b).unwrap() / values.len();
+    values.sort_unstable_by(|a, b| a.cmp(b));
     let min = values[0];
     let max = *values.last().unwrap();
     let median = values[values.len() / 2];
