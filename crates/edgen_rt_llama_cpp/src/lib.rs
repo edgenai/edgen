@@ -683,6 +683,14 @@ impl UnloadingModel {
             }
             session
         } else {
+            if ticket.free() {
+                warn!("Matching session not found for a free ticket, retrying");
+                ticket.consume();
+                return Err(LLMEndpointError::Retry(
+                    self.completion_requirements(prompt, &args).await?,
+                ));
+            }
+
             info!("No matching session found, creating new one");
             let (_signal, model) = self.get_or_init().await?;
             let session = UnloadingSession::new(args, model.clone(), self.device).await;

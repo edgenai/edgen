@@ -151,13 +151,13 @@ impl RequestManager {
             if let Some(device) = matched {
                 let idx = matched_idx.expect("There should also be a matching index");
                 if device.id == DeviceId::CPU {
-                    if device.max_memory < required_host + required_device {
+                    if device.max_memory() < required_host + required_device {
                         return Err(QueueError::Unfulfillable);
                     } else {
                         (idx, device)
                     }
-                } else if self.devices[0].max_memory < required_host
-                    || device.max_memory < required_device
+                } else if self.devices[0].max_memory() < required_host
+                    || device.max_memory() < required_device
                 {
                     return Err(QueueError::Unfulfillable);
                 } else {
@@ -286,8 +286,8 @@ impl RequestManager {
                 for device in filtered_devices {
                     let (required_host, required_device) = local_size(device.id);
 
-                    if required_host < self.devices[0].max_memory
-                        && required_device < device.max_memory
+                    if required_host < self.devices[0].max_memory()
+                        && required_device < device.max_memory()
                     {
                         if device_id == DeviceId::Any {
                             device_id = device.id;
@@ -431,16 +431,22 @@ struct Device {
 }
 
 impl Device {
+    /// Reserve 15% of VRAM for the system and unaccounted runtime allocations.
+    const RESERVED_FRACTION: f64 = 0.15;
+
+    fn max_memory(&self) -> usize {
+        (self.max_memory as f64 * (1.0 - Self::RESERVED_FRACTION)) as usize
+    }
+
     fn available_memory(&self) -> usize {
-        let real = memonitor::list_all_devices()[self.mm_global_id]
+        let total_available = memonitor::list_all_devices()[self.mm_global_id]
             .current_memory_stats()
             .available
             - self.reserved_memory.load(Ordering::SeqCst);
 
-        // Reserve 15% of VRAM for the system and unaccounted runtime allocations
-        let reserved = (self.max_memory as f64 * 0.15) as usize;
-        if reserved < real {
-            real - reserved
+        let reserved = (self.max_memory as f64 * Self::RESERVED_FRACTION) as usize;
+        if reserved < total_available {
+            total_available - reserved
         } else {
             0
         }
@@ -451,7 +457,15 @@ impl Device {
     }
 
     fn occupancy(&self) -> f32 {
-        (self.max_memory - self.available_memory()) as f32 / self.max_memory as f32
+        let max = self.max_memory();
+        let available = self.available_memory();
+        let used = if available < max {
+            max - available
+        } else {
+            max
+        };
+
+        used as f32 / max as f32
     }
 }
 
