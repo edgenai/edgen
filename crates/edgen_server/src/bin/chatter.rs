@@ -123,7 +123,7 @@ async fn main() {
         first_tokens.push(stats.first_token);
         all_tokens.extend(&stats.all_tokens);
         all_tokens_nf.extend(&stats.all_tokens[1..]);
-        token_counts.push(stats.all_tokens.len() as f32);
+        token_counts.push(stats.all_tokens.len());
     }
 
     println!("First token times:");
@@ -133,7 +133,7 @@ async fn main() {
     println!("All token times (without first token):");
     print_stats(all_tokens_nf);
     println!("Token counts:");
-    print_stats(token_counts);
+    print_token_stats(token_counts);
 
     while let Some(_) = join_set.join_next().await {}
 }
@@ -280,4 +280,16 @@ fn print_stats(mut values: Vec<f32>) {
     let median = values[values.len() / 2];
 
     println!("Mean: {mean}s ; Median: {median}s ; Min: {min}s ; Max: {max}s");
+}
+
+fn print_token_stats(mut values: Vec<usize>) {
+    let mean = values.iter().map(|v| *v).reduce(|a, b| a + b).unwrap() / values.len() as f32;
+    values.sort_unstable_by(|a, b| a.total_cmp(b));
+    let min = values[0];
+    let max = *values.last().unwrap();
+    let median = values[values.len() / 2];
+
+    println!(
+        "Mean: {mean} tokens ; Median: {median} tokens ; Min: {min} tokens ; Max: {max} tokens"
+    );
 }
