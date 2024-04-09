@@ -79,7 +79,7 @@ impl LlamaCppEndpoint {
     /// otherwise.
     ///
     /// For staging tickets, always returns true.
-    fn preloaded_model(
+    async fn preloaded_model(
         &self,
         model_path: impl AsRef<Path> + Send,
         device: DeviceId,
@@ -99,7 +99,7 @@ impl LlamaCppEndpoint {
 
         let model = self.models.get(&key).unwrap();
 
-        !(!model.loaded() && (ticket.free() || ticket.last()))
+        !(!model.loaded().await && (ticket.free() || ticket.last()))
     }
 
     async fn session_requirements(
@@ -216,7 +216,10 @@ impl LLMEndpoint for LlamaCppEndpoint {
         args: &CompletionArgs,
         mut ticket: Ticket,
     ) -> Result<String, LLMEndpointError> {
-        if !self.preloaded_model(&model_path, ticket.device(), &ticket) {
+        if !self
+            .preloaded_model(&model_path, ticket.device(), &ticket)
+            .await
+        {
             let passport = self
                 .completion_requirements(model_path, ticket.device(), prompt, args)
                 .await?;
@@ -238,7 +241,10 @@ impl LLMEndpoint for LlamaCppEndpoint {
         args: &CompletionArgs,
         mut ticket: Ticket,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
-        if !self.preloaded_model(&model_path, ticket.device(), &ticket) {
+        if !self
+            .preloaded_model(&model_path, ticket.device(), &ticket)
+            .await
+        {
             let passport = self
                 .completion_requirements(model_path, ticket.device(), prompt, args)
                 .await?;
@@ -261,7 +267,10 @@ impl LLMEndpoint for LlamaCppEndpoint {
         inputs: &[String],
         mut ticket: Ticket,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
-        if !self.preloaded_model(&model_path, ticket.device(), &ticket) {
+        if !self
+            .preloaded_model(&model_path, ticket.device(), &ticket)
+            .await
+        {
             let passport = self
                 .embedding_requirements(model_path, ticket.device(), inputs)
                 .await?;
