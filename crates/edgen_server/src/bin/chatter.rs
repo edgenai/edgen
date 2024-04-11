@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use either::Either;
@@ -6,6 +7,7 @@ use futures::StreamExt;
 use rand::Rng;
 use reqwest_eventsource::{retry, Event};
 use reqwest_eventsource::{Error, EventSource};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio::time::{sleep, Instant};
@@ -133,12 +135,40 @@ async fn main() {
     let mut all_tokens_nf = vec![];
     let mut token_counts = vec![];
 
+    let date_time = time::OffsetDateTime::now_utc().to_string();
+    let fmt_time = date_time[..date_time.len() - 18]
+        .replace(' ', "_")
+        .replace(':', "-");
+    let file_name = format!(
+        "n{}_b{:.3}_d{:.3}_i{:.3}_a{:.3}_l{}_e{:.3}_{}",
+        chat_args.requests,
+        chat_args.continue_chance,
+        chat_args.chance_decay,
+        chat_args.min_idle,
+        chat_args.max_idle,
+        chat_args.message_limit,
+        chat_args.large_chance,
+        fmt_time
+    );
+    let file_name = file_name.replace('.', "-");
+    let file_path = format!("out/{file_name}.csv");
+    if !PathBuf::from("out").exists() {
+        tokio::fs::create_dir("out")
+            .await
+            .expect("Failed to create output directory");
+    }
+    let mut f = tokio::fs::File::create(&file_path).await.unwrap();
     while let Some(stats) = rx.recv().await {
+        f.write_all(format!("{}\n", stats.to_row(",")).as_bytes())
+            .await
+            .expect("Failed to write to file");
         first_tokens.push(stats.first_token);
         all_tokens.extend(&stats.all_tokens);
         all_tokens_nf.extend(&stats.all_tokens[1..]);
         token_counts.push(stats.all_tokens.len());
     }
+    f.flush().await.expect("Failed to flush file");
+    println!("Wrote output to file: \"{file_path}\"");
 
     println!("First token times:");
     print_stats(first_tokens);
@@ -297,6 +327,17 @@ async fn chain_requests(
 struct RequestStatistics {
     first_token: f32,
     all_tokens: Vec<f32>,
+}
+
+impl RequestStatistics {
+    fn to_row(&self, delimiter: &str) -> String {
+        let mut res = self.first_token.to_string();
+        for token in &self.all_tokens[1..] {
+            res += delimiter;
+            res += &token.to_string();
+        }
+        res
+    }
 }
 
 fn print_stats(mut values: Vec<f32>) {
