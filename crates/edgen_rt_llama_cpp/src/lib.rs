@@ -933,6 +933,7 @@ impl UnloadingModel {
                 );
 
                 let mut args = LlamaParams::default();
+                args.split_mode = llama_cpp::SplitMode::None;
 
                 if device == DeviceId::CPU {
                     args.n_gpu_layers = 0;

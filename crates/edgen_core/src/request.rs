@@ -60,7 +60,7 @@ pub struct RequestManager {
     /// The sender used to notify the queue of resources being freed.
     free_tx: UnboundedSender<()>,
 
-    /// The join handle the the queue's thread.
+    /// The join handle to the queue's thread.
     thread: JoinHandle<()>,
 
     /// Every device found in the system.
@@ -736,8 +736,8 @@ impl Passport {
                 host_memory,
                 device_memory,
             } => (
-                (host_memory as f64 * 1.2) as usize,
-                (device_memory as f64 * 1.2) as usize,
+                (host_memory as f64 * 1.05) as usize,
+                (device_memory as f64 * 1.05) as usize,
             ),
             Request::Final {
                 host_memory,
