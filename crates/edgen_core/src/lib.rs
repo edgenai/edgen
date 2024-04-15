@@ -26,6 +26,7 @@ pub mod whisper;
 
 pub mod settings;
 
+pub mod image_generation;
 pub mod perishable;
 
 /// A generic [`Box`]ed [`Future`], used to emulate `async` functions in traits.

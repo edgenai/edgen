@@ -42,6 +42,7 @@ pub mod misc;
 mod chat_faker;
 pub mod cli;
 pub mod graceful_shutdown;
+mod image_generation;
 mod llm;
 mod model;
 pub mod model_man;

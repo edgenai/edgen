@@ -1,0 +1,13 @@
+[package]
+name = "edgen_rt_image_generation_candle"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = { workspace = true }
+candle-core = "0.4.1"
+candle-transformers = "0.4.1"
+edgen_core = { path = "../edgen_core" }
+tokenizers = "0.15.2"
+tokio = { workspace = true, features = ["sync", "rt", "fs"] }
+tracing = { workspace = true }
