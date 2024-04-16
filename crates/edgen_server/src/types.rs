@@ -37,6 +37,8 @@ pub enum Endpoint {
     AudioTranscriptions,
     /// Embeddings
     Embeddings,
+    /// Image generation
+    ImageGeneration,
 }
 
 impl Display for Endpoint {
@@ -45,6 +47,7 @@ impl Display for Endpoint {
             Endpoint::ChatCompletions => write!(f, "/chat/completions"),
             Endpoint::AudioTranscriptions => write!(f, "/audio/transcriptions"),
             Endpoint::Embeddings => write!(f, "/embeddings"),
+            Endpoint::ImageGeneration => write!(f, "/images/generations"),
         }
     }
 }

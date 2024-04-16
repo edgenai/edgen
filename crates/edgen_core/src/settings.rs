@@ -145,6 +145,18 @@ pub async fn embeddings_dir() -> String {
         .to_string()
 }
 
+/// Helper to get the image generation model directory.
+pub async fn image_generation_dir() -> String {
+    SETTINGS
+        .read()
+        .await
+        .read()
+        .await
+        .image_generation_models_dir
+        .trim()
+        .to_string()
+}
+
 /// Helper to get the chat completions model name.
 pub async fn chat_completions_name() -> String {
     SETTINGS
@@ -288,6 +300,8 @@ pub struct SettingsParams {
     /// The embeddings repo that Edgen will use for downloads
     pub embeddings_model_repo: String,
 
+    pub image_generation_models_dir: String,
+
     /// The policy used to decided if models/session should be allocated and run on acceleration
     /// hardware.
     pub gpu_policy: DevicePolicy,
@@ -325,6 +339,8 @@ impl Default for SettingsParams {
             "transcriptions",
         ]));
         let embeddings_dir = data_dir.join(&join_path_components(&["models", "embeddings"]));
+        let image_generation_dir =
+            data_dir.join(&join_path_components(&["models", "image", "generation"]));
 
         let chat_completions_str = chat_completions_dir.into_os_string().into_string().unwrap();
         let audio_transcriptions_str = audio_transcriptions_dir
@@ -332,6 +348,7 @@ impl Default for SettingsParams {
             .into_string()
             .unwrap();
         let embeddings_str = embeddings_dir.into_os_string().into_string().unwrap();
+        let image_generation_str = image_generation_dir.into_os_string().into_string().unwrap();
 
         let cpus = num_cpus::get_physical();
         let threads = if cpus > 1 { cpus - 1 } else { 1 };
@@ -349,6 +366,7 @@ impl Default for SettingsParams {
             embeddings_model_name: "nomic-embed-text-v1.5.f16.gguf".to_string(),
             embeddings_model_repo: "nomic-ai/nomic-embed-text-v1.5-GGUF".to_string(),
             embeddings_models_dir: embeddings_str,
+            image_generation_models_dir: image_generation_str,
             // TODO detect if the system has acceleration hardware to decide the default
             gpu_policy: DevicePolicy::AlwaysDevice {
                 overflow_to_cpu: true,

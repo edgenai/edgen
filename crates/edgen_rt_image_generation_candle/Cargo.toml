@@ -8,6 +8,9 @@ async-trait = { workspace = true }
 candle-core = "0.4.1"
 candle-transformers = "0.4.1"
 edgen_core = { path = "../edgen_core" }
-tokenizers = "0.15.2"
+image = "0.25.1"
+thiserror = { workspace = true }
+# https://github.com/huggingface/tokenizers/issues/1454
+tokenizers = { version = "0.15.2", default-features = false, features = ["progressbar", "onig"] }
 tokio = { workspace = true, features = ["sync", "rt", "fs"] }
 tracing = { workspace = true }
