@@ -159,11 +159,6 @@ fn generate_image(
 
     device.set_seed(args.seed.unwrap_or(random::<u64>()))?;
 
-    // let which = match sd_version {
-    //     StableDiffusionVersion::Xl | StableDiffusionVersion::Turbo => vec![true, false],
-    //     _ => vec![true],
-    // };
-
     let which = if model.clip2_weights.is_some() {
         vec![true, false]
     } else {

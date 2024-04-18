@@ -1,3 +1,4 @@
+use crate::audio::ChatCompletionError;
 use crate::model_descriptor::{ModelDescriptor, ModelDescriptorError, ModelPaths, Quantization};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -12,6 +13,8 @@ use thiserror::Error;
 use utoipa::ToSchema;
 
 /// A request to generate images for the provided context.
+/// This request is not at all conformant with OpenAI's API, as that one is very bare-bones, lacking
+/// in many parameters that we need.
 ///
 /// An `axum` handler, [`image_generation`][image_generation], is provided to handle this request.
 ///
@@ -58,8 +61,11 @@ pub struct CreateImageGenerationRequest<'a> {
     pub vae_scale: Option<f64>,
 }
 
+/// This request is not at all conformant with OpenAI's API, as that one returns a URL to the
+/// generated image, and that is not possible for Edgen.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ImageGenerationResponse {
+    /// A vector containing the byte data of the generated images.
     pub images: Vec<Vec<u8>>,
 }
 
@@ -85,6 +91,14 @@ impl IntoResponse for ImageGenerationError {
     }
 }
 
+/// POST `/v1/image/generations`: generate image for the provided parameters
+///
+/// The API of this endpoint is not at all conformant with OpenAI's API, as that one is very
+/// bare-bones, lacking  in many parameters that we need, and also returns an URL, which Edgen
+/// cannot do.
+///
+/// On failure, may raise a `500 Internal Server Error` with a JSON-encoded [`ImageGenerationError`]
+/// to the peer..
 #[utoipa::path(
 post,
 path = "/image/generations",
@@ -97,38 +111,6 @@ responses(
 pub async fn generate_image(
     Json(req): Json<CreateImageGenerationRequest<'_>>,
 ) -> Result<impl IntoResponse, ImageGenerationError> {
-    // let mut unet = Model::new(
-    //     ModelKind::ImageDiffusion,
-    //     "unet/diffusion_pytorch_model.fp16.safetensors",
-    //     "stabilityai/stable-diffusion-2-1",
-    //     &PathBuf::from(settings::image_generation_dir().await),
-    // );
-    // unet.preload(Endpoint::ImageGeneration).await?;
-    //
-    // let mut vae = Model::new(
-    //     ModelKind::ImageDiffusion,
-    //     "vae/diffusion_pytorch_model.fp16.safetensors",
-    //     "stabilityai/stable-diffusion-2-1",
-    //     &PathBuf::from(settings::image_generation_dir().await),
-    // );
-    // vae.preload(Endpoint::ImageGeneration).await?;
-    //
-    // let mut tokenizer = Model::new(
-    //     ModelKind::ImageDiffusion,
-    //     "tokenizer.json",
-    //     "openai/clip-vit-base-patch32",
-    //     &PathBuf::from(settings::image_generation_dir().await),
-    // );
-    // tokenizer.preload(Endpoint::ImageGeneration).await?;
-    //
-    // let mut clip = Model::new(
-    //     ModelKind::ImageDiffusion,
-    //     "text_encoder/model.fp16.safetensors",
-    //     "stabilityai/stable-diffusion-2-1",
-    //     &PathBuf::from(settings::image_generation_dir().await),
-    // );
-    // clip.preload(Endpoint::ImageGeneration).await?;
-
     let descriptor = crate::model_descriptor::get(req.model.as_ref())?;
     let model_files;
     let default_steps;
@@ -164,13 +146,6 @@ pub async fn generate_image(
     let endpoint = CandleImageGenerationEndpoint {};
     let images = endpoint
         .generate_image(
-            // ModelFiles {
-            //     tokenizer: tokenizer.file_path()?,
-            //     clip_weights: clip.file_path()?,
-            //     clip2_weights: None,
-            //     vae_weights: vae.file_path()?,
-            //     unet_weights: unet.file_path()?,
-            // },
             model_files,
             ImageGenerationArgs {
                 prompt: req.prompt.to_string(),

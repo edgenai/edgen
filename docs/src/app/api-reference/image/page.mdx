@@ -1,0 +1,77 @@
+export const metadata = {
+    title: 'Image',
+    description: 'Generate images',
+}
+
+# Chat
+
+Generate images from text. {{ className: 'lead' }}
+
+---
+
+<Row>
+    <Col>
+
+        ## Create image {{tag:'POST', label:'http://localhost:33322/v1/image/generations'}}
+
+        Given a text prompt, generate 1 or more images according to the prompt.
+
+        ### Required attributes
+
+        <Properties>
+            <Property name="prompt" type="string">
+                A description of the images to be generated.
+            </Property>
+        </Properties>
+
+        <Properties>
+            <Property name="model" type="string">
+                The model used for image generations. (WARNING: At the moment only "stable-diffusion-2-1" is allowed)
+                <ul>
+                    <li>
+                        If the model name is "default", the chat model from the configuration is used (see [Documentation &raquo; Configuration](/documentation/configuration) for details).
+                    </li>
+                    <li>
+                        If the model name is a valid model name recognized by Edgen, it is what is used.
+                    </li>
+                </ul>
+
+            </Property>
+        </Properties>
+
+    </Col>
+    <Col sticky>
+
+        <ButtonRow types={["Default"]}>
+
+            <div>
+                <CodeGroup title="Request" tag="POST" label="/v1/chat/completions">
+
+                    ```bash {{ title: 'cURL' }}
+                    curl http://localhost:33322/v1/image/generations \
+                    -H "Content-Type: application/json" \
+                    -H "Authorization: Bearer no-key-required" \
+                    -d '{
+                    "model": "stable-diffusion-2-1",
+                    "prompt": "A rusty robot"
+                }'
+                    ```
+
+                    ```python
+                    API NOT DONE YET
+                    ```
+
+                    ```ts
+                    API NOT DONE YET
+                    ```
+
+                </CodeGroup>
+
+                ```json {{ title: 'Response' }}
+                {"images": [[123, 234, ..., 231, 213]]}
+                ```
+            </div>
+        </ButtonRow>
+
+    </Col>
+</Row>
