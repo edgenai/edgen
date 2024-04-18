@@ -142,7 +142,7 @@ fn generate_image(
     args: ImageGenerationArgs,
     device_policy: &DevicePolicy,
 ) -> Result<Vec<Vec<u8>>, CandleError> {
-    info_span!("Image generation", images = args.images, steps = args.steps);
+    let _span = info_span!("gen_image", images = args.images, steps = args.steps).entered();
     let config = stable_diffusion::StableDiffusionConfig::v2_1(None, args.height, args.width);
     let scheduler = config.build_scheduler(args.steps)?;
     let device = match device_policy {
@@ -203,7 +203,7 @@ fn generate_image(
     let mut images = vec![];
     images.reserve(args.images as usize);
     for idx in 0..args.images {
-        info_span!("Image span", image_index = idx);
+        let _span = info_span!("image", image_index = idx).entered();
         info!("Generating image");
         let timesteps = scheduler.timesteps();
         let latents = Tensor::randn(

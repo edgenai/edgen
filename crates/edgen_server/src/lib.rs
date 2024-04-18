@@ -333,15 +333,16 @@ async fn run_server(args: &cli::Serve) -> Result<bool, types::EdgenError> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs::File;
+    use std::io::Write;
+    use std::path::Path;
+
     use axum::routing::post;
     use axum::Router;
     use axum_test::multipart;
     use axum_test::TestServer;
     use levenshtein;
     use serde_json::from_str;
-    use std::fs::File;
-    use std::io::Write;
-    use std::path::Path;
 
     use edgen_rt_chat_faker as chat_faker;
 
