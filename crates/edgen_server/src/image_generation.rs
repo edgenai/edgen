@@ -1,16 +1,13 @@
-use crate::model::{Model, ModelError, ModelKind};
-use crate::types::Endpoint;
+use crate::model_descriptor::{ModelDescriptor, ModelDescriptorError, ModelPaths, Quantization};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use edgen_core::image_generation::{
-    ImageGenerationArgs, ImageGenerationEndpoint, ImageGenerationEndpointError,
+    ImageGenerationArgs, ImageGenerationEndpoint, ImageGenerationEndpointError, ModelFiles,
 };
-use edgen_core::settings;
 use edgen_rt_image_generation_candle::CandleImageGenerationEndpoint;
 use serde_derive::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::path::PathBuf;
 use thiserror::Error;
 use utoipa::ToSchema;
 
@@ -28,19 +25,37 @@ pub struct CreateImageGenerationRequest<'a> {
     pub model: Cow<'a, str>,
 
     /// The width of the generated image.
-    pub width: u32,
+    pub width: Option<usize>,
 
     /// The height of the generated image.
-    pub height: u32,
+    pub height: Option<usize>,
 
     /// The optional unconditional prompt.
     pub uncond_prompt: Option<Cow<'a, str>>,
 
     /// The number of steps to be used in the diffusion process.
-    pub steps: Option<u32>,
+    pub steps: Option<usize>,
 
-    /// The number of samples to generate.
-    pub samples: Option<u32>,
+    /// The number of images to generate.
+    ///
+    /// Default: 1
+    pub images: Option<u32>,
+
+    /// The random number generator seed to used for the generation.
+    ///
+    /// By default, a random seed is used.
+    pub seed: Option<u64>,
+
+    /// The guidance scale to use for generation, that is, how much should the model follow the
+    /// prompt.
+    ///
+    /// Values below 1 disable guidance. (the prompt is ignored)
+    pub guidance_scale: Option<f64>,
+
+    /// The Variational Auto-Encoder scale to use for generation.
+    ///
+    /// This value should probably not be set.
+    pub vae_scale: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -55,10 +70,13 @@ pub struct ImageGenerationResponse {
 pub enum ImageGenerationError {
     /// The provided model could not be loaded.
     #[error("failed to load model: {0}")]
-    Model(#[from] ModelError),
+    Model(#[from] ModelDescriptorError),
     /// Some error has occured inside the endpoint.
     #[error("endpoint error: {0}")]
     Endpoint(#[from] ImageGenerationEndpointError),
+    /// This error should be unreachable.
+    #[error("Something went wrong")]
+    Unreachable,
 }
 
 impl IntoResponse for ImageGenerationError {
@@ -79,52 +97,91 @@ responses(
 pub async fn generate_image(
     Json(req): Json<CreateImageGenerationRequest<'_>>,
 ) -> Result<impl IntoResponse, ImageGenerationError> {
-    let mut unet = Model::new(
-        ModelKind::ImageDiffusion,
-        "unet/diffusion_pytorch_model.fp16.safetensors",
-        "stabilityai/stable-diffusion-2-1",
-        &PathBuf::from(settings::image_generation_dir().await),
-    );
-    unet.preload(Endpoint::ImageGeneration).await?;
+    // let mut unet = Model::new(
+    //     ModelKind::ImageDiffusion,
+    //     "unet/diffusion_pytorch_model.fp16.safetensors",
+    //     "stabilityai/stable-diffusion-2-1",
+    //     &PathBuf::from(settings::image_generation_dir().await),
+    // );
+    // unet.preload(Endpoint::ImageGeneration).await?;
+    //
+    // let mut vae = Model::new(
+    //     ModelKind::ImageDiffusion,
+    //     "vae/diffusion_pytorch_model.fp16.safetensors",
+    //     "stabilityai/stable-diffusion-2-1",
+    //     &PathBuf::from(settings::image_generation_dir().await),
+    // );
+    // vae.preload(Endpoint::ImageGeneration).await?;
+    //
+    // let mut tokenizer = Model::new(
+    //     ModelKind::ImageDiffusion,
+    //     "tokenizer.json",
+    //     "openai/clip-vit-base-patch32",
+    //     &PathBuf::from(settings::image_generation_dir().await),
+    // );
+    // tokenizer.preload(Endpoint::ImageGeneration).await?;
+    //
+    // let mut clip = Model::new(
+    //     ModelKind::ImageDiffusion,
+    //     "text_encoder/model.fp16.safetensors",
+    //     "stabilityai/stable-diffusion-2-1",
+    //     &PathBuf::from(settings::image_generation_dir().await),
+    // );
+    // clip.preload(Endpoint::ImageGeneration).await?;
 
-    let mut vae = Model::new(
-        ModelKind::ImageDiffusion,
-        "vae/diffusion_pytorch_model.fp16.safetensors",
-        "stabilityai/stable-diffusion-2-1",
-        &PathBuf::from(settings::image_generation_dir().await),
-    );
-    vae.preload(Endpoint::ImageGeneration).await?;
-
-    let mut tokenizer = Model::new(
-        ModelKind::ImageDiffusion,
-        "tokenizer.json",
-        "openai/clip-vit-base-patch32",
-        &PathBuf::from(settings::image_generation_dir().await),
-    );
-    tokenizer.preload(Endpoint::ImageGeneration).await?;
-
-    let mut clip = Model::new(
-        ModelKind::ImageDiffusion,
-        "text_encoder/model.fp16.safetensors",
-        "stabilityai/stable-diffusion-2-1",
-        &PathBuf::from(settings::image_generation_dir().await),
-    );
-    clip.preload(Endpoint::ImageGeneration).await?;
+    let descriptor = crate::model_descriptor::get(req.model.as_ref())?;
+    let model_files;
+    let default_steps;
+    let default_vae_scale;
+    if let ModelDescriptor::StableDiffusion {
+        steps, vae_scale, ..
+    } = descriptor.value()
+    {
+        if let ModelPaths::StableDiffusion {
+            unet_weights,
+            vae_weights,
+            clip_weights,
+            clip2_weights,
+            tokenizer,
+        } = descriptor.preload_files(Quantization::F16).await?
+        {
+            model_files = ModelFiles {
+                tokenizer,
+                clip_weights,
+                clip2_weights,
+                vae_weights,
+                unet_weights,
+            };
+        } else {
+            return Err(ImageGenerationError::Unreachable);
+        }
+        default_steps = steps;
+        default_vae_scale = vae_scale;
+    } else {
+        return Err(ImageGenerationError::Unreachable);
+    };
 
     let endpoint = CandleImageGenerationEndpoint {};
     let images = endpoint
         .generate_image(
-            tokenizer.file_path()?,
-            clip.file_path()?,
-            vae.file_path()?,
-            unet.file_path()?,
+            // ModelFiles {
+            //     tokenizer: tokenizer.file_path()?,
+            //     clip_weights: clip.file_path()?,
+            //     clip2_weights: None,
+            //     vae_weights: vae.file_path()?,
+            //     unet_weights: unet.file_path()?,
+            // },
+            model_files,
             ImageGenerationArgs {
                 prompt: req.prompt.to_string(),
                 uncond_prompt: req.uncond_prompt.unwrap_or(Cow::from("")).to_string(),
                 width: req.width,
                 height: req.height,
-                samples: 1,
-                guidance_scale: 7.5,
+                steps: req.steps.unwrap_or(*default_steps),
+                images: req.images.unwrap_or(1),
+                seed: req.seed,
+                guidance_scale: req.guidance_scale.unwrap_or(7.5),
+                vae_scale: req.vae_scale.unwrap_or(*default_vae_scale),
             },
         )
         .await?;

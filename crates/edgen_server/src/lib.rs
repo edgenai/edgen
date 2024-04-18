@@ -45,6 +45,7 @@ pub mod graceful_shutdown;
 mod image_generation;
 mod llm;
 mod model;
+mod model_descriptor;
 pub mod model_man;
 pub mod openai_shim;
 mod routes;
@@ -181,6 +182,8 @@ async fn start_server(args: &cli::Serve) -> EdgenResult {
         .expect("Failed to initialise settings. Please make sure the configuration file valid, or reset it via the system tray and restart Edgen.\nThe following error occurred");
 
     settings::create_project_dirs().await.unwrap();
+
+    model_descriptor::init();
 
     while run_server(args).await? {
         info!("Settings have been updated, resetting environment")

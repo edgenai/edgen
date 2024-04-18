@@ -33,7 +33,7 @@ const FILE_NAME: &str = "edgen.conf";
 // TODO look for a better way to do this, since [Settings] already uses a lock
 pub static SETTINGS: Lazy<RwLock<StaticSettings>> = Lazy::new(Default::default);
 
-/// The configuration, and data directories for Edgen.
+/// The configuration and data directories for Edgen.
 pub static PROJECT_DIRS: Lazy<ProjectDirs> =
     Lazy::new(|| ProjectDirs::from("com", "EdgenAI", "Edgen").unwrap());
 pub static CONFIG_FILE: Lazy<PathBuf> = Lazy::new(build_config_file_path);

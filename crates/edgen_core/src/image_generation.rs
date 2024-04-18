@@ -1,14 +1,25 @@
 use serde::Serialize;
-use std::path::Path;
+use std::path::PathBuf;
 use thiserror::Error;
 
 pub struct ImageGenerationArgs {
     pub prompt: String,
     pub uncond_prompt: String,
-    pub width: u32,
-    pub height: u32,
-    pub samples: u32,
+    pub width: Option<usize>,
+    pub height: Option<usize>,
+    pub steps: usize,
+    pub images: u32,
+    pub seed: Option<u64>,
     pub guidance_scale: f64,
+    pub vae_scale: f64,
+}
+
+pub struct ModelFiles {
+    pub tokenizer: PathBuf,
+    pub clip_weights: PathBuf,
+    pub clip2_weights: Option<PathBuf>,
+    pub vae_weights: PathBuf,
+    pub unet_weights: PathBuf,
 }
 
 #[derive(Serialize, Error, Debug)]
@@ -27,10 +38,7 @@ pub enum ImageGenerationEndpointError {
 pub trait ImageGenerationEndpoint {
     async fn generate_image(
         &self,
-        tokenizer: impl AsRef<Path> + Send + Sync,
-        clip_weights: impl AsRef<Path> + Send + Sync,
-        vae_weights: impl AsRef<Path> + Send + Sync,
-        unet_weights: impl AsRef<Path> + Send + Sync,
+        model: ModelFiles,
         args: ImageGenerationArgs,
     ) -> Result<Vec<Vec<u8>>, ImageGenerationEndpointError>;
 }
