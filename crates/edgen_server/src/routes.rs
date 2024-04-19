@@ -21,10 +21,10 @@ use axum::{
 
 use tracing::warn;
 
-use crate::misc;
 use crate::model_man;
 use crate::openai_shim;
 use crate::status;
+use crate::{image_generation, misc};
 
 pub fn routes() -> Router {
     Router::new()
@@ -37,6 +37,11 @@ pub fn routes() -> Router {
         .route(
             "/v1/audio/transcriptions",
             post(openai_shim::create_transcription),
+        )
+        // ---- Image ----------------------------------------------------------
+        .route(
+            "/v1/image/generations",
+            post(image_generation::generate_image),
         )
         // -- AI status endpoints ----------------------------------------------
         // ---- Chat -----------------------------------------------------------

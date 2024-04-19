@@ -1,0 +1,20 @@
+[package]
+name = "edgen_rt_image_generation_candle"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = { workspace = true }
+candle-core = "0.4.1"
+candle-transformers = "0.4.1"
+edgen_core = { path = "../edgen_core" }
+image = "0.25.1"
+rand = "0.8.5"
+thiserror = { workspace = true }
+# https://github.com/huggingface/tokenizers/issues/1454
+tokenizers = { version = "0.19.1", default-features = false, features = ["progressbar", "onig"] }
+tokio = { workspace = true, features = ["sync", "rt", "fs"] }
+tracing = { workspace = true }
+
+[features]
+cuda = ["candle-core/cuda", "candle-transformers/cuda"]

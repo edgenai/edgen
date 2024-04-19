@@ -49,6 +49,7 @@ pub enum ModelKind {
     LLM,
     Whisper,
     ChatFaker,
+    ImageDiffusion,
 }
 
 #[derive(Debug, PartialEq)]
@@ -111,6 +112,7 @@ impl ModelPatterns {
                 ModelKind::LLM => &self.llama,
                 ModelKind::Whisper => &self.whisper,
                 ModelKind::ChatFaker => &self.chat_faker,
+                _ => todo!(),
             };
             find_model_kind(list, kind, &n, &mut v);
         }
@@ -333,6 +335,7 @@ async fn observe_download(
             status::observe_audio_transcriptions_progress(dir, size, download).await
         }
         Endpoint::Embeddings => status::observe_embeddings_progress(dir, size, download).await,
+        _ => tokio::task::spawn(async {}),
     }
 }
 
@@ -341,6 +344,7 @@ async fn report_start_of_download(ep: Endpoint) {
         Endpoint::ChatCompletions => status::set_chat_completions_download(true).await,
         Endpoint::AudioTranscriptions => status::set_audio_transcriptions_download(true).await,
         Endpoint::Embeddings => status::set_embeddings_download(true).await,
+        _ => {}
     }
 }
 
@@ -358,6 +362,7 @@ async fn report_end_of_download(ep: Endpoint) {
             status::set_embeddings_progress(100).await;
             status::set_embeddings_download(false).await;
         }
+        _ => {}
     }
 }
 

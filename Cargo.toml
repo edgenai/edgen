@@ -4,10 +4,11 @@ members = [
     "crates/edgen_core",
     "crates/edgen_server",
     "crates/edgen_async_compat",
+    "crates/edgen_rt_image_generation_candle",
     "crates/edgen_rt_llama_cpp",
     "crates/edgen_rt_whisper_cpp",
     "crates/edgen_rt_chat_faker",
-    "edgen/src-tauri"
+    "edgen/src-tauri",
 ]
 
 [workspace.dependencies]
@@ -15,6 +16,7 @@ ahash = "0.8.6"
 argh = "0.1.12"
 async-executor = "1.6.0"
 async-task = "4.5.0"
+async-trait = "0.1.80"
 axum = "0.7.1"
 blake3 = "1.5.0"
 cfg-if = "1.0.0"
@@ -28,7 +30,7 @@ either = "1.9.0"
 flume = "0.11.0"
 futures = "0.3.29"
 futures-lite = "2.0.1"
-glommio = "0.8.0"
+glommio = "0.9.0"
 hyper = "1.0.1"
 hyper-util = "0.1.1"
 link-cplusplus = "1.0.9"
@@ -38,7 +40,7 @@ once_cell = "1.18.0"
 pin-project = "1.1.3"
 prost = "0.12.2"
 prost-build = "0.12.2"
-reqwest = { version = "0.11.22", default-features = false }
+reqwest = { version = "0.12.3", default-features = false }
 serde = "1.0.193"
 serde_derive = "1.0.193"
 serde_json = "1.0.108"

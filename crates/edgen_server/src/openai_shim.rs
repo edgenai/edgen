@@ -312,7 +312,7 @@ pub struct CreateChatCompletionRequest<'a> {
 
     /// How many choices to generate for each token in the output. `1` by default. You can use
     /// this to generate several sets of completions for the same prompt.
-    pub n: Option<f32>,
+    pub n: Option<u32>,
 
     /// A number in `[-2.0, 2.0]`. Positive values "increase the model's likelihood to talk about
     /// new topics."
