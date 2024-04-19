@@ -10,10 +10,7 @@
  * limitations under the License.
  */
 
-#![cfg_attr(
-    not(feature = "enable-windows-terminal"),
-    windows_subsystem = "windows"
-)]
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 #[cfg(not(feature = "no_gui"))]
 mod gui;
@@ -25,6 +22,8 @@ use once_cell::sync::Lazy;
 
 #[cfg(not(feature = "no_gui"))]
 fn main() -> EdgenResult {
+    try_attach_terminal();
+
     Lazy::force(&cli::PARSED_COMMANDS);
 
     match &cli::PARSED_COMMANDS.subcommand {
@@ -38,6 +37,8 @@ fn main() -> EdgenResult {
 
 #[cfg(feature = "no_gui")]
 fn main() -> EdgenResult {
+    try_attach_terminal();
+
     Lazy::force(&cli::PARSED_COMMANDS);
     start(&cli::PARSED_COMMANDS)
 }
@@ -57,4 +58,19 @@ fn serve(command: &'static cli::TopLevel, start_gui: bool) -> EdgenResult {
     }
 
     handle.join()?
+}
+
+/// On Windows, attempt to attach to a parent process terminal if not already attached.
+///
+/// This needed due to this being a Windows Subsystem binary.
+fn try_attach_terminal() {
+    #[cfg(windows)]
+    {
+        use winapi::um::wincon;
+        unsafe {
+            if wincon::GetConsoleWindow().is_null() {
+                wincon::AttachConsole(wincon::ATTACH_PARENT_PROCESS);
+            }
+        }
+    }
 }
