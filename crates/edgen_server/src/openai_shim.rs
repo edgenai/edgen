@@ -647,7 +647,7 @@ fn get_model_params(model_name: &str, dir: &str) -> Result<ModelId, &'static str
     }
 }
 
-fn parse_model_param(model: &str) -> Result<(String, String, String), ParseError> {
+pub(crate) fn parse_model_param(model: &str) -> Result<(String, String, String), ParseError> {
     let vs = model.split("/").collect::<Vec<&str>>();
     let l = vs.len();
     if l < 3 {
@@ -675,17 +675,22 @@ fn parse_model_param(model: &str) -> Result<(String, String, String), ParseError
 }
 
 /// Error Parsing the model parameter
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Error, Serialize)]
 pub enum ParseError {
     /// Expected are three fields separated by '/'; fewer fields were provided.
+    #[error("Expected are three fields separated by '/'; fewer fields were provided")]
     MissingSeparator,
     /// Expected are three fields separated by '/'; more than three fields were provided.
+    #[error("Expected are three fields separated by '/'; more than three fields were provided")]
     TooManySeparators,
     /// No model name was provided.
+    #[error("No model name was provided")]
     NoModel,
     /// No repo owner was provided.
+    #[error("No repo owner was provided")]
     NoOwner,
     /// No repo was provided.
+    #[error("No repo was provided")]
     NoRepo,
 }
 
