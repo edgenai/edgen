@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 async-trait = { workspace = true }
 candle-core = "0.4.1"
+candle-nn = "0.4.1"
 candle-transformers = "0.4.1"
 edgen_core = { path = "../edgen_core" }
 image = "0.25.1"
