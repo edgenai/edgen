@@ -1625,6 +1625,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "candle-core",
+ "candle-nn",
  "candle-transformers",
  "edgen_core",
  "image 0.25.1",
