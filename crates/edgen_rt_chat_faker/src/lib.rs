@@ -104,28 +104,28 @@ impl LLMEndpoint for ChatFakerEndpoint {
     async fn chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
-        args: &CompletionArgs,
+        args: CompletionArgs,
     ) -> Result<String, LLMEndpointError> {
         let model = self.get(model_path).await;
-        model.chat_completions(args).await
+        model.chat_completions(&args).await
     }
 
     async fn stream_chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
-        args: &CompletionArgs,
+        args: CompletionArgs,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
         let model = self.get(model_path).await;
-        model.stream_chat_completions(args).await
+        model.stream_chat_completions(&args).await
     }
 
     async fn embeddings(
         &self,
         model_path: impl AsRef<Path> + Send,
-        inputs: &[String],
+        inputs: Vec<String>,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
         let model = self.get(model_path).await;
-        model.embeddings(inputs).await
+        model.embeddings(&inputs).await
     }
 
     fn reset(&self) {
