@@ -1652,6 +1652,7 @@ dependencies = [
 name = "edgen_rt_llama_cpp"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "blake3",
  "dashmap",
  "derive_more",
@@ -1667,6 +1668,7 @@ dependencies = [
 name = "edgen_rt_whisper_cpp"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "dashmap",
  "derive_more",
  "edgen_core",

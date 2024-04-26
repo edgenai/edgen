@@ -17,8 +17,6 @@ use futures::Stream;
 use serde::Serialize;
 use thiserror::Error;
 
-use crate::BoxedFuture;
-
 /// The context tag marking the start of generated dialogue.
 pub const ASSISTANT_TAG: &str = "<|ASSISTANT|>";
 
@@ -68,29 +66,28 @@ impl Default for CompletionArgs {
 
 /// A large language model endpoint, that is, an object that provides various ways to interact with
 /// a large language model.
+#[async_trait::async_trait]
 pub trait LLMEndpoint {
-    /// Given a prompt with several arguments, return a [`Box`]ed [`Future`] which may eventually
-    /// contain the prompt completion in [`String`] form.
-    fn chat_completions<'a>(
-        &'a self,
-        model_path: impl AsRef<Path> + Send + 'a,
+    /// Given a prompt with several arguments, return a prompt completion in [`String`] form.
+    async fn chat_completions(
+        &self,
+        model_path: impl AsRef<Path> + Send,
         args: CompletionArgs,
-    ) -> BoxedFuture<Result<String, LLMEndpointError>>;
+    ) -> Result<String, LLMEndpointError>;
 
-    /// Given a prompt with several arguments, return a [`Box`]ed [`Future`] which may eventually
-    /// contain a [`Stream`] of [`String`] chunks of the prompt completion, acquired as they get
-    /// processed.
-    fn stream_chat_completions<'a>(
-        &'a self,
-        model_path: impl AsRef<Path> + Send + 'a,
+    /// Given a prompt with several arguments, return a [`Stream`] of [`String`] chunks of the
+    /// prompt completion, acquired as they get processed.
+    async fn stream_chat_completions(
+        &self,
+        model_path: impl AsRef<Path> + Send,
         args: CompletionArgs,
-    ) -> BoxedFuture<Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError>>;
+    ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError>;
 
-    fn embeddings<'a>(
-        &'a self,
-        model_path: impl AsRef<Path> + Send + 'a,
+    async fn embeddings(
+        &self,
+        model_path: impl AsRef<Path> + Send,
         inputs: Vec<String>,
-    ) -> BoxedFuture<Result<Vec<Vec<f32>>, LLMEndpointError>>;
+    ) -> Result<Vec<Vec<f32>>, LLMEndpointError>;
 
     /// Unloads everything from memory.
     fn reset(&self);
