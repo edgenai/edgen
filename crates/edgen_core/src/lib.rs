@@ -18,7 +18,6 @@
 
 extern crate alloc;
 
-use std::future::Future;
 use std::time::Duration;
 
 pub mod llm;
@@ -28,9 +27,6 @@ pub mod settings;
 
 pub mod image_generation;
 pub mod perishable;
-
-/// A generic [`Box`]ed [`Future`], used to emulate `async` functions in traits.
-pub type BoxedFuture<'a, T> = Box<dyn Future<Output = T> + Send + Unpin + 'a>;
 
 /// Return the [`Duration`] that cleanup threads should wait before looking for and freeing unused
 /// resources, after last doing so.

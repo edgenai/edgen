@@ -1,4 +1,5 @@
 use crate::model::{Model, ModelError, ModelKind};
+use crate::openai_shim::{parse_model_param, ParseError};
 use crate::types::Endpoint;
 use dashmap::DashMap;
 use edgen_core::settings;
@@ -17,10 +18,13 @@ pub enum ModelDescriptorError {
     Preload(#[from] ModelError),
     #[error("The specified model was not found")]
     NotFound,
+    #[error(transparent)]
+    Parse(#[from] ParseError),
 }
 
 /// The descriptor of an artificial intelligence model, containing every bit of data required to
 /// execute the model.
+#[derive(Clone)]
 pub enum ModelDescriptor {
     /// A stable diffusion model.
     StableDiffusion {
@@ -35,17 +39,13 @@ pub enum ModelDescriptor {
     },
 }
 
+#[derive(Clone)]
 pub struct StableDiffusionFiles {
-    unet_weights_repo: String,
-    unet_weights_file: String,
-    vae_weights_repo: String,
-    vae_weights_file: String,
-    clip_weights_repo: String,
-    clip_weights_file: String,
-    clip2_weights_repo: Option<String>,
-    clip2_weights_file: Option<String>,
-    tokenizer_repo: String,
-    tokenizer_file: String,
+    pub unet_weights: String,
+    pub vae_weights: String,
+    pub clip_weights: String,
+    pub clip2_weights: Option<String>,
+    pub tokenizer: String,
 }
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
@@ -65,6 +65,30 @@ pub enum ModelPaths {
 }
 
 impl ModelDescriptor {
+    async fn get_file(&self, file_link: &str) -> Result<PathBuf, ModelDescriptorError> {
+        let (dir, kind) = match self {
+            ModelDescriptor::StableDiffusion { .. } => (
+                PathBuf::from(settings::image_generation_dir().await),
+                ModelKind::StableDiffusion,
+            ),
+        };
+
+        let path = PathBuf::from(file_link);
+        if path.is_file() {
+            return Ok(path);
+        }
+
+        let path = dir.join(file_link);
+        if path.is_file() {
+            return Ok(path);
+        }
+
+        let (owner, repo, name) = parse_model_param(file_link)?;
+        let mut file = Model::new(kind, &name, &format!("{owner}/{repo}"), &dir);
+        file.preload(Endpoint::ImageGeneration).await?;
+        Ok(file.file_path()?)
+    }
+
     pub async fn preload_files(
         &self,
         quantization: Quantization,
@@ -75,60 +99,17 @@ impl ModelDescriptor {
                 if files.is_none() {
                     return Err(ModelDescriptorError::QuantizationUnavailable);
                 }
+
                 let files = files.unwrap();
-                let dir = PathBuf::from(settings::image_generation_dir().await);
-                let unet = {
-                    let mut unet = Model::new(
-                        ModelKind::ImageDiffusion,
-                        &files.unet_weights_file,
-                        &files.unet_weights_repo,
-                        &dir,
-                    );
-                    unet.preload(Endpoint::ImageGeneration).await?;
-                    unet.file_path()?
-                };
-                let vae = {
-                    let mut vae = Model::new(
-                        ModelKind::ImageDiffusion,
-                        &files.vae_weights_file,
-                        &files.vae_weights_repo,
-                        &dir,
-                    );
-                    vae.preload(Endpoint::ImageGeneration).await?;
-                    vae.file_path()?
-                };
-                let clip = {
-                    let mut clip = Model::new(
-                        ModelKind::ImageDiffusion,
-                        &files.clip_weights_file,
-                        &files.clip_weights_repo,
-                        &dir,
-                    );
-                    clip.preload(Endpoint::ImageGeneration).await?;
-                    clip.file_path()?
-                };
-                let clip2 = if files.clip2_weights_file.is_some() {
-                    let mut clip2 = Model::new(
-                        ModelKind::ImageDiffusion,
-                        files.clip2_weights_file.as_ref().unwrap(),
-                        files.clip2_weights_repo.as_ref().unwrap(),
-                        &dir,
-                    );
-                    clip2.preload(Endpoint::ImageGeneration).await?;
-                    Some(clip2.file_path()?)
+                let unet = self.get_file(&files.unet_weights).await?;
+                let vae = self.get_file(&files.vae_weights).await?;
+                let clip = self.get_file(&files.clip_weights).await?;
+                let clip2 = if let Some(clip2) = &files.clip2_weights {
+                    Some(self.get_file(&clip2).await?)
                 } else {
                     None
                 };
-                let tokenizer = {
-                    let mut tokenizer = Model::new(
-                        ModelKind::ImageDiffusion,
-                        &files.tokenizer_file,
-                        &files.tokenizer_repo,
-                        &dir,
-                    );
-                    tokenizer.preload(Endpoint::ImageGeneration).await?;
-                    tokenizer.file_path()?
-                };
+                let tokenizer = self.get_file(&files.tokenizer).await?;
 
                 ModelPaths::StableDiffusion {
                     unet_weights: unet,
@@ -149,31 +130,30 @@ pub fn init() {
     model_files.insert(
         Quantization::Default,
         StableDiffusionFiles {
-            tokenizer_repo: "openai/clip-vit-base-patch32".to_string(),
-            tokenizer_file: "tokenizer.json".to_string(),
-            clip_weights_repo: "stabilityai/stable-diffusion-2-1".to_string(),
-            clip_weights_file: "text_encoder/model.safetensors".to_string(),
-            clip2_weights_repo: None,
-            clip2_weights_file: None,
-            vae_weights_repo: "stabilityai/stable-diffusion-2-1".to_string(),
-            vae_weights_file: "vae/diffusion_pytorch_model.safetensors".to_string(),
-            unet_weights_repo: "stabilityai/stable-diffusion-2-1".to_string(),
-            unet_weights_file: "unet/diffusion_pytorch_model.safetensors".to_string(),
+            tokenizer: "openai/clip-vit-base-patch32/tokenizer.json".to_string(),
+            clip_weights: "stabilityai/stable-diffusion-2-1/text_encoder/model.safetensors"
+                .to_string(),
+            clip2_weights: None,
+            vae_weights: "stabilityai/stable-diffusion-2-1/vae/diffusion_pytorch_model.safetensors"
+                .to_string(),
+            unet_weights:
+                "stabilityai/stable-diffusion-2-1/unet/diffusion_pytorch_model.safetensors"
+                    .to_string(),
         },
     );
     model_files.insert(
         Quantization::F16,
         StableDiffusionFiles {
-            tokenizer_repo: "openai/clip-vit-base-patch32".to_string(),
-            tokenizer_file: "tokenizer.json".to_string(),
-            clip_weights_repo: "stabilityai/stable-diffusion-2-1".to_string(),
-            clip_weights_file: "text_encoder/model.fp16.safetensors".to_string(),
-            clip2_weights_repo: None,
-            clip2_weights_file: None,
-            vae_weights_repo: "stabilityai/stable-diffusion-2-1".to_string(),
-            vae_weights_file: "vae/diffusion_pytorch_model.fp16.safetensors".to_string(),
-            unet_weights_repo: "stabilityai/stable-diffusion-2-1".to_string(),
-            unet_weights_file: "unet/diffusion_pytorch_model.fp16.safetensors".to_string(),
+            tokenizer: "openai/clip-vit-base-patch32/tokenizer.json".to_string(),
+            clip_weights: "stabilityai/stable-diffusion-2-1/text_encoder/model.fp16.safetensors"
+                .to_string(),
+            clip2_weights: None,
+            vae_weights:
+                "stabilityai/stable-diffusion-2-1/vae/diffusion_pytorch_model.fp16.safetensors"
+                    .to_string(),
+            unet_weights:
+                "stabilityai/stable-diffusion-2-1/unet/diffusion_pytorch_model.fp16.safetensors"
+                    .to_string(),
         },
     );
     let model = ModelDescriptor::StableDiffusion {

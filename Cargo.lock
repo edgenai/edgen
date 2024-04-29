@@ -591,7 +591,7 @@ dependencies = [
  "bitflags 2.4.2",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.11.0",
  "lazy_static",
  "lazycell",
  "log",
@@ -1389,6 +1389,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dbus"
+version = "0.9.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bb21987b9fb1613058ba3843121dd18b163b254d8a6e797e144cbac14d96d1b"
+dependencies = [
+ "libc",
+ "libdbus-sys",
+ "winapi",
+]
+
+[[package]]
 name = "deranged"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1561,6 +1572,7 @@ dependencies = [
  "tauri-build",
  "tokio",
  "tracing",
+ "winapi",
 ]
 
 [[package]]
@@ -1587,6 +1599,7 @@ dependencies = [
  "derive_more",
  "directories",
  "edgen_async_compat",
+ "either",
  "futures",
  "notify",
  "num_cpus",
@@ -1609,6 +1622,7 @@ dependencies = [
 name = "edgen_rt_chat_faker"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "blake3",
  "dashmap",
  "derive_more",
@@ -1625,6 +1639,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "candle-core",
+ "candle-nn",
  "candle-transformers",
  "edgen_core",
  "image 0.25.1",
@@ -1639,6 +1654,7 @@ dependencies = [
 name = "edgen_rt_llama_cpp"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "blake3",
  "dashmap",
  "derive_more",
@@ -1654,6 +1670,7 @@ dependencies = [
 name = "edgen_rt_whisper_cpp"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "dashmap",
  "derive_more",
  "edgen_core",
@@ -1691,7 +1708,9 @@ dependencies = [
  "levenshtein",
  "once_cell",
  "pin-project",
+ "rand 0.8.5",
  "reqwest 0.12.3",
+ "reqwest-eventsource",
  "rubato",
  "serde",
  "serde_derive",
@@ -1842,6 +1861,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "feedafcaa9b749175d5ac357452a9d41ea2911da598fde46ce1fe02c37751291"
 dependencies = [
  "event-listener 5.1.0",
+ "pin-project-lite",
+]
+
+[[package]]
+name = "eventsource-stream"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74fef4569247a5f429d9156b9d0a2599914385dd189c539334c625d8099d90ab"
+dependencies = [
+ "futures-core",
+ "nom",
  "pin-project-lite",
 ]
 
@@ -2092,6 +2122,12 @@ name = "futures-task"
 version = "0.3.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38d84fa142264698cdce1a9f9172cf383a0c82de1bddcf3092901442c4097004"
+
+[[package]]
+name = "futures-timer"
+version = "3.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f288b0a4f20f9a56b5d1da57e2227c661b7b16168e2f72365f57b63326e29b24"
 
 [[package]]
 name = "futures-util"
@@ -2832,7 +2868,7 @@ dependencies = [
  "httpdate",
  "itoa 1.0.10",
  "pin-project-lite",
- "socket2 0.5.5",
+ "socket2 0.4.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -3316,6 +3352,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c198f91728a82281a64e1f4f9eeb25d82cb32a5de251c6bd1b5154d63a8e7bd"
 
 [[package]]
+name = "libdbus-sys"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06085512b750d640299b79be4bad3d2fa90a9c00b1fd9e1b46364f66f0485c72"
+dependencies = [
+ "cc",
+ "pkg-config",
+]
+
+[[package]]
 name = "libfuzzer-sys"
 version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3389,8 +3435,8 @@ checksum = "01cda141df6706de531b6c46c3a33ecca755538219bd484262fa09410c13539c"
 
 [[package]]
 name = "llama_cpp"
-version = "0.3.1"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#9dd2b2229205096645e76a1712c6b73a7a781dd4"
+version = "0.3.2"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#55eb9691b13d07f56eaa68992d5e6accaa281691"
 dependencies = [
  "derive_more",
  "futures",
@@ -3403,8 +3449,8 @@ dependencies = [
 
 [[package]]
 name = "llama_cpp_sys"
-version = "0.3.1"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#9dd2b2229205096645e76a1712c6b73a7a781dd4"
+version = "0.3.2"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#55eb9691b13d07f56eaa68992d5e6accaa281691"
 dependencies = [
  "ash",
  "bindgen",
@@ -3980,13 +4026,14 @@ dependencies = [
 
 [[package]]
 name = "opener"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c62dcb6174f9cb326eac248f07e955d5d559c272730b6c03e396b443b562788"
+checksum = "f9901cb49d7fc923b256db329ee26ffed69130bf05d74b9efdd1875c92d6af01"
 dependencies = [
  "bstr",
+ "dbus",
  "normpath",
- "winapi",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4882,12 +4929,30 @@ dependencies = [
  "serde_urlencoded",
  "sync_wrapper",
  "tokio",
+ "tokio-util",
  "tower-service",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "wasm-streams",
  "web-sys",
  "winreg 0.52.0",
+]
+
+[[package]]
+name = "reqwest-eventsource"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "632c55746dbb44275691640e7b40c907c16a2dc1a5842aa98aaec90da6ec6bde"
+dependencies = [
+ "eventsource-stream",
+ "futures-core",
+ "futures-timer",
+ "mime",
+ "nom",
+ "pin-project-lite",
+ "reqwest 0.12.3",
+ "thiserror",
 ]
 
 [[package]]

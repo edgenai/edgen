@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-trait = { workspace = true }
 blake3 = { workspace = true }
 dashmap = { workspace = true }
 derive_more = { workspace = true }

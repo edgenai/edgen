@@ -39,8 +39,119 @@ Generate text from text. {{ className: 'lead' }}
             </li>
         </ul>
 
+
       </Property>
     </Properties>
+
+    ### Optional attributes
+
+      <Properties>
+          <Property name="frequency_penalty" type="float">
+              A number in `[-2.0, 2.0]`. A higher number decreases the likelihood that the model repeats itself.
+          </Property>
+      </Properties>
+
+      <Properties>
+          <Property name="logit_bias" type="map">
+              A map of token IDs to `[-100.0, +100.0]`. Adds a percentage bias to those tokens before sampling; a value of `-100.0` prevents the token from being selected at all.
+              You could use this to, for example, prevent the model from emitting profanity.
+          </Property>
+      </Properties>
+
+      <Properties>
+          <Property name="max_tokens" type="integer">
+              The maximum number of tokens to generate. If `None`, terminates at the first stop token or the end of sentence.
+          </Property>
+      </Properties>
+
+      <Properties>
+          <Property name="n" type="integer">
+              How many choices to generate for each token in the output. `1` by default. You can use this to generate several sets of completions for the same prompt.
+          </Property>
+      </Properties>
+
+      <Properties>
+          <Property name="presence_penalty" type="float">
+              A number in `[-2.0, 2.0]`. Positive values "increase the model's likelihood to talk about new topics."
+          </Property>
+      </Properties>
+
+      <Properties>
+          <Property name="seed" type="integer">
+              The random number generator seed for the session. Random by default.
+          </Property>
+      </Properties>
+
+      <Properties>
+          <Property name="stop" type="string or array">
+              A stop phrase or set of stop phrases.
+              The server will pause emitting completions if it appears to be generating a stop phrase, and will terminate completions if a full stop phrase is detected.
+              Stop phrases are never emitted to the client.
+          </Property>
+      </Properties>
+
+      <Properties>
+          <Property name="stream" type="bool">
+              If true, stream the output as it is computed by the server, instead of returning the whole completion at the end.
+              You can use this to live-stream completions to a client.
+          </Property>
+      </Properties>
+
+      <Properties>
+          <Property name="response_format" type="string">
+              The format of the response stream.
+              This is always assumed to be JSON, which is non-conformant with the OpenAI spec.
+          </Property>
+      </Properties>
+
+      <Properties>
+          <Property name="temperature" type="float">
+              The sampling temperature, in `[0.0, 2.0]`. Higher values make the output more random.
+          </Property>
+      </Properties>
+
+      <Properties>
+          <Property name="top_p" type="float">
+              Nucleus sampling. If you set this value to 10%, only the top 10% of tokens are used for sampling, preventing sampling of very low-probability tokens.
+          </Property>
+      </Properties>
+
+      <Properties>
+          <Property name="tools" type="array">
+              A list of tools made available to the model.
+          </Property>
+      </Properties>
+
+      <Properties>
+          <Property name="tool_choice" type="string">
+              If present, the tool that the user has chosen to use.
+              OpenAI states:
+               - `none` prevents any tool from being used,
+               - `auto` allows any tool to be used, or
+               - you can provide a description of the tool entirely instead of a name.
+          </Property>
+      </Properties>
+
+      <Properties>
+          <Property name="user" type="string">
+              A unique identifier for the _end user_ creating this request. This is used for telemetry and user tracking, and is unused within Edgen.
+          </Property>
+      </Properties>
+
+      <Properties>
+          <Property name="one_shot" type="bool">
+              Indicate if this is an isolated request, with no associated past or future context. This may allow for optimisations in some implementations.
+              Default: `false`
+          </Property>
+      </Properties>
+
+      <Properties>
+          <Property name="context_hint" type="integer">
+              A hint for how big a context will be.
+              # Warning
+              An unsound hint may severely drop performance and/or inference quality, and in some cases even cause Edgen to crash. Do not set this value unless you know what you are doing.
+          </Property>
+      </Properties>
 
   </Col>
   <Col sticky>

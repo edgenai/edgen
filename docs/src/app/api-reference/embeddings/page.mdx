@@ -40,6 +40,20 @@ Generate embeddings from text. {{ className: 'lead' }}
       </Property>
     </Properties>
 
+    ### Optional attributes
+
+      <Properties>
+          <Property name="response_format" type="string">
+              The format to return the embeddings in. Can be either `float` or `base64`.
+          </Property>
+      </Properties>
+
+      <Properties>
+          <Property name="dimensions" type="integer">
+              The number of dimensions the resulting output embeddings should have. Only supported in some models.
+          </Property>
+      </Properties>
+
   </Col>
   <Col sticky>
 

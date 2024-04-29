@@ -1,16 +1,29 @@
-use crate::audio::ChatCompletionError;
-use crate::model_descriptor::{ModelDescriptor, ModelDescriptorError, ModelPaths, Quantization};
+use crate::model_descriptor::{
+    ModelDescriptor, ModelDescriptorError, ModelPaths, Quantization, StableDiffusionFiles,
+};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use dashmap::DashMap;
 use edgen_core::image_generation::{
     ImageGenerationArgs, ImageGenerationEndpoint, ImageGenerationEndpointError, ModelFiles,
 };
 use edgen_rt_image_generation_candle::CandleImageGenerationEndpoint;
+use either::Either;
 use serde_derive::{Deserialize, Serialize};
 use std::borrow::Cow;
 use thiserror::Error;
 use utoipa::ToSchema;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct Model<'a> {
+    unet_weights: Cow<'a, str>,
+    vae_weights: Cow<'a, str>,
+    clip_weights: Cow<'a, str>,
+    /// Beware that not all models support clip2.
+    clip2_weights: Option<Cow<'a, str>>,
+    tokenizer: Cow<'a, str>,
+}
 
 /// A request to generate images for the provided context.
 /// This request is not at all conformant with OpenAI's API, as that one is very bare-bones, lacking
@@ -25,7 +38,7 @@ pub struct CreateImageGenerationRequest<'a> {
     pub prompt: Cow<'a, str>,
 
     /// The model to use for generating completions.
-    pub model: Cow<'a, str>,
+    pub model: Either<Cow<'a, str>, Model<'a>>,
 
     /// The width of the generated image.
     pub width: Option<usize>,
@@ -44,7 +57,7 @@ pub struct CreateImageGenerationRequest<'a> {
     /// Default: 1
     pub images: Option<u32>,
 
-    /// The random number generator seed to used for the generation.
+    /// The random number generator seed to use for the generation.
     ///
     /// By default, a random seed is used.
     pub seed: Option<u64>,
@@ -57,7 +70,9 @@ pub struct CreateImageGenerationRequest<'a> {
 
     /// The Variational Auto-Encoder scale to use for generation.
     ///
-    /// This value should probably not be set.
+    /// Required if `model` is not a pre-made descriptor name.
+    ///
+    /// This value should probably not be set, if `model` is a pre-made descriptor name.
     pub vae_scale: Option<f64>,
 }
 
@@ -75,14 +90,17 @@ pub struct ImageGenerationResponse {
 #[serde(tag = "error")]
 pub enum ImageGenerationError {
     /// The provided model could not be loaded.
-    #[error("failed to load model: {0}")]
+    #[error(transparent)]
     Model(#[from] ModelDescriptorError),
-    /// Some error has occured inside the endpoint.
-    #[error("endpoint error: {0}")]
+    /// Some error has occurred inside the endpoint.
+    #[error(transparent)]
     Endpoint(#[from] ImageGenerationEndpointError),
     /// This error should be unreachable.
     #[error("Something went wrong")]
     Unreachable,
+    /// Some parameter was missing from the request.
+    #[error("A parameter was missing from the request: {0}")]
+    MissingParam(String),
 }
 
 impl IntoResponse for ImageGenerationError {
@@ -98,7 +116,7 @@ impl IntoResponse for ImageGenerationError {
 /// cannot do.
 ///
 /// On failure, may raise a `500 Internal Server Error` with a JSON-encoded [`ImageGenerationError`]
-/// to the peer..
+/// to the peer.
 #[utoipa::path(
 post,
 path = "/image/generations",
@@ -111,13 +129,45 @@ responses(
 pub async fn generate_image(
     Json(req): Json<CreateImageGenerationRequest<'_>>,
 ) -> Result<impl IntoResponse, ImageGenerationError> {
-    let descriptor = crate::model_descriptor::get(req.model.as_ref())?;
+    let quantization;
+    let descriptor = match req.model {
+        Either::Left(template) => {
+            quantization = Quantization::F16;
+            crate::model_descriptor::get(template.as_ref())?
+                .value()
+                .clone() // Not ideal to clone, but otherwise the code complexity will greatly increase
+        }
+        Either::Right(custom) => {
+            if req.vae_scale.is_none() {
+                return Err(ImageGenerationError::MissingParam(
+                    "VAE scale must be provided when manually specifying model files".to_string(),
+                ));
+            }
+            quantization = Quantization::Default;
+            let files = DashMap::new();
+            files.insert(
+                quantization,
+                StableDiffusionFiles {
+                    tokenizer: custom.tokenizer.to_string(),
+                    clip_weights: custom.clip_weights.to_string(),
+                    clip2_weights: custom.clip2_weights.map(|c| c.to_string()),
+                    vae_weights: custom.vae_weights.to_string(),
+                    unet_weights: custom.unet_weights.to_string(),
+                },
+            );
+            ModelDescriptor::StableDiffusion {
+                files,
+                steps: 30,
+                vae_scale: req.vae_scale.unwrap(),
+            }
+        }
+    };
     let model_files;
     let default_steps;
     let default_vae_scale;
     if let ModelDescriptor::StableDiffusion {
         steps, vae_scale, ..
-    } = descriptor.value()
+    } = descriptor
     {
         if let ModelPaths::StableDiffusion {
             unet_weights,
@@ -125,7 +175,7 @@ pub async fn generate_image(
             clip_weights,
             clip2_weights,
             tokenizer,
-        } = descriptor.preload_files(Quantization::F16).await?
+        } = descriptor.preload_files(quantization).await?
         {
             model_files = ModelFiles {
                 tokenizer,
@@ -152,11 +202,11 @@ pub async fn generate_image(
                 uncond_prompt: req.uncond_prompt.unwrap_or(Cow::from("")).to_string(),
                 width: req.width,
                 height: req.height,
-                steps: req.steps.unwrap_or(*default_steps),
+                steps: req.steps.unwrap_or(default_steps),
                 images: req.images.unwrap_or(1),
                 seed: req.seed,
                 guidance_scale: req.guidance_scale.unwrap_or(7.5),
-                vae_scale: req.vae_scale.unwrap_or(*default_vae_scale),
+                vae_scale: req.vae_scale.unwrap_or(default_vae_scale),
             },
         )
         .await?;

@@ -17,7 +17,6 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 
 use axum::http::StatusCode;
@@ -70,21 +69,6 @@ pub enum ContentPart<'a> {
         /// A description of the image behind the URL, if any.
         detail: Option<Cow<'a, str>>,
     },
-}
-
-impl<'a> Display for ContentPart<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ContentPart::Text { text } => write!(f, "{}", text),
-            ContentPart::ImageUrl { url, detail } => {
-                if let Some(detail) = detail {
-                    write!(f, "<IMAGE {}> ({})", url, detail)
-                } else {
-                    write!(f, "<IMAGE {}>", url)
-                }
-            }
-        }
-    }
 }
 
 /// A description of a function provided to a large language model, to assist it in interacting
@@ -232,52 +216,6 @@ pub struct ChatMessages<'a>(
     #[deref_mut]
     Vec<ChatMessage<'a>>,
 );
-
-impl<'a> Display for ChatMessages<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        for message in &self.0 {
-            match message {
-                ChatMessage::System {
-                    content: Some(data),
-                    ..
-                } => {
-                    write!(f, "<|SYSTEM|>{data}")?;
-                }
-                ChatMessage::User {
-                    content: Either::Left(data),
-                    ..
-                } => {
-                    write!(f, "<|USER|>{data}")?;
-                }
-                ChatMessage::User {
-                    content: Either::Right(data),
-                    ..
-                } => {
-                    write!(f, "<|USER|>")?;
-
-                    for part in data {
-                        write!(f, "{part}")?;
-                    }
-                }
-                ChatMessage::Assistant {
-                    content: Some(data),
-                    ..
-                } => {
-                    write!(f, "<|ASSISTANT|>{data}")?;
-                }
-                ChatMessage::Tool {
-                    content: Some(data),
-                    ..
-                } => {
-                    write!(f, "<|TOOL|>{data}")?;
-                }
-                _ => {}
-            }
-        }
-
-        Ok(())
-    }
-}
 
 /// A request to generate chat completions for the provided context.
 ///
@@ -647,7 +585,7 @@ fn get_model_params(model_name: &str, dir: &str) -> Result<ModelId, &'static str
     }
 }
 
-fn parse_model_param(model: &str) -> Result<(String, String, String), ParseError> {
+pub(crate) fn parse_model_param(model: &str) -> Result<(String, String, String), ParseError> {
     let vs = model.split("/").collect::<Vec<&str>>();
     let l = vs.len();
     if l < 3 {
@@ -674,18 +612,125 @@ fn parse_model_param(model: &str) -> Result<(String, String, String), ParseError
     Ok((owner, repo, name))
 }
 
+impl From<ContentPart<'_>> for edgen_core::llm::ContentPart {
+    fn from(value: ContentPart) -> Self {
+        match value {
+            ContentPart::Text { text } => Self::Text {
+                text: text.to_string(),
+            },
+            ContentPart::ImageUrl { url, detail } => Self::ImageUrl {
+                url: url.to_string(),
+                detail: detail.map(|x| x.to_string()),
+            },
+        }
+    }
+}
+
+impl From<AssistantToolCall<'_>> for edgen_core::llm::AssistantToolCall {
+    fn from(value: AssistantToolCall) -> Self {
+        Self {
+            id: value.id.to_string(),
+            type_: value.type_.to_string(),
+            function: edgen_core::llm::AssistantFunctionStub {
+                name: value.function.name.to_string(),
+                arguments: value.function.arguments.to_string(),
+            },
+        }
+    }
+}
+
+impl From<ChatMessage<'_>> for edgen_core::llm::ChatMessage {
+    fn from(value: ChatMessage) -> Self {
+        match value {
+            ChatMessage::System { content, name } => Self::System {
+                content: content.map(|x| x.to_string()),
+                name: name.map(|x| x.to_string()),
+            },
+            ChatMessage::User { content, name } => Self::User {
+                content: match content {
+                    Either::Left(text) => Either::Left(text.to_string()),
+                    Either::Right(mut msgs) => Either::Right(
+                        msgs.drain(..)
+                            .map(|x| edgen_core::llm::ContentPart::from(x))
+                            .collect(),
+                    ),
+                },
+                name: name.map(|x| x.to_string()),
+            },
+            ChatMessage::Assistant {
+                content,
+                name,
+                tool_calls,
+            } => Self::Assistant {
+                content: content.map(|x| x.to_string()),
+                name: name.map(|x| x.to_string()),
+                tool_calls: tool_calls.map(|mut o| {
+                    o.drain(..)
+                        .map(|x| edgen_core::llm::AssistantToolCall::from(x))
+                        .collect()
+                }),
+            },
+            ChatMessage::Tool {
+                content,
+                tool_call_id,
+            } => Self::Tool {
+                content: content.map(|x| x.to_string()),
+                tool_call_id: tool_call_id.to_string(),
+            },
+        }
+    }
+}
+
+impl From<ChatMessages<'_>> for edgen_core::llm::ChatMessages {
+    fn from(mut value: ChatMessages) -> Self {
+        Self(
+            value
+                .drain(..)
+                .map(|x| edgen_core::llm::ChatMessage::from(x))
+                .collect(),
+        )
+    }
+}
+
+impl From<CreateChatCompletionRequest<'_>> for CompletionArgs {
+    fn from(value: CreateChatCompletionRequest) -> Self {
+        Self {
+            messages: value.messages.into(),
+            frequency_penalty: value.frequency_penalty,
+            logit_bias: value.logit_bias,
+            max_tokens: value.max_tokens,
+            n: value.n,
+            presence_penalty: value.presence_penalty,
+            seed: value.seed,
+            stop: value.stop.map(|x| match x {
+                Either::Left(text) => Either::Left(text.to_string()),
+                Either::Right(mut v) => Either::Right(v.drain(..).map(|x| x.to_string()).collect()),
+            }),
+            temperature: value.temperature,
+            top_p: value.top_p,
+            one_shot: value.one_shot,
+            context_hint: value.context_hint,
+        }
+    }
+}
+
 /// Error Parsing the model parameter
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Error, Serialize)]
 pub enum ParseError {
     /// Expected are three fields separated by '/'; fewer fields were provided.
+    #[error("Expected are three fields separated by '/'; fewer fields were provided")]
     MissingSeparator,
     /// Expected are three fields separated by '/'; more than three fields were provided.
+    #[error("Expected are three fields separated by '/'; more than three fields were provided")]
     TooManySeparators,
     /// No model name was provided.
+    #[error("No model name was provided")]
     NoModel,
     /// No repo owner was provided.
+    #[error("No repo owner was provided")]
     NoOwner,
     /// No repo was provided.
+    #[error("No repo was provided")]
     NoRepo,
 }
 
@@ -766,31 +811,16 @@ pub async fn chat_completions(
             model_name: params.name.to_string(),
         })?;
 
-    let untokenized_context = format!("{}<|ASSISTANT|>", req.messages);
-
-    let mut args = CompletionArgs {
-        prompt: untokenized_context,
-        seed: req.seed,
-        context_hint: req.context_hint,
-        ..Default::default()
-    };
-
-    if let Some(one_shot) = req.one_shot {
-        args.one_shot = one_shot;
-    }
-
-    if let Some(frequency_penalty) = req.frequency_penalty {
-        args.frequency_penalty = frequency_penalty;
-    }
-
     let stream_response = req.stream.unwrap_or(false);
 
     let fp = format!("edgen-{}", cargo_crate_version!());
     let response = if stream_response {
         let completions_stream = {
             let result = match model.kind {
-                ModelKind::LLM => llm::chat_completion_stream(model, args).await?,
-                ModelKind::ChatFaker => chat_faker::chat_completion_stream(model, args).await?,
+                ModelKind::LLM => llm::chat_completion_stream(model, req.into()).await?,
+                ModelKind::ChatFaker => {
+                    chat_faker::chat_completion_stream(model, req.into()).await?
+                }
                 _ => panic!("we should never get here"),
             };
             result.map(move |chunk| {
@@ -814,8 +844,8 @@ pub async fn chat_completions(
         ChatCompletionResponse::Stream(Sse::new(completions_stream))
     } else {
         let content_str = match model.kind {
-            ModelKind::LLM => llm::chat_completion(model, args).await?,
-            ModelKind::ChatFaker => crate::chat_faker::chat_completion(model, args).await?,
+            ModelKind::LLM => llm::chat_completion(model, req.into()).await?,
+            ModelKind::ChatFaker => crate::chat_faker::chat_completion(model, req.into()).await?,
             _ => panic!("we should never get here"),
         };
         let response = ChatCompletion {

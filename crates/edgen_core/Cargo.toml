@@ -9,6 +9,7 @@ async-trait = { workspace = true }
 dashmap = { workspace = true }
 directories = { workspace = true }
 derive_more = { workspace = true }
+either = { workspace = true }
 edgen_async_compat = { path = "../edgen_async_compat", features = ["runtime-tokio"] }
 notify = { workspace = true }
 num_cpus = { workspace = true }

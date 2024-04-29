@@ -49,7 +49,7 @@ pub enum ModelKind {
     LLM,
     Whisper,
     ChatFaker,
-    ImageDiffusion,
+    StableDiffusion,
 }
 
 #[derive(Debug, PartialEq)]

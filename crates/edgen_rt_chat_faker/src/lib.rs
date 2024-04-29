@@ -20,7 +20,6 @@ use futures::Stream;
 use tracing::info;
 
 use edgen_core::llm::{CompletionArgs, LLMEndpoint, LLMEndpointError};
-use edgen_core::BoxedFuture;
 
 pub const CAPITAL: &str = "The capital of Canada is Ottawa.";
 pub const CAPITAL_OF_PORTUGAL: &str = "The capital of Portugal is Lisbon.";
@@ -34,23 +33,25 @@ impl ChatFakerModel {
         Self {}
     }
 
-    async fn chat_completions(&self, args: CompletionArgs) -> Result<String, LLMEndpointError> {
+    async fn chat_completions(&self, args: &CompletionArgs) -> Result<String, LLMEndpointError> {
         info!("faking chat completions");
-        Ok(completions_for(&args.prompt))
+        let prompt = format!("{}<|ASSISTANT|>", args.messages);
+        Ok(completions_for(&prompt))
     }
 
     async fn stream_chat_completions(
         &self,
-        args: CompletionArgs,
+        args: &CompletionArgs,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
         info!("faking stream chat completions");
-        let msg = completions_for(&args.prompt);
+        let prompt = format!("{}<|ASSISTANT|>", args.messages);
+        let msg = completions_for(&prompt);
         let toks = streamify(&msg);
         Ok(Box::new(futures::stream::iter(toks.into_iter())))
     }
 
     //TODO: implement
-    async fn embeddings(&self, _inputs: &Vec<String>) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
+    async fn embeddings(&self, _inputs: &[String]) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
         info!("faking emeddings");
         Ok(vec![])
     }
@@ -98,65 +99,35 @@ impl ChatFakerEndpoint {
         // PANIC SAFETY: Just inserted the element if it isn't already inside the map, so must be present in the map
         self.models.get(&key).unwrap()
     }
+}
 
-    /// Helper `async` function that returns the full chat completions for the specified model and
-    /// [`CompletionArgs`].
-    async fn async_chat_completions(
+#[async_trait::async_trait]
+impl LLMEndpoint for ChatFakerEndpoint {
+    async fn chat_completions(
         &self,
-        model_path: impl AsRef<Path>,
+        model_path: impl AsRef<Path> + Send,
         args: CompletionArgs,
     ) -> Result<String, LLMEndpointError> {
         let model = self.get(model_path).await;
-        model.chat_completions(args).await
+        model.chat_completions(&args).await
     }
 
-    /// Helper `async` function that returns the chat completions stream for the specified model and
-    /// [`CompletionArgs`].
-    async fn async_stream_chat_completions(
+    async fn stream_chat_completions(
         &self,
-        model_path: impl AsRef<Path>,
+        model_path: impl AsRef<Path> + Send,
         args: CompletionArgs,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
         let model = self.get(model_path).await;
-        model.stream_chat_completions(args).await
+        model.stream_chat_completions(&args).await
     }
 
-    async fn async_embeddings(
+    async fn embeddings(
         &self,
-        model_path: impl AsRef<Path>,
+        model_path: impl AsRef<Path> + Send,
         inputs: Vec<String>,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
         let model = self.get(model_path).await;
         model.embeddings(&inputs).await
-    }
-}
-
-impl LLMEndpoint for ChatFakerEndpoint {
-    fn chat_completions<'a>(
-        &'a self,
-        model_path: impl AsRef<Path> + Send + 'a,
-        args: CompletionArgs,
-    ) -> BoxedFuture<Result<String, LLMEndpointError>> {
-        let pinned = Box::pin(self.async_chat_completions(model_path, args));
-        Box::new(pinned)
-    }
-
-    fn stream_chat_completions<'a>(
-        &'a self,
-        model_path: impl AsRef<Path> + Send + 'a,
-        args: CompletionArgs,
-    ) -> BoxedFuture<Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError>> {
-        let pinned = Box::pin(self.async_stream_chat_completions(model_path, args));
-        Box::new(pinned)
-    }
-
-    fn embeddings<'a>(
-        &'a self,
-        model_path: impl AsRef<Path> + Send + 'a,
-        inputs: Vec<String>,
-    ) -> BoxedFuture<Result<Vec<Vec<f32>>, LLMEndpointError>> {
-        let pinned = Box::pin(self.async_embeddings(model_path, inputs));
-        Box::new(pinned)
     }
 
     fn reset(&self) {

@@ -22,13 +22,13 @@ use tracing::info;
 use uuid::Uuid;
 use whisper_cpp::{WhisperModel, WhisperParams, WhisperSampling, WhisperSession};
 
+use edgen_core::cleanup_interval;
 use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, PerishableWriteGuard};
 use edgen_core::settings::{DevicePolicy, SETTINGS};
 use edgen_core::whisper::{
     inactive_whisper_session_ttl, inactive_whisper_ttl, parse, TranscriptionArgs, WhisperEndpoint,
     WhisperEndpointError,
 };
-use edgen_core::{cleanup_interval, BoxedFuture};
 
 /// A large language model endpoint, implementing [`WhisperEndpoint`] using a [`whisper_cpp`] backend.
 pub struct WhisperCppEndpoint {
@@ -57,12 +57,13 @@ impl WhisperCppEndpoint {
         // PANIC SAFETY: Just inserted the element if it isn't already inside the map, so must be present in the map
         self.models.get(&key).unwrap()
     }
+}
 
-    /// Helper `async` function that returns the transcription for the specified model and
-    /// [`TranscriptionArgs`]
-    async fn async_transcription(
+#[async_trait::async_trait]
+impl WhisperEndpoint for WhisperCppEndpoint {
+    async fn transcription(
         &self,
-        model_path: impl AsRef<Path>,
+        model_path: impl AsRef<Path> + Send,
         args: TranscriptionArgs,
     ) -> Result<(String, Option<Uuid>), WhisperEndpointError> {
         let pcm = parse::pcm(&args.file)?;
@@ -70,17 +71,6 @@ impl WhisperCppEndpoint {
         model
             .transcription(args.create_session, args.session, pcm)
             .await
-    }
-}
-
-impl WhisperEndpoint for WhisperCppEndpoint {
-    fn transcription<'a>(
-        &'a self,
-        model_path: impl AsRef<Path> + Send + 'a,
-        args: TranscriptionArgs,
-    ) -> BoxedFuture<Result<(String, Option<Uuid>), WhisperEndpointError>> {
-        let pinned = Box::pin(self.async_transcription(model_path, args));
-        Box::new(pinned)
     }
 
     fn reset(&self) {

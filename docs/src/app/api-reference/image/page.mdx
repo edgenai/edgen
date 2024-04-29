@@ -39,6 +39,61 @@ Generate images from text. {{ className: 'lead' }}
             </Property>
         </Properties>
 
+        ### Optional attributes
+
+        <Properties>
+            <Property name="width" type="integer">
+                The width of the generated image.
+            </Property>
+        </Properties>
+
+        <Properties>
+            <Property name="height" type="integer">
+                The height of the generated image.
+            </Property>
+        </Properties>
+
+        <Properties>
+            <Property name="uncond_prompt" type="string">
+                The optional unconditional prompt.
+            </Property>
+        </Properties>
+
+        <Properties>
+            <Property name="steps" type="integer">
+                The number of steps to be used in the diffusion process.
+            </Property>
+        </Properties>
+
+        <Properties>
+            <Property name="images" type="integer">
+                The number of images to generate.
+                Default: 1
+            </Property>
+        </Properties>
+
+        <Properties>
+            <Property name="seed" type="integer">
+                The random number generator seed to use for the generation.
+                By default, a random seed is used.
+            </Property>
+        </Properties>
+
+        <Properties>
+            <Property name="guidance_scale" type="float">
+                The guidance scale to use for generation, that is, how much should the model follow the prompt.
+                Values below 1 disable guidance. (the prompt is ignored)
+            </Property>
+        </Properties>
+
+        <Properties>
+            <Property name="vae_scale" type="float">
+                The Variational Auto-Encoder scale to use for generation.
+                Required if `model` is not a pre-made descriptor name.
+                This value should probably not be set, if `model` is a pre-made descriptor name.
+            </Property>
+        </Properties>
+
     </Col>
     <Col sticky>
 

@@ -18,8 +18,6 @@ use thiserror::Error;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::BoxedFuture;
-
 #[derive(Serialize, Error, Debug)]
 pub enum WhisperEndpointError {
     #[error("failed to advance context: {0}")]
@@ -45,14 +43,14 @@ pub struct TranscriptionArgs {
     pub session: Option<Uuid>,
 }
 
+#[async_trait::async_trait]
 pub trait WhisperEndpoint {
-    /// Given an audio segment with several arguments, return a [`Box`]ed [`Future`] which may
-    /// eventually contain its transcription in [`String`] form.
-    fn transcription<'a>(
-        &'a self,
-        model_path: impl AsRef<Path> + Send + 'a,
+    /// Given an audio segment with several arguments, return a transcription in [`String`] form.
+    async fn transcription(
+        &self,
+        model_path: impl AsRef<Path> + Send,
         args: TranscriptionArgs,
-    ) -> BoxedFuture<Result<(String, Option<Uuid>), WhisperEndpointError>>;
+    ) -> Result<(String, Option<Uuid>), WhisperEndpointError>;
 
     /// Unloads everything from memory.
     fn reset(&self);
