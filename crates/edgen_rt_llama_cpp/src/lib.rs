@@ -33,7 +33,7 @@ use tracing::{error, info};
 
 use edgen_core::cleanup_interval;
 use edgen_core::llm::{
-    inactive_llm_session_ttl, inactive_llm_ttl, CompletionArgs, LLMEndpoint, LLMEndpointError,
+    inactive_llm_session_ttl, inactive_llm_ttl, CompletionArgs2, LLMEndpoint, LLMEndpointError,
     ASSISTANT_TAG, SYSTEM_TAG, TOOL_TAG, USER_TAG,
 };
 use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, PerishableWriteGuard};
@@ -77,7 +77,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
     async fn chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
-        args: CompletionArgs,
+        args: CompletionArgs2,
     ) -> Result<String, LLMEndpointError> {
         let model = self.get(model_path).await;
         model.chat_completions(args).await
@@ -86,7 +86,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
     async fn stream_chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
-        args: CompletionArgs,
+        args: CompletionArgs2,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
         let model = self.get(model_path).await;
         model.stream_chat_completions(args).await
@@ -204,11 +204,13 @@ impl UnloadingModel {
         (session_perishable, id, new_context)
     }
 
-    /// Computes the full chat completions for the provided [`CompletionArgs`].
-    async fn chat_completions(&self, args: CompletionArgs) -> Result<String, LLMEndpointError> {
+    /// Computes the full chat completions for the provided [`CompletionArgs2`].
+    async fn chat_completions(&self, args: CompletionArgs2) -> Result<String, LLMEndpointError> {
         let (_model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
 
-        if args.one_shot {
+        let prompt = format!("{}<|ASSISTANT|>", args.messages);
+
+        if args.one_shot.unwrap_or(false) {
             info!("Allocating one-shot LLM session");
             let mut params = SessionParams::default();
             let threads = SETTINGS.read().await.read().await.auto_threads(false);
@@ -224,7 +226,7 @@ impl UnloadingModel {
                 .map_err(move |e| LLMEndpointError::SessionCreationFailed(e.to_string()))?;
 
             session
-                .advance_context_async(args.prompt)
+                .advance_context_async(prompt)
                 .await
                 .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
 
@@ -235,7 +237,7 @@ impl UnloadingModel {
 
             Ok(handle.into_string_async().await)
         } else {
-            let (session, mut id, new_context) = self.take_chat_session(&args.prompt).await;
+            let (session, mut id, new_context) = self.take_chat_session(&prompt).await;
 
             let (_session_signal, handle) = {
                 let (session_signal, mut session_guard) =
@@ -264,14 +266,16 @@ impl UnloadingModel {
     }
 
     /// Return a [`Box`]ed [`Stream`] of chat completions computed for the provided
-    /// [`CompletionArgs`].
+    /// [`CompletionArgs2`].
     async fn stream_chat_completions(
         &self,
-        args: CompletionArgs,
+        args: CompletionArgs2,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
         let (model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
 
-        if args.one_shot {
+        let prompt = format!("{}<|ASSISTANT|>", args.messages);
+
+        if args.one_shot.unwrap_or(false) {
             info!("Allocating one-shot LLM session");
             let mut params = SessionParams::default();
             let threads = SETTINGS.read().await.read().await.auto_threads(false);
@@ -288,10 +292,10 @@ impl UnloadingModel {
             let sampler = StandardSampler::default();
 
             Ok(Box::new(
-                CompletionStream::new_oneshot(session, &args.prompt, model_signal, sampler).await?,
+                CompletionStream::new_oneshot(session, &prompt, model_signal, sampler).await?,
             ))
         } else {
-            let (session, id, new_context) = self.take_chat_session(&args.prompt).await;
+            let (session, id, new_context) = self.take_chat_session(&prompt).await;
 
             let sampler = StandardSampler::default();
             let tx = self.finished_tx.clone();

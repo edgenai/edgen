@@ -301,6 +301,7 @@ struct Wuerstchen {
     prior: std::path::PathBuf,
 }
 
+#[allow(dead_code)]
 fn ws_generate_image(
     paths: Wuerstchen,
     args: ImageGenerationArgs,
@@ -355,7 +356,6 @@ fn ws_generate_image(
         let timesteps = &timesteps[..timesteps.len() - 1];
         for (index, &t) in timesteps.iter().enumerate() {
             debug!("Prior de-noising step {index}");
-            let start_time = std::time::Instant::now();
             let latent_model_input = Tensor::cat(&[&latents, &latents], 0)?;
             let ratio = (Tensor::ones(2, DType::F32, &device)? * t)?;
             let noise_pred = prior.forward(&latent_model_input, &ratio, &prior_text_embeddings)?;
@@ -364,7 +364,6 @@ fn ws_generate_image(
             let noise_pred = (noise_pred_uncond
                 + ((noise_pred_text - noise_pred_uncond)? * PRIOR_GUIDANCE_SCALE)?)?;
             latents = prior_scheduler.step(&noise_pred, t, &latents)?;
-            let dt = start_time.elapsed().as_secs_f32();
         }
         ((latents * 42.)? - 1.)?
     };
@@ -414,12 +413,10 @@ fn ws_generate_image(
         let timesteps = &timesteps[..timesteps.len() - 1];
         for (index, &t) in timesteps.iter().enumerate() {
             debug!("Image generation step {index}");
-            let start_time = std::time::Instant::now();
             let ratio = (Tensor::ones(1, DType::F32, &device)? * t)?;
             let noise_pred =
                 decoder.forward(&latents, &ratio, &image_embeddings, Some(&text_embeddings))?;
             latents = scheduler.step(&noise_pred, t, &latents)?;
-            let dt = start_time.elapsed().as_secs_f32();
         }
         let image = vqgan.decode(&(&latents * 0.3764)?)?;
         let image = (image.clamp(0f32, 1f32)? * 255.)?
@@ -454,7 +451,9 @@ impl ImageGenerationEndpoint for CandleImageGenerationEndpoint {
     ) -> Result<Vec<Vec<u8>>, ImageGenerationEndpointError> {
         let device = match SETTINGS.read().await.read().await.gpu_policy {
             DevicePolicy::AlwaysCpu { .. } => Device::Cpu,
-            DevicePolicy::AlwaysDevice { .. } => Device::Cuda(CudaDevice::new(0)?),
+            DevicePolicy::AlwaysDevice { .. } => {
+                Device::Cuda(CudaDevice::new(0).map_err(|e| CandleError::Candle(e))?)
+            }
             _ => {
                 warn!("Unknown device policy, executing on CPU");
                 Device::Cpu

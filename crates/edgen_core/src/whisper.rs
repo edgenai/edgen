@@ -18,8 +18,6 @@ use thiserror::Error;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::BoxedFuture;
-
 #[derive(Serialize, Error, Debug)]
 pub enum WhisperEndpointError {
     #[error("failed to advance context: {0}")]
