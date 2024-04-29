@@ -33,7 +33,7 @@ use tracing::{error, info};
 
 use edgen_core::cleanup_interval;
 use edgen_core::llm::{
-    inactive_llm_session_ttl, inactive_llm_ttl, CompletionArgs2, LLMEndpoint, LLMEndpointError,
+    inactive_llm_session_ttl, inactive_llm_ttl, CompletionArgs, LLMEndpoint, LLMEndpointError,
     ASSISTANT_TAG, SYSTEM_TAG, TOOL_TAG, USER_TAG,
 };
 use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, PerishableWriteGuard};
@@ -77,7 +77,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
     async fn chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
-        args: CompletionArgs2,
+        args: CompletionArgs,
     ) -> Result<String, LLMEndpointError> {
         let model = self.get(model_path).await;
         model.chat_completions(args).await
@@ -86,7 +86,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
     async fn stream_chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
-        args: CompletionArgs2,
+        args: CompletionArgs,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
         let model = self.get(model_path).await;
         model.stream_chat_completions(args).await
@@ -204,8 +204,8 @@ impl UnloadingModel {
         (session_perishable, id, new_context)
     }
 
-    /// Computes the full chat completions for the provided [`CompletionArgs2`].
-    async fn chat_completions(&self, args: CompletionArgs2) -> Result<String, LLMEndpointError> {
+    /// Computes the full chat completions for the provided [`CompletionArgs`].
+    async fn chat_completions(&self, args: CompletionArgs) -> Result<String, LLMEndpointError> {
         let (_model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
 
         let prompt = format!("{}<|ASSISTANT|>", args.messages);
@@ -266,10 +266,10 @@ impl UnloadingModel {
     }
 
     /// Return a [`Box`]ed [`Stream`] of chat completions computed for the provided
-    /// [`CompletionArgs2`].
+    /// [`CompletionArgs`].
     async fn stream_chat_completions(
         &self,
-        args: CompletionArgs2,
+        args: CompletionArgs,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
         let (model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
 

@@ -254,7 +254,7 @@ impl Display for ChatMessages {
 
 /// A request to generate chat completions for the provided context.
 #[derive(Debug)]
-pub struct CompletionArgs2 {
+pub struct CompletionArgs {
     /// The messages that have been sent in the dialogue so far.
     pub messages: ChatMessages,
 
@@ -322,27 +322,6 @@ pub struct CompletionArgs2 {
     pub context_hint: Option<u32>,
 }
 
-#[derive(Debug, Clone)]
-pub struct CompletionArgs {
-    pub prompt: String,
-    pub one_shot: bool,
-    pub seed: Option<u32>,
-    pub frequency_penalty: f32,
-    pub context_hint: Option<u32>,
-}
-
-impl Default for CompletionArgs {
-    fn default() -> Self {
-        Self {
-            prompt: "".to_string(),
-            one_shot: false,
-            seed: None,
-            frequency_penalty: 0.0,
-            context_hint: None,
-        }
-    }
-}
-
 /// A large language model endpoint, that is, an object that provides various ways to interact with
 /// a large language model.
 #[async_trait::async_trait]
@@ -351,7 +330,7 @@ pub trait LLMEndpoint {
     async fn chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
-        args: CompletionArgs2,
+        args: CompletionArgs,
     ) -> Result<String, LLMEndpointError>;
 
     /// Given a prompt with several arguments, return a [`Stream`] of [`String`] chunks of the
@@ -359,7 +338,7 @@ pub trait LLMEndpoint {
     async fn stream_chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
-        args: CompletionArgs2,
+        args: CompletionArgs,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError>;
 
     async fn embeddings(

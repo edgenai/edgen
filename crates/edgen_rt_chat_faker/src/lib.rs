@@ -19,7 +19,7 @@ use dashmap::DashMap;
 use futures::Stream;
 use tracing::info;
 
-use edgen_core::llm::{CompletionArgs2, LLMEndpoint, LLMEndpointError};
+use edgen_core::llm::{CompletionArgs, LLMEndpoint, LLMEndpointError};
 
 pub const CAPITAL: &str = "The capital of Canada is Ottawa.";
 pub const CAPITAL_OF_PORTUGAL: &str = "The capital of Portugal is Lisbon.";
@@ -33,7 +33,7 @@ impl ChatFakerModel {
         Self {}
     }
 
-    async fn chat_completions(&self, args: &CompletionArgs2) -> Result<String, LLMEndpointError> {
+    async fn chat_completions(&self, args: &CompletionArgs) -> Result<String, LLMEndpointError> {
         info!("faking chat completions");
         let prompt = format!("{}<|ASSISTANT|>", args.messages);
         Ok(completions_for(&prompt))
@@ -41,7 +41,7 @@ impl ChatFakerModel {
 
     async fn stream_chat_completions(
         &self,
-        args: &CompletionArgs2,
+        args: &CompletionArgs,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
         info!("faking stream chat completions");
         let prompt = format!("{}<|ASSISTANT|>", args.messages);
@@ -106,7 +106,7 @@ impl LLMEndpoint for ChatFakerEndpoint {
     async fn chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
-        args: CompletionArgs2,
+        args: CompletionArgs,
     ) -> Result<String, LLMEndpointError> {
         let model = self.get(model_path).await;
         model.chat_completions(&args).await
@@ -115,7 +115,7 @@ impl LLMEndpoint for ChatFakerEndpoint {
     async fn stream_chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
-        args: CompletionArgs2,
+        args: CompletionArgs,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
         let model = self.get(model_path).await;
         model.stream_chat_completions(&args).await

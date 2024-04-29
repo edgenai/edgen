@@ -35,7 +35,7 @@ use tracing::error;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use edgen_core::llm::{CompletionArgs2, LLMEndpointError};
+use edgen_core::llm::{CompletionArgs, LLMEndpointError};
 use edgen_core::settings;
 use edgen_core::whisper::WhisperEndpointError;
 
@@ -692,7 +692,7 @@ impl From<ChatMessages<'_>> for edgen_core::llm::ChatMessages {
     }
 }
 
-impl From<CreateChatCompletionRequest<'_>> for CompletionArgs2 {
+impl From<CreateChatCompletionRequest<'_>> for CompletionArgs {
     fn from(value: CreateChatCompletionRequest) -> Self {
         Self {
             messages: value.messages.into(),

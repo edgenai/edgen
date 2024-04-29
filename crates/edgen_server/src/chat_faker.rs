@@ -15,7 +15,7 @@
 use futures::Stream;
 use once_cell::sync::Lazy;
 
-use edgen_core::llm::{CompletionArgs2, LLMEndpoint, LLMEndpointError};
+use edgen_core::llm::{CompletionArgs, LLMEndpoint, LLMEndpointError};
 use edgen_rt_chat_faker::ChatFakerEndpoint;
 
 use crate::model::Model;
@@ -25,7 +25,7 @@ static ENDPOINT: Lazy<ChatFakerEndpoint> = Lazy::new(Default::default);
 
 pub async fn chat_completion(
     model: Model,
-    args: CompletionArgs2,
+    args: CompletionArgs,
 ) -> Result<String, LLMEndpointError> {
     ENDPOINT
         .chat_completions(
@@ -39,7 +39,7 @@ pub async fn chat_completion(
 
 pub async fn chat_completion_stream(
     model: Model,
-    args: CompletionArgs2,
+    args: CompletionArgs,
 ) -> Result<StoppingStream<Box<dyn Stream<Item = String> + Unpin + Send>>, LLMEndpointError> {
     let stream = ENDPOINT
         .stream_chat_completions(
