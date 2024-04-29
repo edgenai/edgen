@@ -591,7 +591,7 @@ dependencies = [
  "bitflags 2.4.2",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.11.0",
  "lazy_static",
  "lazycell",
  "log",
@@ -2868,7 +2868,7 @@ dependencies = [
  "httpdate",
  "itoa 1.0.10",
  "pin-project-lite",
- "socket2 0.5.5",
+ "socket2 0.4.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -3435,8 +3435,8 @@ checksum = "01cda141df6706de531b6c46c3a33ecca755538219bd484262fa09410c13539c"
 
 [[package]]
 name = "llama_cpp"
-version = "0.3.1"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#9dd2b2229205096645e76a1712c6b73a7a781dd4"
+version = "0.3.2"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#55eb9691b13d07f56eaa68992d5e6accaa281691"
 dependencies = [
  "derive_more",
  "futures",
@@ -3449,8 +3449,8 @@ dependencies = [
 
 [[package]]
 name = "llama_cpp_sys"
-version = "0.3.1"
-source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#9dd2b2229205096645e76a1712c6b73a7a781dd4"
+version = "0.3.2"
+source = "git+https://github.com/edgenai/llama_cpp-rs?branch=main#55eb9691b13d07f56eaa68992d5e6accaa281691"
 dependencies = [
  "ash",
  "bindgen",
