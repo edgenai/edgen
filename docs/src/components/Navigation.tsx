@@ -254,6 +254,7 @@ export const navigation: Array<NavGroup> = [
       { title: 'Chat', href: '/api-reference/chat' },
       { title: 'Embeddings', href: '/api-reference/embeddings' },
       { title: 'Models', href: '/api-reference/models' },
+      { title: 'Image', href: '/api-reference/image' },
     ],
   },
 ]
