@@ -69,6 +69,18 @@ pub enum ContentPart<'a> {
         /// A description of the image behind the URL, if any.
         detail: Option<Cow<'a, str>>,
     },
+    /// Image byte data.
+    #[serde(rename = "image_data")]
+    ImageData {
+        /// The byte data, encoded in base64.
+        byte_data: Cow<'a, str>,
+
+        /// The size in bytes that the decoded data in `byte_data` will occupy.
+        byte_size: usize,
+
+        /// A description of the image behind the URL, if any.
+        detail: Option<Cow<'a, str>>,
+    },
 }
 
 /// A description of a function provided to a large language model, to assist it in interacting
@@ -233,6 +245,9 @@ pub struct CreateChatCompletionRequest<'a> {
 
     /// The model to use for generating completions.
     pub model: Cow<'a, str>,
+
+    /// The projection model, if applicable.
+    pub mmproj_model: Option<Cow<'a, str>>,
 
     /// A number in `[-2.0, 2.0]`. A higher number decreases the likelihood that the model
     /// repeats itself.
@@ -622,6 +637,15 @@ impl From<ContentPart<'_>> for edgen_core::llm::ContentPart {
                 url: url.to_string(),
                 detail: detail.map(|x| x.to_string()),
             },
+            ContentPart::ImageData {
+                byte_data,
+                byte_size,
+                detail,
+            } => Self::ImageData {
+                byte_data: byte_data.to_string(),
+                byte_size,
+                detail: detail.map(|x| x.to_string()),
+            },
         }
     }
 }
@@ -695,6 +719,7 @@ impl From<ChatMessages<'_>> for edgen_core::llm::ChatMessages {
 impl From<CreateChatCompletionRequest<'_>> for CompletionArgs {
     fn from(value: CreateChatCompletionRequest) -> Self {
         Self {
+            mmproj_model: value.mmproj_model.map(|x| x.to_string()),
             messages: value.messages.into(),
             frequency_penalty: value.frequency_penalty,
             logit_bias: value.logit_bias,

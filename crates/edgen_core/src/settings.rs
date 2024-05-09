@@ -285,6 +285,12 @@ pub struct SettingsParams {
     pub chat_completions_model_name: String,
     /// The chat completion model repo that Edgen will use for download
     pub chat_completions_model_repo: String,
+    /// The chat completion multimodal model that Edgen will use when the user does not provide a model
+    pub chat_completions_mm_model_name: String,
+    /// The chat completion mmproj model that Edgen will use when the user does not provide a model
+    pub chat_completions_mmproj_model_name: String,
+    /// The chat completion multimodal model repo that Edgen will use for download
+    pub chat_completions_mm_model_repo: String,
 
     // TODO temporary, until the model parameter in incoming requests can be parsed into local paths
     pub audio_transcriptions_models_dir: String,
@@ -359,6 +365,9 @@ impl Default for SettingsParams {
             default_uri: "http://127.0.0.1:33322".to_string(),
             chat_completions_model_name: "neural-chat-7b-v3-3.Q4_K_M.gguf".to_string(),
             chat_completions_model_repo: "TheBloke/neural-chat-7B-v3-3-GGUF".to_string(),
+            chat_completions_mm_model_name: "ggml-model-q5_k.gguf".to_string(),
+            chat_completions_mmproj_model_name: "mmproj-model-f16.gguf".to_string(),
+            chat_completions_mm_model_repo: "mys/lava-v1.5-7b".to_string(),
             chat_completions_models_dir: chat_completions_str,
             audio_transcriptions_model_name: "ggml-distil-small.en.bin".to_string(),
             audio_transcriptions_model_repo: "distil-whisper/distil-small.en".to_string(),

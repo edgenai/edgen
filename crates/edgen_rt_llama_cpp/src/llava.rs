@@ -10,7 +10,10 @@
  * limitations under the License.
  */
 
+use base64::Engine;
+use std::io::Read;
 use std::mem::take;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -19,12 +22,11 @@ use std::task::{Context, Poll};
 use blake3::Hasher;
 use dashmap::DashMap;
 use futures::executor::block_on;
-use futures::Stream;
+use futures::future::Either;
+use futures::{Stream, TryFutureExt};
+use llama_cpp::multimodal::{LlavaModel, LlavaSession};
 use llama_cpp::standard_sampler::StandardSampler;
-use llama_cpp::{
-    CompletionHandle, EmbeddingsParams, LlamaModel, LlamaParams, LlamaSession, SessionParams,
-    TokensToStrings,
-};
+use llama_cpp::{CompletionHandle, EmbeddingsParams, LlamaParams, SessionParams, TokensToStrings};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::task::JoinHandle;
 use tokio::time::{interval, MissedTickBehavior};
@@ -33,8 +35,8 @@ use tracing::{error, info};
 
 use edgen_core::cleanup_interval;
 use edgen_core::llm::{
-    inactive_llm_session_ttl, inactive_llm_ttl, CompletionArgs, LLMEndpoint, LLMEndpointError,
-    ASSISTANT_TAG, SYSTEM_TAG, TOOL_TAG, USER_TAG,
+    inactive_llm_session_ttl, inactive_llm_ttl, ChatMessage, ChatMessages, CompletionArgs,
+    ContentPart, LLMEndpoint, LLMEndpointError, ASSISTANT_TAG, SYSTEM_TAG, TOOL_TAG, USER_TAG,
 };
 use edgen_core::perishable::{ActiveSignal, Perishable, PerishableReadGuard, PerishableWriteGuard};
 use edgen_core::settings::{DevicePolicy, SETTINGS};
@@ -43,11 +45,8 @@ use edgen_core::settings::{DevicePolicy, SETTINGS};
 const SINGLE_MESSAGE_LIMIT: usize = 4096;
 const CONTEXT_SIZE: u32 = 4096;
 
-mod llava;
-pub use llava::LlavaCppEndpoint;
-
 /// A large language model endpoint, implementing [`LLMEndpoint`] using a [`llama_cpp`] backend.
-pub struct LlamaCppEndpoint {
+pub struct LlavaCppEndpoint {
     /// A map of the models currently loaded into memory, with their path as the key.
     models: Arc<DashMap<String, UnloadingModel>>,
 
@@ -56,17 +55,18 @@ pub struct LlamaCppEndpoint {
     cleanup_thread: JoinHandle<()>,
 }
 
-impl LlamaCppEndpoint {
+impl LlavaCppEndpoint {
     /// Gets the [`UnloadingModel`] loaded from the specified path. If the model isn't already
     /// loaded, first initialise it and add it to the `models` collection.
     async fn get(
         &self,
         model_path: impl AsRef<Path>,
+        clip_path: impl AsRef<Path>,
     ) -> dashmap::mapref::one::Ref<String, UnloadingModel> {
         let key = model_path.as_ref().to_string_lossy().to_string();
 
         if !self.models.contains_key(&key) {
-            let model = UnloadingModel::new(model_path).await;
+            let model = UnloadingModel::new(model_path, clip_path).await;
             self.models.insert(key.clone(), model);
         }
 
@@ -76,13 +76,13 @@ impl LlamaCppEndpoint {
 }
 
 #[async_trait::async_trait]
-impl LLMEndpoint for LlamaCppEndpoint {
+impl LLMEndpoint for LlavaCppEndpoint {
     async fn chat_completions(
         &self,
         model_path: impl AsRef<Path> + Send,
         args: CompletionArgs,
     ) -> Result<String, LLMEndpointError> {
-        let model = self.get(model_path).await;
+        let model = self.get(model_path, args.mmproj_model.unwrap()).await;
         model.chat_completions(args).await
     }
 
@@ -91,7 +91,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
         model_path: impl AsRef<Path> + Send,
         args: CompletionArgs,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
-        let model = self.get(model_path).await;
+        let model = self.get(model_path, args.mmproj_model.unwrap()).await;
         model.stream_chat_completions(args).await
     }
 
@@ -100,8 +100,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
         model_path: impl AsRef<Path> + Send,
         inputs: Vec<String>,
     ) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
-        let model = self.get(model_path).await;
-        model.embeddings(inputs).await
+        todo!()
     }
 
     fn reset(&self) {
@@ -109,7 +108,7 @@ impl LLMEndpoint for LlamaCppEndpoint {
     }
 }
 
-impl Default for LlamaCppEndpoint {
+impl Default for LlavaCppEndpoint {
     fn default() -> Self {
         let models: Arc<DashMap<String, UnloadingModel>> = Default::default();
         let models_clone = models.clone();
@@ -130,20 +129,68 @@ impl Default for LlamaCppEndpoint {
     }
 }
 
-impl Drop for LlamaCppEndpoint {
+impl Drop for LlavaCppEndpoint {
     fn drop(&mut self) {
         self.cleanup_thread.abort()
     }
 }
 
-/// A [`LlamaModel`] (as well as its associated [`LlamaSession`]s) that unloads itself from memory after not being used
+/// A [`LlavaModel`] (as well as its associated [`LlavaSession`]s) that unloads itself from memory after not being used
 /// for a period of time.
 struct UnloadingModel {
-    model: Perishable<LlamaModel>,
+    model: Perishable<LlavaModel>,
     path: PathBuf,
-    sessions: Arc<DashMap<SessionId, Perishable<LlamaSession>>>,
+    clip_path: PathBuf,
+    sessions: Arc<DashMap<SessionId, Perishable<LlavaSession>>>,
     maintenance_thread: JoinHandle<()>,
-    finished_tx: UnboundedSender<(SessionId, Perishable<LlamaSession>)>,
+    finished_tx: UnboundedSender<(SessionId, Perishable<LlavaSession>)>,
+}
+
+async fn advance(
+    messages: &ChatMessages,
+    session: &mut LlavaSession,
+) -> Result<(), LLMEndpointError> {
+    for message in messages.deref() {
+        match message {
+            ChatMessage::User {
+                content: Either::Right(content),
+                ..
+            } => {
+                for part in content {
+                    match part {
+                        ContentPart::Text { text } => {
+                            session.advance_context_async(format!("{text}")).await?
+                        }
+                        ContentPart::ImageUrl { url, .. } => {
+                            let response = reqwest::get(url)
+                                .await
+                                .map_err(|e| LLMEndpointError::Download(e.to_string()))?;
+                            session.advance_with_image(
+                                response
+                                    .bytes()
+                                    .await
+                                    .map_err(|e| LLMEndpointError::Download(e.to_string())),
+                            )?;
+                        }
+                        ContentPart::ImageData {
+                            byte_data,
+                            byte_size,
+                            ..
+                        } => {
+                            let mut bytes: Vec<u8> = vec![0; byte_size];
+                            let written = base64::prelude::BASE64_STANDARD
+                                .decode_slice(byte_data, &mut bytes)
+                                .map_err(|e| LLMEndpointError::Base64(e.to_string()))?;
+                            session.advance_with_image(bytes[..written])?;
+                        }
+                    }
+                }
+            }
+            _ => session.advance_context_async(format!("{message}")).await?,
+        }
+    }
+
+    Ok(())
 }
 
 impl UnloadingModel {
@@ -151,8 +198,8 @@ impl UnloadingModel {
     ///
     /// This function is lazy and does not actually load the model into system memory, the model must be accessed in
     /// order to be loaded.
-    async fn new(model_path: impl AsRef<Path>) -> Self {
-        let sessions: Arc<DashMap<SessionId, Perishable<LlamaSession>>> = Default::default();
+    async fn new(model_path: impl AsRef<Path>, clip_path: impl AsRef<Path>) -> Self {
+        let sessions: Arc<DashMap<SessionId, Perishable<LlavaSession>>> = Default::default();
         let (tx, mut rx) = unbounded_channel();
 
         let sessions_clone = sessions.clone();
@@ -175,6 +222,7 @@ impl UnloadingModel {
         Self {
             model: Perishable::with_ttl(inactive_llm_ttl()),
             path: model_path.as_ref().to_path_buf(),
+            clip_path: model_path.as_ref().to_path_buf(),
             sessions,
             maintenance_thread,
             finished_tx: tx,
@@ -186,14 +234,14 @@ impl UnloadingModel {
         self.model.is_alive().await
     }
 
-    /// Either takes an existing chat [`LlamaSession`] compatible with the provided prompt from the
+    /// Either takes an existing chat [`LlavaSession`] compatible with the provided prompt from the
     /// `sessions` collection, or creates a new one.
     ///
     /// The matching [`SessionId`] and the new context derived from `prompt` are also returned.
     async fn take_chat_session<'a>(
         &self,
         prompt: &'a str,
-    ) -> (Perishable<LlamaSession>, SessionId, &'a str) {
+    ) -> (Perishable<LlavaSession>, SessionId, &'a str) {
         let (id, new_context) = SessionId::chat(prompt);
 
         let session_perishable = if let Some((_, session)) = self.sessions.remove(&id) {
@@ -209,63 +257,38 @@ impl UnloadingModel {
 
     /// Computes the full chat completions for the provided [`CompletionArgs`].
     async fn chat_completions(&self, args: CompletionArgs) -> Result<String, LLMEndpointError> {
-        let (_model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
+        let (_model_signal, model_guard) =
+            get_or_init_model(&self.model, &self.path, &self.clip_path).await?;
 
-        let prompt = format!("{}<|ASSISTANT|>", args.messages);
+        let prompt = "<|ASSISTANT|>".to_string();
 
-        if args.one_shot.unwrap_or(false) {
-            info!("Allocating one-shot LLM session");
-            let mut params = SessionParams::default();
-            let threads = SETTINGS.read().await.read().await.auto_threads(false);
+        info!("Allocating one-shot LLM session");
+        let mut params = SessionParams::default();
+        let threads = SETTINGS.read().await.read().await.auto_threads(false);
 
-            // TODO handle optional params
-            //params.seed = args.seed;
-            params.n_threads = threads;
-            params.n_threads_batch = threads;
-            params.n_ctx = args.context_hint.unwrap_or(CONTEXT_SIZE);
+        // TODO handle optional params
+        //params.seed = args.seed;
+        params.n_threads = threads;
+        params.n_threads_batch = threads;
+        params.n_ctx = args.context_hint.unwrap_or(CONTEXT_SIZE);
 
-            let mut session = model_guard
-                .create_session(params)
-                .map_err(move |e| LLMEndpointError::SessionCreationFailed(e.to_string()))?;
+        let mut session = model_guard
+            .create_session(params)
+            .map_err(move |e| LLMEndpointError::SessionCreationFailed(e.to_string()))?;
 
-            session
-                .advance_context_async(prompt)
-                .await
-                .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
+        advance(&args.messages, &mut session).await?;
 
-            let sampler = StandardSampler::default();
-            let handle = session
-                .start_completing_with(sampler, SINGLE_MESSAGE_LIMIT)
-                .map_err(|e| LLMEndpointError::Advance(e.to_string()))?;
+        session
+            .advance_context_async(prompt)
+            .await
+            .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
 
-            Ok(handle.into_string_async().await)
-        } else {
-            let (session, mut id, new_context) = self.take_chat_session(&prompt).await;
+        let sampler = StandardSampler::default();
+        let handle = session
+            .start_completing_with(sampler, SINGLE_MESSAGE_LIMIT)
+            .map_err(|e| LLMEndpointError::Advance(e.to_string()))?;
 
-            let (_session_signal, handle) = {
-                let (session_signal, mut session_guard) =
-                    get_or_init_session(&session, model_guard.clone()).await?;
-
-                session_guard
-                    .advance_context_async(new_context)
-                    .await
-                    .map_err(move |e| LLMEndpointError::Advance(e.to_string()))?;
-                id.advance(new_context);
-
-                let sampler = StandardSampler::default();
-                let handle = session_guard
-                    .start_completing_with(sampler, SINGLE_MESSAGE_LIMIT)
-                    .map_err(|e| LLMEndpointError::Advance(e.to_string()))?;
-
-                (session_signal, handle)
-            };
-
-            let res = handle.into_string_async().await;
-
-            self.sessions.insert(id, session);
-
-            Ok(res)
-        }
+        Ok(handle.into_string_async().await)
     }
 
     /// Return a [`Box`]ed [`Stream`] of chat completions computed for the provided
@@ -274,48 +297,31 @@ impl UnloadingModel {
         &self,
         args: CompletionArgs,
     ) -> Result<Box<dyn Stream<Item = String> + Unpin + Send>, LLMEndpointError> {
-        let (model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
+        let (model_signal, model_guard) =
+            get_or_init_model(&self.model, &self.path, &self.clip_path).await?;
 
-        let prompt = format!("{}<|ASSISTANT|>", args.messages);
+        let prompt = "<|ASSISTANT|>".to_string();
 
-        if args.one_shot.unwrap_or(false) {
-            info!("Allocating one-shot LLM session");
-            let mut params = SessionParams::default();
-            let threads = SETTINGS.read().await.read().await.auto_threads(false);
+        info!("Allocating one-shot LLM session");
+        let mut params = SessionParams::default();
+        let threads = SETTINGS.read().await.read().await.auto_threads(false);
 
-            // TODO handle optional params
-            //params.seed = args.seed;
-            params.n_threads = threads;
-            params.n_threads_batch = threads;
-            params.n_ctx = args.context_hint.unwrap_or(CONTEXT_SIZE);
+        // TODO handle optional params
+        //params.seed = args.seed;
+        params.n_threads = threads;
+        params.n_threads_batch = threads;
+        params.n_ctx = args.context_hint.unwrap_or(CONTEXT_SIZE);
 
-            let session = model_guard
-                .create_session(params)
-                .map_err(move |e| LLMEndpointError::SessionCreationFailed(e.to_string()))?;
-            let sampler = StandardSampler::default();
+        let mut session = model_guard
+            .create_session(params)
+            .map_err(move |e| LLMEndpointError::SessionCreationFailed(e.to_string()))?;
+        let sampler = StandardSampler::default();
 
-            Ok(Box::new(
-                CompletionStream::new_oneshot(session, &prompt, model_signal, sampler).await?,
-            ))
-        } else {
-            let (session, id, new_context) = self.take_chat_session(&prompt).await;
+        advance(&args.messages, &mut session).await?;
 
-            let sampler = StandardSampler::default();
-            let tx = self.finished_tx.clone();
-
-            Ok(Box::new(
-                CompletionStream::new(
-                    session,
-                    id,
-                    new_context,
-                    model_guard.clone(),
-                    model_signal,
-                    sampler,
-                    tx,
-                )
-                .await?,
-            ))
-        }
+        Ok(Box::new(
+            CompletionStream::new_oneshot(session, &prompt, model_signal, sampler).await?,
+        ))
     }
 
     async fn embeddings(&self, inputs: Vec<String>) -> Result<Vec<Vec<f32>>, LLMEndpointError> {
@@ -324,7 +330,8 @@ impl UnloadingModel {
         params.n_threads = threads;
         params.n_threads_batch = threads;
 
-        let (_model_signal, model_guard) = get_or_init_model(&self.model, &self.path).await?;
+        let (_model_signal, model_guard) =
+            get_or_init_model(&self.model, &self.path, &self.clip_path).await?;
         model_guard
             .embeddings_async(&inputs, params)
             .await
@@ -338,13 +345,15 @@ impl Drop for UnloadingModel {
     }
 }
 
-/// Helper function to acquire a read guard to a [`LlamaModel`] (and its associated
+/// Helper function to acquire a read guard to a [`LlavaModel`] (and its associated
 /// [`ActiveSignal`]).
 async fn get_or_init_model(
-    model: &Perishable<LlamaModel>,
+    model: &Perishable<LlavaModel>,
     path: impl AsRef<Path>,
-) -> Result<(ActiveSignal, PerishableReadGuard<LlamaModel>), LLMEndpointError> {
+    clip_path: impl AsRef<Path>,
+) -> Result<(ActiveSignal, PerishableReadGuard<LlavaModel>), LLMEndpointError> {
     let path = path.as_ref().to_path_buf();
+    let clip_path = clip_path.as_ref().to_path_buf();
     model
         .get_or_try_init(move || async move {
             info!("Loading {} into memory", path.to_string_lossy());
@@ -362,19 +371,19 @@ async fn get_or_init_model(
                 }
             }
 
-            LlamaModel::load_from_file_async(path, args)
+            LlavaModel::load_from_file_async(path, args, clip_path)
                 .await
                 .map_err(move |e| LLMEndpointError::Load(e.to_string()))
         })
         .await
 }
 
-/// Helper function to acquire a write guard to a [`LlamaSession`] (and its associated
+/// Helper function to acquire a write guard to a [`LlavaSession`] (and its associated
 /// [`ActiveSignal`]).
 async fn get_or_init_session(
-    session: &Perishable<LlamaSession>,
-    model: LlamaModel,
-) -> Result<(ActiveSignal, PerishableWriteGuard<LlamaSession>), LLMEndpointError> {
+    session: &Perishable<LlavaSession>,
+    model: LlavaModel,
+) -> Result<(ActiveSignal, PerishableWriteGuard<LlavaSession>), LLMEndpointError> {
     session
         .get_or_try_init_mut(move || async move {
             info!("Allocating new LLM session");
@@ -459,7 +468,7 @@ impl SessionId {
     ///
     /// ## Notes
     /// The received slice should contain only new dialogue, as old dialogue is already hashed in this
-    /// [`SessionId`] and "stored" in the corresponding [`LlamaSession`].
+    /// [`SessionId`] and "stored" in the corresponding [`LlavaSession`].
     fn advance(&mut self, new_context: &str) {
         self.hasher.update(new_context.as_bytes());
         self.len += new_context.len();
@@ -509,7 +518,7 @@ fn find_any(text: &str, patterns: &[&str]) -> Option<usize> {
     }
 }
 
-/// A [`Stream`] of [`Token`]s returned by a [`LlamaCppSession::stream_complete`] call.
+/// A [`Stream`] of [`Token`]s returned by a [`LlavaCppSession::stream_complete`] call.
 struct CompletionStream {
     /// Handle to the model completions handle.
     handle: TokensToStrings<CompletionHandle>,
@@ -521,7 +530,7 @@ struct CompletionStream {
     session_id: Option<SessionId>,
 
     /// A sender used to send both `session` and `session_id` once generation is completion
-    finished_tx: Option<UnboundedSender<(SessionId, Perishable<LlamaSession>)>>,
+    finished_tx: Option<UnboundedSender<(SessionId, Perishable<LlavaSession>)>>,
 
     /// The object signaling that `model` is currently active.
     _model_signal: ActiveSignal,
@@ -537,19 +546,19 @@ impl CompletionStream {
     /// * `session` - The session used to generate completions.
     /// * `session_id` - The [`SessionId`] associated with `session`.
     /// * `new_context` - The context used to advance the session.
-    /// * `model` - The [`LlamaModel`] that `session` is associated with.
+    /// * `model` - The [`LlavaModel`] that `session` is associated with.
     /// * `model_signal` - The `model`'s associated [`ActiveSignal`].
     /// * `sample` - The [`StandardSampler`] used to generate completions.
     /// * `end_token` - An [`UnboundedSender`] used to send both `session` and `session` once
     /// generation finishes.
     async fn new(
-        session: Perishable<LlamaSession>,
+        session: Perishable<LlavaSession>,
         mut session_id: SessionId,
         new_context: &str,
-        model: LlamaModel,
+        model: LlavaModel,
         model_signal: ActiveSignal,
         sampler: StandardSampler,
-        finished_tx: UnboundedSender<(SessionId, Perishable<LlamaSession>)>,
+        finished_tx: UnboundedSender<(SessionId, Perishable<LlavaSession>)>,
     ) -> Result<Self, LLMEndpointError> {
         let (session_signal, handle) = {
             let (session_signal, mut session_guard) = get_or_init_session(&session, model).await?;
@@ -579,7 +588,7 @@ impl CompletionStream {
     }
 
     async fn new_oneshot(
-        mut session: LlamaSession,
+        mut session: LlavaSession,
         new_context: &str,
         model_signal: ActiveSignal,
         sampler: StandardSampler,
@@ -636,8 +645,8 @@ impl Drop for CompletionStream {
 
 #[derive(Default)]
 enum SessionOption {
-    OneShot(LlamaSession),
-    Perishable(Perishable<LlamaSession>),
+    OneShot(LlavaSession),
+    Perishable(Perishable<LlavaSession>),
     #[default]
     None,
 }

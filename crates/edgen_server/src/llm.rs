@@ -10,43 +10,89 @@
  * limitations under the License.
  */
 
+use either::Either;
 use futures::Stream;
 use once_cell::sync::Lazy;
+use std::ops::Deref;
 
-use edgen_core::llm::{CompletionArgs, LLMEndpoint, LLMEndpointError};
-use edgen_rt_llama_cpp::LlamaCppEndpoint;
+use edgen_core::llm::{ChatMessage, CompletionArgs, ContentPart, LLMEndpoint, LLMEndpointError};
+use edgen_rt_llama_cpp::{LlamaCppEndpoint, LlavaCppEndpoint};
 
 use crate::model::Model;
 use crate::util::StoppingStream;
 
 static ENDPOINT: Lazy<LlamaCppEndpoint> = Lazy::new(Default::default);
+static MM_ENDPOINT: Lazy<LlavaCppEndpoint> = Lazy::new(Default::default);
+
+fn has_image(args: &CompletionArgs) -> bool {
+    for message in args.messages.deref() {
+        match message {
+            ChatMessage::User {
+                content: Either::Right(content),
+                ..
+            } => {
+                for part in content {
+                    match part {
+                        ContentPart::Text { .. } => continue,
+                        ContentPart::ImageUrl { .. } => return true,
+                        ContentPart::ImageData { .. } => return true,
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
 
 pub async fn chat_completion(
     model: Model,
     args: CompletionArgs,
 ) -> Result<String, LLMEndpointError> {
-    ENDPOINT
-        .chat_completions(
-            model
-                .file_path()
-                .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
-            args,
-        )
-        .await
+    if has_image(&args) {
+        MM_ENDPOINT
+            .chat_completions(
+                model
+                    .file_path()
+                    .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
+                args,
+            )
+            .await
+    } else {
+        ENDPOINT
+            .chat_completions(
+                model
+                    .file_path()
+                    .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
+                args,
+            )
+            .await
+    }
 }
 
 pub async fn chat_completion_stream(
     model: Model,
     args: CompletionArgs,
 ) -> Result<StoppingStream<Box<dyn Stream<Item = String> + Unpin + Send>>, LLMEndpointError> {
-    let stream = ENDPOINT
-        .stream_chat_completions(
-            model
-                .file_path()
-                .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
-            args,
-        )
-        .await?;
+    let stream = if has_image(&args) {
+        MM_ENDPOINT
+            .stream_chat_completions(
+                model
+                    .file_path()
+                    .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
+                args,
+            )
+            .await?
+    } else {
+        ENDPOINT
+            .stream_chat_completions(
+                model
+                    .file_path()
+                    .map_err(move |e| LLMEndpointError::Load(e.to_string()))?,
+                args,
+            )
+            .await?
+    };
 
     Ok(StoppingStream::wrap_with_stop_words(
         stream,

@@ -45,6 +45,10 @@ pub enum LLMEndpointError {
     Embeddings(String), // Embeddings may involve session creation, advancing, and other things, so it should have its own error
     #[error("unsuitable endpoint for model: {0}")]
     UnsuitableEndpoint(String),
+    #[error("failed to download image from URL: {0}")]
+    Download(String),
+    #[error("failed to parse base64 data: {0}")]
+    Base64(String),
 }
 
 /// The plaintext or image content of a [`ChatMessage`] within a [`CreateChatCompletionRequest`].
@@ -65,19 +69,24 @@ pub enum ContentPart {
         /// A description of the image behind the URL, if any.
         detail: Option<String>,
     },
+    /// Image byte data.
+    ImageData {
+        /// The byte data, encoded in base64.
+        byte_data: String,
+
+        /// The size in bytes that the decoded data in `byte_data` will occupy.
+        byte_size: usize,
+
+        /// A description of the image behind the URL, if any.
+        detail: Option<String>,
+    },
 }
 
 impl Display for ContentPart {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ContentPart::Text { text } => write!(f, "{}", text),
-            ContentPart::ImageUrl { url, detail } => {
-                if let Some(detail) = detail {
-                    write!(f, "<IMAGE {}> ({})", url, detail)
-                } else {
-                    write!(f, "<IMAGE {}>", url)
-                }
-            }
+            _ => write!(f, ""),
         }
     }
 }
@@ -255,6 +264,9 @@ impl Display for ChatMessages {
 /// A request to generate chat completions for the provided context.
 #[derive(Debug)]
 pub struct CompletionArgs {
+    /// The projection model, if applicable.
+    pub mmproj_model: Option<String>,
+
     /// The messages that have been sent in the dialogue so far.
     pub messages: ChatMessages,
 

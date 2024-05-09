@@ -5,12 +5,14 @@ edition = "2021"
 
 [dependencies]
 async-trait = { workspace = true }
+base64 = "0.22.1"
 blake3 = { workspace = true }
 dashmap = { workspace = true }
 derive_more = { workspace = true }
 edgen_core = { path = "../edgen_core" }
 futures = { workspace = true }
 llama_cpp = { git = "https://github.com/edgenai/llama_cpp-rs", branch = "main", features = ["native"] }
+reqwest = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt", "fs"] }
 tracing = { workspace = true }
